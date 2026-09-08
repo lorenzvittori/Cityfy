@@ -1,0 +1,277 @@
+{
+    "jazz": {
+        "color": "#cb754d",
+        "buildings": {
+            "jazz__nu_jazz": 1
+        }
+    },
+    "electronic": {
+        "color": "#cb4d4f",
+        "buildings": {
+            "electronic__hyperpop": 4,
+            "electronic__italian_indie": 1,
+            "electronic__experimental": 1
+        }
+    },
+    "rock": {
+        "color": "#80cb4d",
+        "buildings": {
+            "rock__post_rock": 1,
+            "rock__alternative_rock": 1,
+            "rock__post_punk": 1
+        }
+    },
+    "folk": {
+        "color": "#4d80cb",
+        "buildings": {
+            "folk__salsa": 1,
+            "folk__celtic": 1,
+            "folk__experimental": 1,
+            "folk__italian": 1
+        }
+    },
+    "hip_hop": {
+        "color": "#cbb64d",
+        "buildings": {
+            "hip_hop__trip_hop": 1,
+            "hip_hop__rap": 1
+        }
+    },
+    "pop": {
+        "color": "#4d9fcb",
+        "buildings": {
+            "pop__indie": 1,
+            "pop__electronic": 1
+        }
+    },
+    "forro": {
+        "color": "#8c4dcb",
+        "buildings": {
+            "forro__baiao": 1
+        }
+    },
+    "Electronic": {
+        "color": "#4dcbc5",
+        "buildings": {
+            "Electronic__electropop": 3,
+            "Electronic__art_pop": 2,
+            "Electronic__witch_house": 1,
+            "Electronic__midtempo_bass": 1,
+            "Electronic__wonky": 2,
+            "Electronic__rap": 1,
+            "Electronic__happy_hardcore": 1,
+            "Electronic__hyperpop": 3,
+            "Electronic__industrial": 1,
+            "Electronic__downtempo": 2,
+            "Electronic__ambient": 8,
+            "Electronic__spain": 1,
+            "Electronic__bubblegum_bass": 3,
+            "Electronic__austria": 1,
+            "Electronic__french": 1,
+            "Electronic__italian": 1,
+            "Electronic__experimental": 4,
+            "Electronic__vaporwave": 2,
+            "Electronic__france": 1,
+            "Electronic__idm": 5,
+            "Electronic__drum_and_bass": 2,
+            "Electronic__psytrance": 1,
+            "Electronic__shibuya_kei": 1,
+            "Electronic__grime": 2,
+            "Electronic__dubstep": 2,
+            "Electronic__trance": 1,
+            "Electronic__ebm": 1,
+            "Electronic__hip_house": 1,
+            "Electronic__breakcore": 2,
+            "Electronic__trap": 1,
+            "Electronic__psychedelic": 2,
+            "Electronic__funk": 2,
+            "Electronic__indie": 2,
+            "Electronic__indie_pop": 1,
+            "Electronic__hypnagogic_pop": 1,
+            "Electronic__techno": 1,
+            "Electronic__chiptune": 1,
+            "Electronic__electro_house": 1,
+            "Electronic__itpop": 1,
+            "Electronic__8_bit": 1
+        }
+    },
+    "Pop": {
+        "color": "#4dcbb8",
+        "buildings": {
+            "Pop__yandex_music": 1,
+            "Pop__indie": 2,
+            "Pop__morocco": 1,
+            "Pop__pop_rock": 1,
+            "Pop__french": 3,
+            "Pop__art_pop": 2,
+            "Pop__dutch": 1,
+            "Pop__idol": 1,
+            "Pop__belgium": 1,
+            "Pop__dance": 1,
+            "Pop__singer_songwriter": 1,
+            "Pop__italian": 3
+        }
+    },
+    "Rock": {
+        "color": "#6bcb4d",
+        "buildings": {
+            "Rock__indie": 3,
+            "Rock__symphonic_metal": 2,
+            "Rock__french": 1,
+            "Rock__darkwave": 1,
+            "Rock__garage_rock": 1,
+            "Rock__indie_pop": 2,
+            "Rock__singer_songwriter": 3,
+            "Rock__math_rock": 14,
+            "Rock__lo_fi": 2,
+            "Rock__ambient": 1,
+            "Rock__post_punk": 5,
+            "Rock__indie_rock": 1,
+            "Rock__experimental": 1,
+            "Rock__italian": 1,
+            "Rock__alternative_rock": 2,
+            "Rock__thrash_metal": 2,
+            "Rock__folk": 2,
+            "Rock__glam_rock": 1,
+            "Rock__progressive_rock": 14,
+            "Rock__post_rock": 16,
+            "Rock__progressive_metal": 7,
+            "Rock__psychedelic_rock": 2,
+            "Rock__new_wave": 2,
+            "Rock__classic_rock": 13,
+            "Rock__mathcore": 1,
+            "Rock__hard_rock": 3,
+            "Rock__jazz_rock": 1,
+            "Rock__blues_rock": 2,
+            "Rock__soft_rock": 1,
+            "Rock__avant_garde_metal": 1,
+            "Rock__instrumental": 1,
+            "Rock__post_hardcore": 1,
+            "Rock__alternative": 1,
+            "Rock__krautrock": 1,
+            "Rock__acoustic": 1,
+            "Rock__psychedelic": 1,
+            "Rock__post_metal": 1,
+            "Rock__dream_pop": 1,
+            "Rock__stoner_rock": 1,
+            "Rock__jazz": 1,
+            "Rock__garage_punk": 1,
+            "Rock__alternative_metal": 1
+        }
+    },
+    "Funk_Soul": {
+        "color": "#cb4d9b",
+        "buildings": {
+            "Funk_Soul__rnb": 1,
+            "Funk_Soul__soul": 5,
+            "Funk_Soul__experimental": 1,
+            "Funk_Soul__funk": 4,
+            "Funk_Soul__jazz": 1,
+            "Funk_Soul__mod": 1
+        }
+    },
+    "Hip_Hop": {
+        "color": "#4dcb82",
+        "buildings": {
+            "Hip_Hop__hip_hop": 10,
+            "Hip_Hop__rap": 1,
+            "Hip_Hop__french": 1,
+            "Hip_Hop__jazz_rap": 1,
+            "Hip_Hop__trap": 2
+        }
+    },
+    "Folk_World_Country": {
+        "color": "#90cb4d",
+        "buildings": {
+            "Folk_World_Country__mali": 1,
+            "Folk_World_Country__gypsy": 2,
+            "Folk_World_Country__balkan": 3,
+            "Folk_World_Country__french": 1,
+            "Folk_World_Country__folk": 8,
+            "Folk_World_Country__greek": 1,
+            "Folk_World_Country__celtic": 3,
+            "Folk_World_Country__italian": 1,
+            "Folk_World_Country__calypso": 1,
+            "Folk_World_Country__latin": 1,
+            "Folk_World_Country__folk_rock": 1,
+            "Folk_World_Country__african": 1,
+            "Folk_World_Country__acoustic_guitar": 1,
+            "Folk_World_Country__world": 1
+        }
+    },
+    "Jazz": {
+        "color": "#4db0cb",
+        "buildings": {
+            "Jazz__swing": 1,
+            "Jazz__japanese": 2,
+            "Jazz__instrumental": 2,
+            "Jazz__electronic": 1,
+            "Jazz__germany": 1,
+            "Jazz__italian": 1,
+            "Jazz__cool_jazz": 1,
+            "Jazz__fusion": 2,
+            "Jazz__funk": 1,
+            "Jazz__blues": 1,
+            "Jazz__big_band": 1,
+            "Jazz__afrobeat": 1,
+            "Jazz__soul": 1,
+            "Jazz__contemporary_jazz": 1,
+            "Jazz__piano": 3,
+            "Jazz__bebop": 2,
+            "Jazz__jazz_fusion": 4,
+            "Jazz__smooth_jazz": 1,
+            "Jazz__trumpet": 1,
+            "Jazz__dixieland": 1
+        }
+    },
+    "Latin": {
+        "color": "#754dcb",
+        "buildings": {
+            "Latin__peruvian": 1,
+            "Latin__brazil": 2,
+            "Latin__manguebeat": 1,
+            "Latin__colombian": 1,
+            "Latin__flamenco": 1,
+            "Latin__cuban": 2,
+            "Latin__mexico": 1,
+            "Latin__bossa_nova": 1,
+            "Latin__cumbia": 1,
+            "Latin__samba": 1
+        }
+    },
+    "Stage_Screen": {
+        "color": "#cb774d",
+        "buildings": {
+            "Stage_Screen__soundtrack": 2
+        }
+    },
+    "Classical": {
+        "color": "#4d8ccb",
+        "buildings": {
+            "Classical__piano": 3,
+            "Classical__romantic": 5,
+            "Classical__conductor": 1,
+            "Classical__ambient": 1,
+            "Classical__contemporary_classical": 2,
+            "Classical__classical": 1,
+            "Classical__jazz": 1,
+            "Classical__impressionist": 1,
+            "Classical__opera": 2,
+            "Classical__instrumental": 3,
+            "Classical__baroque": 1
+        }
+    },
+    "Reggae": {
+        "color": "#cbb44d",
+        "buildings": {
+            "Reggae__ska": 1,
+            "Reggae__dub": 1
+        }
+    },
+    "Blues": {
+        "color": "#5c4dcb",
+        "buildings": {
+            "Blues__blues_rock": 3
+        }
+    }
+}

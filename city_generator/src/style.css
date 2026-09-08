@@ -1,0 +1,42 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #eee9e1;
+}
+
+#scene {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+}
+
+#tooltip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 10;
+  background: rgba(30, 28, 24, 0.88);
+  color: #f5f2ea;
+  font: 13px/1.5 system-ui, sans-serif;
+  padding: 6px 10px;
+  border-radius: 4px;
+  white-space: nowrap;
+  transform: translate(14px, 14px);
+}
+
+#tooltip[hidden] {
+  display: none;
+}
+
+#tooltip strong {
+  font-weight: 600;
+}
