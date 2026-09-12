@@ -1,0 +1,20 @@
+{
+    "pop": "Pop",
+    "rock": "Rock",
+    "hip hop": "Hip Hop / Rap",
+    "rap": "Hip Hop / Rap",
+    "jazz": "Jazz",
+    "classical": "Classica",
+    "opera": "Classica",
+    "metal": "Metal",
+    "punk": "Punk",
+    "folk": "Folk / Cantautorato",
+    "electronic": "Elettronica / Dance",
+    "soul": "R&B / Soul / Funk",
+    "funk": "R&B / Soul / Funk",
+    "reggae": "Reggae / Ska",
+    "country": "Country",
+    "latin": "Latino",
+    "blues": "Blues",
+    "indie": "Indie"
+}
