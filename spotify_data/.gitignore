@@ -1,8 +1,0 @@
-# Segreti / config locale
-.env
-
-# Python
-__pycache__/
-*.pyc
-.venv/
-venv/
