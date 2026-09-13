@@ -79,12 +79,6 @@ namespace CityFy.RtrieveSpotify.Controllers
         // GET debug/spotify/callback?code=...&state=...
         // Exchanges authorization code for access token and returns it
         /// <summary>
-        /// {
-        ///     "access_token":"BQCvz67uGo7hvcfwtS6HaaKAkoa9l3hi829ka66gZihk6MH7laAGGDCRkNYJt6zXuf1FY5BeWURoNrtbNjyoqknZMmls1u8b6J0iI6O9K025MsMYgneDe-KPa6GnOIpPfivQ3rQOFo94Sf6D_r_Hqrsgiz_7xoOyBpnRPkR0U7_TFJ1KEnRKJT9hV2zD-N6WaHp0br6rplos-IhtFRCCcrANe5M3XpmrtoO1pDCtM3iXF8KwX55QGLiN3t-TGXSctaKAI_HsUGI",
-        ///     "refresh_token":"AQBamLwmmr9p9Zbjj6NZuECPsJdMlspljMQO7LpwLjcoPRNV2glVHWzpz_tyZwaOc6czKSlzDppnbfCJnZIX-qFeYk6gViQOQ6fHVDoqHc91bcchLpuHgiB50yWQA7sIUew",
-        ///     "expires_in":3600,
-        ///     "scope":"user-modify-playback-state user-library-read user-read-playback-state user-read-private user-top-read"}
-        /// }
         /// </summary>
         /// <param name="code"></param>
         /// <param name="state"></param>
