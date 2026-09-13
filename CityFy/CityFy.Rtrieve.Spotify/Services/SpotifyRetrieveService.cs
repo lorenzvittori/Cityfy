@@ -1,3 +1,4 @@
+using CityFy.Rtrieve.Spotify.Mappers;
 using CityFy.RtrieveSpotify.Clients;
 using CityFy.RtrieveSpotify.Models;
 using CityFy.RtrieveSpotify.Repositories;

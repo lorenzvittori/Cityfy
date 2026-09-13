@@ -1,6 +1,6 @@
 using CityFy.RtrieveSpotify.Models;
 
-namespace CityFy.RtrieveSpotify.Services
+namespace CityFy.Rtrieve.Spotify.Mappers
 {
     public interface ISpotifyConverter
     {

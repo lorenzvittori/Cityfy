@@ -1,7 +1,7 @@
 using AutoMapper;
 using CityFy.RtrieveSpotify.Models;
 
-namespace CityFy.RtrieveSpotify.Services
+namespace CityFy.Rtrieve.Spotify.Mappers
 {
     public class SpotifyConverter : ISpotifyConverter
     {
