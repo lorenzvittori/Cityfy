@@ -2,20 +2,18 @@ using CityFy.RtrieveSpotify.Models;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using System.Text.Json;
+using ServiceDefault.Models;
 
 namespace CityFy.RtrieveSpotify.Repositories
 {
-    public class SpotifyRepository : ISpotifyRepository
+    public class MongoSpotifyRepository : ISpotifyRepository
     {
         private readonly IMongoDatabase _db;
 
-        public SpotifyRepository(IConfiguration config)
+        public MongoSpotifyRepository(MongoOptions options)
         {
-            var mongoConnection = config.GetValue<string>("Mongo:ConnectionString") ?? "mongodb://localhost:27017";
-            var databaseName = config.GetValue<string>("Mongo:Database") ?? "cityfy_spotify";
-
-            var client = new MongoClient(mongoConnection);
-            _db = client.GetDatabase(databaseName);
+            var client = new MongoClient(options.ConnectionString);
+            _db = client.GetDatabase(options.Database);
         }
 
         public async Task InsertTracksAsync(IEnumerable<Track> tracks)

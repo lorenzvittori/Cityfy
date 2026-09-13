@@ -1,11 +1,5 @@
-using System;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Configuration;
-using System.Net.Http.Headers;
-using System.Text;
-using System.Text.Json;
 using CityFy.RtrieveSpotify.Services;
+using Microsoft.AspNetCore.Mvc;
 
 namespace CityFy.RtrieveSpotify.Controllers
 {

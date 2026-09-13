@@ -30,9 +30,13 @@ builder.Services.AddCors(options =>
 builder.Services.AddAutoMapper(typeof(SpotifyMappingProfile));
 builder.Services.AddSingleton<ISpotifyConverter, SpotifyConverter>();
 
+// Bind shared Mongo options
+builder.Services.Configure<ServiceDefault.Models.MongoOptions>(builder.Configuration.GetSection("Mongo"));
+builder.Services.AddSingleton(sp => sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ServiceDefault.Models.MongoOptions>>().Value);
+
 // Register client and repository which read configuration themselves
 builder.Services.AddSingleton<ISpotifyClient, SpotifyClient>();
-builder.Services.AddSingleton<ISpotifyRepository, SpotifyRepository>();
+builder.Services.AddSingleton<ISpotifyRepository, MongoSpotifyRepository>();
 builder.Services.AddSingleton<ISpotifyRetrieveService, SpotifyRetrieveService>();
 // Auth client and service
 builder.Services.AddSingleton<ISpotifyAuthClient, SpotifyAuthClient>();
