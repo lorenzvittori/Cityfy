@@ -8,7 +8,7 @@ namespace CityFy.Retrieve.Dump.Spotify.Services
         Task<int> PersistBufferAsync(string collectionName, IEnumerable<StreamingBl> buffer, string uploadId);
         Task CreateTaskAsync(string uploadId);
         Task IncrementTaskProgressAsync(string uploadId, int delta);
-        Task UpdateTaskStatusAsync(string uploadId, string status, string? message = null);
-        Task<IEnumerable<ServiceDefault.Models.ProcessingTask>> GetTasksByStatusAsync(string status);
+        Task UpdateTaskStatusAsync(string uploadId, ServiceDefault.Models.ProcessingStatus status, string? message = null);
+        Task<IEnumerable<ServiceDefault.Models.ProcessingTask>> GetTasksByStatusAsync(ServiceDefault.Models.ProcessingStatus status);
     }
 }

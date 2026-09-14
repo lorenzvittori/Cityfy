@@ -40,7 +40,7 @@ namespace CityFy.Retrieve.Dump.Spotify.HostedServices
 
                     using var scopeAll = _servicesProvider.CreateScope();
                     var persistence = scopeAll.ServiceProvider.GetRequiredService<IStreamingBlPersistenceService>();
-                    var pendingTasks = await persistence.GetTasksByStatusAsync("pending");
+                    var pendingTasks = await persistence.GetTasksByStatusAsync(ServiceDefault.Models.ProcessingStatus.Pending);
 
                     foreach (var task in pendingTasks)
                     {
@@ -61,8 +61,8 @@ namespace CityFy.Retrieve.Dump.Spotify.HostedServices
 
                         if (File.Exists(marker))
                         {
-                            _logger.LogInformation("Upload {UploadId} already processed (marker exists), marking task completed", uploadId);
-                            try { await persistence.UpdateTaskStatusAsync(uploadId, "completed"); } catch { }
+                            _logger.LogInformation("Upload {UploadId} already processed (marker exists), marking task DONE", uploadId);
+                            try { await persistence.UpdateTaskStatusAsync(uploadId, ServiceDefault.Models.ProcessingStatus.DONE); } catch { }
                             continue;
                         }
 
@@ -77,7 +77,7 @@ namespace CityFy.Retrieve.Dump.Spotify.HostedServices
                             try
                             {
                                 await persistenceService.CreateTaskAsync(uploadId);
-                                await persistenceService.UpdateTaskStatusAsync(uploadId, "running");
+                                await persistenceService.UpdateTaskStatusAsync(uploadId, ServiceDefault.Models.ProcessingStatus.WORKING_IN_PROGRESS);
                             }
                             catch (Exception ex)
                             {
@@ -89,11 +89,11 @@ namespace CityFy.Retrieve.Dump.Spotify.HostedServices
                             // mark task completed
                             try
                             {
-                                await persistenceService.UpdateTaskStatusAsync(uploadId, "completed");
+                                await persistenceService.UpdateTaskStatusAsync(uploadId, ServiceDefault.Models.ProcessingStatus.DONE);
                             }
                             catch (Exception ex)
                             {
-                                _logger.LogWarning(ex, "Failed to update task status to completed for {UploadId}", uploadId);
+                                _logger.LogWarning(ex, "Failed to update task status to DONE for {UploadId}", uploadId);
                             }
 
                             // create marker file to avoid reprocessing
@@ -113,11 +113,11 @@ namespace CityFy.Retrieve.Dump.Spotify.HostedServices
                             {
                                 using var scope = _servicesProvider.CreateScope();
                                 var persistenceService = scope.ServiceProvider.GetRequiredService<IStreamingBlPersistenceService>();
-                                await persistenceService.UpdateTaskStatusAsync(uploadId, "failed", ex.Message);
+                                await persistenceService.UpdateTaskStatusAsync(uploadId, ServiceDefault.Models.ProcessingStatus.FAILED, ex.Message);
                             }
                             catch (Exception e)
                             {
-                                _logger.LogWarning(e, "Failed to update task status to failed for {UploadId}", uploadId);
+                                _logger.LogWarning(e, "Failed to update task status to FAILED for {UploadId}", uploadId);
                             }
                         }
                     }

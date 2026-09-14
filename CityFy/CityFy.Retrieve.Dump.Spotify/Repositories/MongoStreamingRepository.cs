@@ -61,21 +61,23 @@ namespace CityFy.Retrieve.Dump.Spotify.Repositories
             await collection.UpdateOneAsync(filter, update);
         }
 
-        public async Task UpdateTaskStatusAsync(string uploadId, string status, string? message = null)
+        public async Task UpdateTaskStatusAsync(string uploadId, ServiceDefault.Models.ProcessingStatus status, string? message = null)
         {
-            var collection = _database.GetCollection<BsonDocument>(_options.TaskCollectionName);
-            var filter = Builders<BsonDocument>.Filter.Eq("UploadId", uploadId);
+            var collection = _database.GetCollection<ServiceDefault.Models.ProcessingTask>(_options.TaskCollectionName);
+            var filter = Builders<ServiceDefault.Models.ProcessingTask>.Filter.Eq(t => t.UploadId, uploadId);
 
-            var update = Builders<BsonDocument>.Update.Set("Status", status);
+            var updateDef = Builders<ServiceDefault.Models.ProcessingTask>.Update.Set(t => t.Status, status);
             if (!string.IsNullOrWhiteSpace(message))
-                update = update.Set("Message", message);
-            if (string.Equals(status, "completed", StringComparison.OrdinalIgnoreCase))
-                update = update.Set("CompletedAt", DateTime.UtcNow);
+                updateDef = updateDef.Set(t => t.Message, message);
+            if (status == ServiceDefault.Models.ProcessingStatus.DONE || status == ServiceDefault.Models.ProcessingStatus.FAILED)
+            {
+                updateDef = updateDef.Set(t => t.CompletedAt, DateTime.UtcNow);
+            }
 
-            await collection.UpdateOneAsync(filter, update);
+            await collection.UpdateOneAsync(filter, updateDef);
         }
 
-        public async Task<IEnumerable<ServiceDefault.Models.ProcessingTask>> GetTasksByStatusAsync(string status)
+        public async Task<IEnumerable<ServiceDefault.Models.ProcessingTask>> GetTasksByStatusAsync(ServiceDefault.Models.ProcessingStatus status)
         {
             var collection = _database.GetCollection<ServiceDefault.Models.ProcessingTask>(_options.TaskCollectionName);
             var filter = Builders<ServiceDefault.Models.ProcessingTask>.Filter.Eq(t => t.Status, status);

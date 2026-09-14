@@ -11,7 +11,7 @@ namespace CityFy.Retrieve.Dump.Spotify.Repositories
         // Task management for processing lifecycle
         Task CreateTaskAsync(ServiceDefault.Models.ProcessingTask task);
         Task IncrementTaskInsertedAsync(string uploadId, int delta);
-        Task UpdateTaskStatusAsync(string uploadId, string status, string? message = null);
-        Task<IEnumerable<ServiceDefault.Models.ProcessingTask>> GetTasksByStatusAsync(string status);
+        Task UpdateTaskStatusAsync(string uploadId, ServiceDefault.Models.ProcessingStatus status, string? message = null);
+        Task<IEnumerable<ServiceDefault.Models.ProcessingTask>> GetTasksByStatusAsync(ServiceDefault.Models.ProcessingStatus status);
     }
 }

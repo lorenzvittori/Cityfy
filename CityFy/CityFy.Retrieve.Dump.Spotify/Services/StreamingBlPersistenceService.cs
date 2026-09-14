@@ -52,7 +52,7 @@ namespace CityFy.Retrieve.Dump.Spotify.Services
             var task = new ServiceDefault.Models.ProcessingTask
             {
                 UploadId = uploadId,
-                Status = "pending",
+                Status = ServiceDefault.Models.ProcessingStatus.Pending,
                 Inserted = 0,
                 StartedAt = DateTime.UtcNow
             };
@@ -65,12 +65,12 @@ namespace CityFy.Retrieve.Dump.Spotify.Services
             await _repository.IncrementTaskInsertedAsync(uploadId, delta);
         }
 
-        public async Task UpdateTaskStatusAsync(string uploadId, string status, string? message = null)
+        public async Task UpdateTaskStatusAsync(string uploadId, ServiceDefault.Models.ProcessingStatus status, string? message = null)
         {
             await _repository.UpdateTaskStatusAsync(uploadId, status, message);
         }
 
-        public async Task<IEnumerable<ServiceDefault.Models.ProcessingTask>> GetTasksByStatusAsync(string status)
+        public async Task<IEnumerable<ServiceDefault.Models.ProcessingTask>> GetTasksByStatusAsync(ServiceDefault.Models.ProcessingStatus status)
         {
             return await _repository.GetTasksByStatusAsync(status);
         }
