@@ -21,6 +21,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="..\nlog.config">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>nlog.config</Link>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\ServiceDefault\ServiceDefault.csproj" />
   </ItemGroup>
 
