@@ -1,4 +1,5 @@
 using CityFy.Retrieve.Dump.Spotify.FileClients;
+using ServiceDefault.Logging;
 using CityFy.Retrieve.Dump.Spotify.HostedServices;
 using CityFy.Retrieve.Dump.Spotify.Mappers;
 using CityFy.Retrieve.Dump.Spotify.Models;
@@ -11,6 +12,9 @@ using ServiceDefault.Models;
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
+
+// Configure logging using shared extension
+builder.Services.AddAppLogging(builder.Configuration);
 
 builder.Services.AddControllers();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi

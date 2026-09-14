@@ -7,11 +7,13 @@ namespace CityFy.RtrieveSpotify.Clients
     {
         protected readonly string _apiBase;
         protected readonly int _pageSize;
+        protected readonly Microsoft.Extensions.Logging.ILogger _logger;
 
-        protected SpotifyClientBase(IConfiguration config)
+        protected SpotifyClientBase(IConfiguration config, Microsoft.Extensions.Logging.ILogger logger)
         {
             _apiBase = config.GetValue<string>("Spotify:ApiBase") ?? "https://api.spotify.com/v1";
             _pageSize = config.GetValue<int>("Spotify:PageSize", 50);
+            _logger = logger;
         }
 
         protected async Task<IEnumerable<T>> GetPagedAsync<T>(string token, string relativePath, string itemProperty)
@@ -36,7 +38,7 @@ namespace CityFy.RtrieveSpotify.Clients
                 if (!resp.IsSuccessStatusCode)
                 {
                     var body = await resp.Content.ReadAsStringAsync();
-                    Console.WriteLine($"Spotify API error GET {url} -> {resp.StatusCode}: {body}");
+                    _logger.LogError("Spotify API error GET {Url} -> {StatusCode}: {Body}", url, resp.StatusCode, body);
                     break;
                 }
 
@@ -82,7 +84,7 @@ namespace CityFy.RtrieveSpotify.Clients
             if (!resp.IsSuccessStatusCode)
             {
                 var body = await resp.Content.ReadAsStringAsync();
-                Console.WriteLine($"Spotify API error GET {url} -> {resp.StatusCode}: {body}");
+                _logger.LogError("Spotify API error GET {Url} -> {StatusCode}: {Body}", url, resp.StatusCode, body);
                 return (result, null);
             }
 

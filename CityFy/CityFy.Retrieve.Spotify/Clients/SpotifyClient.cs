@@ -4,7 +4,7 @@ namespace CityFy.RtrieveSpotify.Clients
 {
     public class SpotifyClient : SpotifyClientBase, ISpotifyClient
     {
-        public SpotifyClient(IConfiguration config) : base(config)
+        public SpotifyClient(IConfiguration config, Microsoft.Extensions.Logging.ILogger<SpotifyClientBase> logger) : base(config, logger)
         {
         }
 

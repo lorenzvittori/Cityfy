@@ -10,12 +10,14 @@ namespace CityFy.Retrieve.Dump.Spotify.Services
         private readonly IFileClient _fileClient;
         private readonly DebugUploadOptions _options;
         private readonly IStreamingBlPersistenceService? _persistenceService;
+        private readonly Microsoft.Extensions.Logging.ILogger<ZipUploadService> _logger;
 
-        public ZipUploadService(IFileClient fileClient, IOptions<DebugUploadOptions> options, IStreamingBlPersistenceService? persistenceService = null)
+        public ZipUploadService(IFileClient fileClient, IOptions<DebugUploadOptions> options, IStreamingBlPersistenceService? persistenceService = null, Microsoft.Extensions.Logging.ILogger<ZipUploadService>? logger = null)
         {
             _fileClient = fileClient;
             _options = options.Value;
             _persistenceService = persistenceService;
+            _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<ZipUploadService>.Instance;
         }
 
         public async Task<UploadResult> HandleZipUploadAsync(IFormFile file)
@@ -65,7 +67,7 @@ namespace CityFy.Retrieve.Dump.Spotify.Services
             }
             catch (Exception ex)
             {
-                Console.WriteLine("Failed to create processing task: " + ex.Message);
+                _logger.LogError(ex, "Failed to create processing task: {Message}", ex.Message);
             }
 
             return new UploadResult

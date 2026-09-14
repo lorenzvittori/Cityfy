@@ -7,10 +7,12 @@ namespace CityFy.Retrieve.Dump.Spotify.Services
     public class StreamingBlPersistenceService : IStreamingBlPersistenceService
     {
         private readonly IStreamingRepository _repository;
+        private readonly Microsoft.Extensions.Logging.ILogger<StreamingBlPersistenceService> _logger;
 
-        public StreamingBlPersistenceService(IStreamingRepository repository)
+        public StreamingBlPersistenceService(IStreamingRepository repository, Microsoft.Extensions.Logging.ILogger<StreamingBlPersistenceService> logger)
         {
             _repository = repository;
+            _logger = logger;
         }
 
         public async Task EnsureCollectionExistsAsync(string collectionName)
@@ -34,13 +36,13 @@ namespace CityFy.Retrieve.Dump.Spotify.Services
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine("Failed to update task progress: " + ex.Message);
+                    _logger.LogError(ex, "Failed to update task progress: {Message}", ex.Message);
                 }
                 return list.Count;
             }
             catch (Exception e)
             {
-                Console.WriteLine("Failed to persist buffer in persistence service: " + e.Message);
+                _logger.LogError(e, "Failed to persist buffer in persistence service: {Message}", e.Message);
                 return 0;
             }
         }

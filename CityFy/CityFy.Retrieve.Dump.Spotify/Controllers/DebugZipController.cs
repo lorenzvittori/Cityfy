@@ -9,10 +9,12 @@ namespace CityFy.RtrieveSpotify.Controllers
     public class DebugZipController : ControllerBase
     {
         private readonly IZipUploadService _zipService;
+        private readonly Microsoft.Extensions.Logging.ILogger<DebugZipController> _logger;
 
-        public DebugZipController(IZipUploadService zipService)
+        public DebugZipController(IZipUploadService zipService, Microsoft.Extensions.Logging.ILogger<DebugZipController> logger)
         {
             _zipService = zipService;
+            _logger = logger;
         }
 
         [HttpPost("zip")]
@@ -38,7 +40,7 @@ namespace CityFy.RtrieveSpotify.Controllers
             }
             catch (Exception ex)
             {
-                Console.WriteLine("DebugZipController error: " + ex);
+                _logger.LogError(ex, "DebugZipController error: {Message}", ex.Message);
                 return StatusCode(500, "Internal server error");
             }
         }

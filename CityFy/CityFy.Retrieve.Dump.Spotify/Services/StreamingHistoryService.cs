@@ -10,12 +10,14 @@ namespace CityFy.Retrieve.Dump.Spotify.Services
         private readonly IStreamingBlPersistenceService _persistence;
         private readonly MongoOptions _mongoOptions;
         private readonly IStreamingMapper _mapper;
+        private readonly Microsoft.Extensions.Logging.ILogger<StreamingHistoryService> _logger;
 
-        public StreamingHistoryService(IStreamingBlPersistenceService persistence, MongoOptions mongoOptions, IStreamingMapper mapper)
+        public StreamingHistoryService(IStreamingBlPersistenceService persistence, MongoOptions mongoOptions, IStreamingMapper mapper, Microsoft.Extensions.Logging.ILogger<StreamingHistoryService> logger)
         {
             _persistence = persistence;
             _mongoOptions = mongoOptions;
             _mapper = mapper;
+            _logger = logger;
         }
 
         public async Task ProcessExtractedFilesAsync(string uploadId, string extractDir)
@@ -30,7 +32,7 @@ namespace CityFy.Retrieve.Dump.Spotify.Services
 
             if (!jsonFiles.Any())
             {
-                Console.WriteLine("No JSON files found in extracted folder: " + extractDir);
+                _logger.LogWarning("No JSON files found in extracted folder: {ExtractDir}", extractDir);
                 return;
             }
 
@@ -54,7 +56,7 @@ namespace CityFy.Retrieve.Dump.Spotify.Services
                         var dtos = JsonSerializer.Deserialize<IEnumerable<StreamingDto>>(txt, options);
                         if (dtos == null)
                         {
-                            Console.WriteLine("Skipping JSON file (no array/dtos): " + file);
+                            _logger.LogWarning("Skipping JSON file (no array/dtos): {File}", file);
                             continue;
                         }
 
@@ -73,13 +75,13 @@ namespace CityFy.Retrieve.Dump.Spotify.Services
                             }
                             catch (Exception e)
                             {
-                                Console.WriteLine("Failed to map element from " + file + " : " + e.Message);
+                                _logger.LogError(e, "Failed to map element from {File} : {Message}", file, e.Message);
                             }
                         }
                     }
                     catch (Exception e)
                     {
-                        Console.WriteLine("Failed to read/parse file " + file + " : " + e.Message);
+                        _logger.LogError(e, "Failed to read/parse file {File} : {Message}", file, e.Message);
                     }
                 }
 
@@ -93,16 +95,16 @@ namespace CityFy.Retrieve.Dump.Spotify.Services
 
                 if (totalInserted > 0)
                 {
-                    Console.WriteLine($"Inserted {totalInserted} documents into collection {collectionName}");
+                    _logger.LogInformation("Inserted {TotalInserted} documents into collection {Collection}", totalInserted, collectionName);
                 }
                 else
                 {
-                    Console.WriteLine("No documents to insert for upload " + uploadId);
+                    _logger.LogInformation("No documents to insert for upload {UploadId}", uploadId);
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine("Error while processing extracted files: " + ex);
+                _logger.LogError(ex, "Error while processing extracted files: {Message}", ex.Message);
             }
         }
     }

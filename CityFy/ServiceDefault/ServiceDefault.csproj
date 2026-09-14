@@ -6,8 +6,9 @@
 	<ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
-  <ItemGroup>
+	<ItemGroup>
 	<PackageReference Include="MongoDB.Bson" Version="2.21.0" />
+	<PackageReference Include="NLog.Extensions.Logging" Version="5.3.0" />
   </ItemGroup>
 
 </Project>

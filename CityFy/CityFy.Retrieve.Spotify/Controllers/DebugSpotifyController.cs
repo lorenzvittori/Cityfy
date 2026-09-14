@@ -9,11 +9,13 @@ namespace CityFy.RtrieveSpotify.Controllers
     {
         private readonly ISpotifyRetrieveService _service;
         private readonly ISpotifyAuthService _authService;
+        private readonly Microsoft.Extensions.Logging.ILogger<DebugSpotifyController> _logger;
 
-        public DebugSpotifyController(ISpotifyRetrieveService service, ISpotifyAuthService authService)
+        public DebugSpotifyController(ISpotifyRetrieveService service, ISpotifyAuthService authService, Microsoft.Extensions.Logging.ILogger<DebugSpotifyController> logger)
         {
             _service = service;
             _authService = authService;
+            _logger = logger;
         }
 
         // POST debug/spotify/start
@@ -33,7 +35,7 @@ namespace CityFy.RtrieveSpotify.Controllers
             }
             catch (Exception ex)
             {
-                Console.WriteLine("Debug Spotify retrieve failed: " + ex);
+                _logger.LogError(ex, "Debug Spotify retrieve failed: {Message}", ex.Message);
                 return StatusCode(500);
             }
         }
