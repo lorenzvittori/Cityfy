@@ -5,12 +5,17 @@ namespace CityFy.Elaboration.Repositories;
 public interface IElaborationRepository
 {
     /// <summary>
-    /// Recupera i TagGraph dalla collection musicbrainz_tag_graphs. Se seedTag è specificato filtra.
+    /// Recupera un Graph di output (elaborazione) per id dalla collection di elaborazione.
     /// </summary>
-    Task<IEnumerable<TagGraph>> GetTagGraphsAsync(string? seedTag = null);
+    Task<Graph?> GetGraphByIdAsync(string id);
 
     /// <summary>
-    /// Inserisce il Graph nella collection di output.
+    /// Recupera i Graph di output (elaborazione) paginati.
+    /// </summary>
+    Task<IEnumerable<Graph>> GetGraphsPagedAsync(int page, int pageSize);
+
+    /// <summary>
+    /// Inserisce il Graph nella collection di output (elaborazione).
     /// </summary>
     Task InsertGraphAsync(Graph graph);
 }

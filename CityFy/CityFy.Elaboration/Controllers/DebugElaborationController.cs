@@ -16,13 +16,16 @@ namespace CityFy.Elaboration.Controllers
         }
 
         // POST debug/elaboration/process
-        // Body: { "seedTag": "rock" }  (seedTag optional; if omitted process all TagGraph docs)
+        // Body: { "tagGraphs": [ ... ] }  - fornire i TagGraph da processare. L'elaboration non recupera collection di altri progetti.
         [HttpPost("process")]
         public IActionResult StartProcess([FromBody] ProcessRequest? req)
         {
             try
             {
-                Task.Run(() => _service.ProcessAsync(req?.SeedTag));
+                if (req?.TagGraphs == null)
+                    return BadRequest("Elaboration non deve recuperare collection di altri progetti. Fornire i TagGraph nel body come 'TagGraphs'.");
+
+                Task.Run(() => _service.ProcessAsync(req.TagGraphs));
                 return Accepted();
             }
             catch (Exception ex)
@@ -32,20 +35,11 @@ namespace CityFy.Elaboration.Controllers
             }
         }
 
-        // GET debug/elaboration/process?seedTag=rock  -> run synchronously and return produced graphs
+        // GET debug/elaboration/process -> non supportato: usare POST con TagGraphs forniti
         [HttpGet("process")]
-        public async Task<IActionResult> ProcessNow([FromQuery] string? seedTag)
+        public IActionResult ProcessNow([FromQuery] string? seedTag)
         {
-            try
-            {
-                var res = await _service.ProcessAsync(seedTag);
-                return Ok(res);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine("ProcessNow failed: " + ex);
-                return StatusCode(500);
-            }
+            return BadRequest("Operazione non supportata. Elaboration non deve recuperare collection di altri progetti. Usare POST con il body contenente 'TagGraphs'.");
         }
     }
 }

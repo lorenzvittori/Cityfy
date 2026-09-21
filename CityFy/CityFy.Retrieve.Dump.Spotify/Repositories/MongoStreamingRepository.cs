@@ -83,5 +83,31 @@ namespace CityFy.Retrieve.Dump.Spotify.Repositories
             var filter = Builders<ServiceDefault.Models.ProcessingTask>.Filter.Eq(t => t.Status, status);
             return await collection.Find(filter).ToListAsync();
         }
+
+        public async Task<ServiceDefault.Models.ProcessingTask?> GetTaskByUploadIdAsync(string uploadId)
+        {
+            var collection = _database.GetCollection<ServiceDefault.Models.ProcessingTask>(_options.TaskCollectionName);
+            var filter = Builders<ServiceDefault.Models.ProcessingTask>.Filter.Eq(t => t.UploadId, uploadId);
+            return await collection.Find(filter).FirstOrDefaultAsync();
+        }
+
+        public async Task<IEnumerable<ServiceDefault.Models.ProcessingTask>> GetTasksPagedAsync(int page, int pageSize)
+        {
+            var collection = _database.GetCollection<ServiceDefault.Models.ProcessingTask>(_options.TaskCollectionName);
+            var skip = (Math.Max(1, page) - 1) * Math.Max(1, pageSize);
+            return await collection.Find(Builders<ServiceDefault.Models.ProcessingTask>.Filter.Empty).Skip(skip).Limit(Math.Max(1, pageSize)).ToListAsync();
+        }
+
+        public async Task<IEnumerable<string>> GetDocumentsPagedAsync(string collectionName, int page, int pageSize, string? providedUploadId = null)
+        {
+            var collection = _database.GetCollection<BsonDocument>(collectionName);
+            var skip = (Math.Max(1, page) - 1) * Math.Max(1, pageSize);
+            FilterDefinition<BsonDocument> filter = FilterDefinition<BsonDocument>.Empty;
+            if (!string.IsNullOrWhiteSpace(providedUploadId))
+                filter = Builders<BsonDocument>.Filter.Eq("_uploadId", providedUploadId);
+
+            var docs = await collection.Find(filter).Skip(skip).Limit(Math.Max(1, pageSize)).ToListAsync();
+            return docs.Select(d => d.ToJson());
+        }
     }
 }

@@ -1,5 +1,4 @@
 using CityFy.Retrieve.MusicBrainz.Services;
-using CityFy.Retrieve.MusicBrainz.Clients;
 using CityFy.Retrieve.MusicBrainz.Models;
 using CityFy.Retrieve.MusicBrainz.Repositories;
 using Microsoft.AspNetCore.Mvc;
@@ -7,14 +6,17 @@ using Microsoft.AspNetCore.Mvc;
 namespace CityFy.Retrieve.MusicBrainz.Controllers
 {
     [ApiController]
+    [ApiExplorerSettings(GroupName = "Debug-MusicBrainz")]
     [Route("debug/musicbrainz")]
     public class DebugMusicBrainzController : ControllerBase
     {
         private readonly IMusicBrainzRetrieveService _service;
+        private readonly IMusicBrainzRepository _repo;
 
-        public DebugMusicBrainzController(IMusicBrainzRetrieveService service)
+        public DebugMusicBrainzController(IMusicBrainzRetrieveService service, IMusicBrainzRepository repo)
         {
             _service = service;
+            _repo = repo;
         }
 
         // POST debug/musicbrainz/start
@@ -40,7 +42,7 @@ namespace CityFy.Retrieve.MusicBrainz.Controllers
         // POST debug/musicbrainz/start-related
         // Body: { "tag": "rock", "maxArtists": 50, "top": 20 }
         [HttpPost("start-related")]
-        public IActionResult StartRelatedRetrieve([FromBody] Models.RelatedRetrieveRequest? req)
+        public IActionResult StartRelatedRetrieve([FromBody] RelatedRetrieveRequest? req)
         {
             if (req == null || string.IsNullOrWhiteSpace(req.Tag))
                 return BadRequest("Provide a JSON body with 'tag' string.");
@@ -75,6 +77,44 @@ namespace CityFy.Retrieve.MusicBrainz.Controllers
             catch (Exception ex)
             {
                 Console.WriteLine("GetRelatedTags failed: " + ex);
+                return StatusCode(500);
+            }
+        }
+
+        // GET debug/musicbrainz/graphs/{id}
+        [HttpGet("graphs/{id}")]
+        public async Task<IActionResult> GetGraphById([FromRoute] string id)
+        {
+            if (string.IsNullOrWhiteSpace(id)) return BadRequest("Missing id");
+            try
+            {
+                var graph = await _repo.GetTagGraphByIdAsync(id);
+                if (graph == null) return NotFound();
+                return Ok(graph);
+            }
+            catch (FormatException)
+            {
+                return BadRequest("Invalid id format");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("GetGraphById failed: " + ex);
+                return StatusCode(500);
+            }
+        }
+
+        // GET debug/musicbrainz/graphs?page=1&pageSize=20
+        [HttpGet("graphs")]
+        public async Task<IActionResult> GetGraphsPaged([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        {
+            try
+            {
+                var list = await _repo.GetTagGraphsPagedAsync(page, pageSize);
+                return Ok(list);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("GetGraphsPaged failed: " + ex);
                 return StatusCode(500);
             }
         }

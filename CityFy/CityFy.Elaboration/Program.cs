@@ -22,6 +22,7 @@ builder.Services.Configure<ServiceDefault.Models.MongoOptions>(builder.Configura
 builder.Services.AddSingleton(sp => sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ServiceDefault.Models.MongoOptions>>().Value);
 
 builder.Services.AddSingleton<IElaborationRepository, MongoElaborationRepository>();
+builder.Services.AddHttpClient<CityFy.Elaboration.Clients.ITagGraphClient, CityFy.Elaboration.Clients.HttpTagGraphClient>();
 builder.Services.AddSingleton<IElaborationService, ElaborationService>();
 
 var app = builder.Build();

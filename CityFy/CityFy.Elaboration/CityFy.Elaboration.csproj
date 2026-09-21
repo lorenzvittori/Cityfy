@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
 	<TargetFramework>net10.0</TargetFramework>
@@ -8,9 +8,22 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Content Remove="Clients\swagger-musicBrainz.json" />
+  </ItemGroup>
+
+  <ItemGroup>
 	<PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
+	<PackageReference Include="Microsoft.Extensions.ApiDescription.Client" Version="7.0.2">
+	  <PrivateAssets>all</PrivateAssets>
+	  <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+	</PackageReference>
 	<PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.24.2-preview.1" />
 	<PackageReference Include="MongoDB.Driver" Version="3.11.2" />
+	<PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
+	<PackageReference Include="NSwag.ApiDescription.Client" Version="13.18.2">
+	  <PrivateAssets>all</PrivateAssets>
+	  <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+	</PackageReference>
 	<PackageReference Include="Swashbuckle.AspNetCore.Swagger" Version="10.2.3" />
 	<PackageReference Include="Swashbuckle.AspNetCore.SwaggerGen" Version="10.2.3" />
 	<PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.2.3" />
@@ -18,6 +31,10 @@
 
   <ItemGroup>
 	<ProjectReference Include="..\ServiceDefault\ServiceDefault.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <OpenApiReference Include="Clients\swagger-musicBrainz.json" Namespace="CityFy.Elaboration.Clients" ClassName="ClientRetriveMusicBrainz" />
   </ItemGroup>
 
 </Project>

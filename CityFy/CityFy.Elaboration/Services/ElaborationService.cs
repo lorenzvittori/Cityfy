@@ -1,6 +1,9 @@
 using CityFy.Elaboration.Models;
 using CityFy.Elaboration.Repositories;
 using Microsoft.Extensions.Logging;
+using CityFy.Elaboration.Clients;
+using System.Net.Http;
+using System.Threading;
 
 namespace CityFy.Elaboration.Services;
 
@@ -8,6 +11,7 @@ public class ElaborationService : IElaborationService
 {
     private readonly IElaborationRepository _repo;
     private readonly ILogger<ElaborationService> _logger;
+    private readonly ITagGraphClient _client;
 
     public ElaborationService(IElaborationRepository repo, ILogger<ElaborationService> logger)
     {
@@ -15,11 +19,17 @@ public class ElaborationService : IElaborationService
         _logger = logger;
     }
 
-    public async Task<IEnumerable<Graph>> ProcessAsync(string? seedTag = null, CancellationToken cancellationToken = default)
+    public ElaborationService(IElaborationRepository repo, ILogger<ElaborationService> logger, ITagGraphClient client)
     {
-        _logger.LogInformation("Starting elaboration process (seed={Seed})", seedTag);
+        _repo = repo;
+        _logger = logger;
+        _client = client;
+    }
 
-        var tagGraphs = await _repo.GetTagGraphsAsync(seedTag);
+    public async Task<IEnumerable<Graph>> ProcessAsync(IEnumerable<TagGraph> tagGraphs, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Starting elaboration process (provided graphs={Count})", tagGraphs?.Count() ?? 0);
+
         var results = new List<Graph>();
 
         foreach (var tg in tagGraphs)
@@ -63,5 +73,29 @@ public class ElaborationService : IElaborationService
         }
 
         return results;
+    }
+
+    public Task<IEnumerable<Graph>> ProcessAsync(string? seedTag = null, CancellationToken cancellationToken = default)
+    {
+        throw new InvalidOperationException("Elaboration service must not retrieve collections from other projects. Fetch TagGraph from the owning project and call ProcessAsync(IEnumerable<TagGraph>) with the data.");
+    }
+
+    public async Task<IEnumerable<Graph>> ProcessFromRemoteAsync(string baseUrl, int pageSize = 50, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(baseUrl)) throw new ArgumentException("baseUrl");
+
+        var allResults = new List<Graph>();
+        int page = 1;
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var batch = (await _client.GetTagGraphsPagedAsync(baseUrl, page, pageSize, cancellationToken)).ToList();
+            if (!batch.Any()) break;
+            var processed = await ProcessAsync(batch, cancellationToken);
+            allResults.AddRange(processed);
+            page++;
+        }
+
+        return allResults;
     }
 }
