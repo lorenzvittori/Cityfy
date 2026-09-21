@@ -1,6 +1,7 @@
 <Solution>
   <Project Path="CityFy.AppHost/CityFy.AppHost.csproj" />
   <Project Path="CityFy.Retrieve.Dump.Spotify/CityFy.Retrieve.Dump.Spotify.csproj" Id="72f0681e-fd1f-4701-add5-c3734aa0701d" />
+  <Project Path="CityFy.Retrieve.MusicBrainz/CityFy.Retrieve.MusicBrainz.csproj" />
   <Project Path="CityFy.Retrieve.Spotify/CityFy.Retrieve.Spotify.csproj" />
   <Project Path="ServiceDefault/ServiceDefault.csproj" />
 </Solution>
