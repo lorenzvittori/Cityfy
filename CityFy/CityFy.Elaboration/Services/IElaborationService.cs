@@ -11,12 +11,6 @@ public interface IElaborationService
     Task<IEnumerable<Graph>> ProcessAsync(IEnumerable<TagGraph> tagGraphs, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// VECCHIO: obsoleto. Il servizio di elaborazione non deve recuperare collection di altri progetti.
-    /// Usare il metodo che accetta i TagGraph come input.
-    /// </summary>
-    Task<IEnumerable<Graph>> ProcessAsync(string? seedTag = null, CancellationToken cancellationToken = default);
-
-    /// <summary>
     /// Recupera i TagGraph da un servizio remoto tramite client HTTP e processa i batch.
     /// baseUrl: es. https://localhost:5001
     /// </summary>

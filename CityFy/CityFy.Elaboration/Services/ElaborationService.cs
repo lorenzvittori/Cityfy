@@ -74,12 +74,6 @@ public class ElaborationService : IElaborationService
 
         return results;
     }
-
-    public Task<IEnumerable<Graph>> ProcessAsync(string? seedTag = null, CancellationToken cancellationToken = default)
-    {
-        throw new InvalidOperationException("Elaboration service must not retrieve collections from other projects. Fetch TagGraph from the owning project and call ProcessAsync(IEnumerable<TagGraph>) with the data.");
-    }
-
     public async Task<IEnumerable<Graph>> ProcessFromRemoteAsync(string baseUrl, int pageSize = 50, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(baseUrl)) throw new ArgumentException("baseUrl");

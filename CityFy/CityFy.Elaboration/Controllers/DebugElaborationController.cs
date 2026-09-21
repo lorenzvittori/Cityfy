@@ -41,5 +41,25 @@ namespace CityFy.Elaboration.Controllers
         {
             return BadRequest("Operazione non supportata. Elaboration non deve recuperare collection di altri progetti. Usare POST con il body contenente 'TagGraphs'.");
         }
+
+        // POST debug/elaboration/process-remote
+        // Body: { "baseUrl": "https://localhost:5001", "pageSize": 50 }
+        [HttpPost("process-remote")]
+        public IActionResult StartRemoteProcess([FromBody] RemoteProcessRequest? req)
+        {
+            try
+            {
+                if (req == null || string.IsNullOrWhiteSpace(req.BaseUrl))
+                    return BadRequest("Provide 'BaseUrl' in request body.");
+
+                Task.Run(() => _service.ProcessFromRemoteAsync(req.BaseUrl!, req.PageSize));
+                return Accepted();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("StartRemoteProcess failed: " + ex);
+                return StatusCode(500);
+            }
+        }
     }
 }
