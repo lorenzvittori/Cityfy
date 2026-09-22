@@ -1,9 +1,6 @@
+using CityFy.Elaboration.Clients;
 using CityFy.Elaboration.Models;
 using CityFy.Elaboration.Repositories;
-using Microsoft.Extensions.Logging;
-using CityFy.Elaboration.Clients;
-using System.Net.Http;
-using System.Threading;
 
 namespace CityFy.Elaboration.Services;
 

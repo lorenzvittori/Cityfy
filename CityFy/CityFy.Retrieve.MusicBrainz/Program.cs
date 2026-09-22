@@ -1,7 +1,3 @@
-using CityFy.Retrieve.MusicBrainz.Clients;
-using CityFy.Retrieve.MusicBrainz.Repositories;
-using CityFy.Retrieve.MusicBrainz.Services;
-
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
@@ -34,14 +30,6 @@ builder.Services.AddCors(options =>
 builder.Services.Configure<ServiceDefault.Models.MongoOptions>(builder.Configuration.GetSection("Mongo"));
 builder.Services.AddSingleton(sp => sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ServiceDefault.Models.MongoOptions>>().Value);
 
-// Configure MusicBrainz HTTP client with a proper User-Agent including contact email from configuration
-var musicBrainzContact = builder.Configuration["Mail"] ?? "no-reply@example.com";
-builder.Services.AddHttpClient<IMusicBrainzClient, MusicBrainzClient>(client =>
-{
-    client.DefaultRequestHeaders.UserAgent.ParseAdd($"CityFy/1.0 (mailto:{musicBrainzContact})");
-});
-builder.Services.AddSingleton<IMusicBrainzRepository, MongoMusicBrainzRepository>();
-builder.Services.AddSingleton<IMusicBrainzRetrieveService, MusicBrainzRetrieveService>();
 
 var app = builder.Build();
 
