@@ -1,6 +1,30 @@
+using CityFy.Retrieve.MusicBrainz.Data;
+using CityFy.Retrieve.MusicBrainz.Repositories;
+using CityFy.Retrieve.MusicBrainz.Services;
+using Microsoft.EntityFrameworkCore;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
+var connectionString = builder.Configuration.GetConnectionString("MusicBrainz") ?? builder.Configuration["ConnectionStrings:MusicBrainz"];
+if (!string.IsNullOrEmpty(connectionString))
+{
+    builder.Services.AddDbContext<MusicBrainzContext>(options => options.UseSqlServer(connectionString));
+}
+// Http client per il download del dump
+builder.Services.AddHttpClient<MbDumpClient>(c =>
+{
+    c.BaseAddress = new Uri("https://data.metabrainz.org/pub/musicbrainz/data/fullexport/");
+    // No application-side timeout: allow long downloads without client-side cancellation
+    c.Timeout = System.Threading.Timeout.InfiniteTimeSpan;
+});
+
+// Services for processing
+builder.Services.AddTransient<ArchiveExtractor>();
+builder.Services.AddTransient<GenreParser>();
+builder.Services.AddScoped<DataImporter>();
+builder.Services.AddScoped<IGenreRepository, GenreRepository>();
+builder.Services.AddScoped<RetrieveService>();
 builder.Services.AddOpenApi();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
@@ -32,6 +56,32 @@ builder.Services.AddSingleton(sp => sp.GetRequiredService<Microsoft.Extensions.O
 
 
 var app = builder.Build();
+
+// Apply EF Core migrations at startup (Code-First)
+using (var scope = app.Services.CreateScope())
+{
+    var services = scope.ServiceProvider;
+    var logger = services.GetRequiredService<ILogger<Program>>();
+    try
+    {
+        var db = services.GetService<MusicBrainzContext>();
+        if (db != null)
+        {
+            logger.LogInformation("Applying pending EF Core migrations (if any)");
+            db.Database.Migrate();
+            logger.LogInformation("Database migrations applied");
+        }
+        else
+        {
+            logger.LogWarning("MusicBrainzContext not registered; skipping migrations");
+        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "An error occurred while applying database migrations");
+        throw;
+    }
+}
 
 if (app.Environment.IsDevelopment())
 {
