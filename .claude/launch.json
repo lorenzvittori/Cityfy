@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "genre-graph-server",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8531", "--directory", "music_brainz_DUMP"],
+      "port": 8531
+    }
+  ]
+}
