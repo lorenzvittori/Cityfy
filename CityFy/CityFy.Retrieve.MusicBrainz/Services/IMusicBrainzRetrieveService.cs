@@ -10,5 +10,5 @@ public interface IMusicBrainzRetrieveService
     /// <summary>
     /// Recupera tag correlati per un tag seed, persiste il grafo in Mongo e ritorna il TagGraph.
     /// </summary>
-    Task<CityFy.Retrieve.MusicBrainz.Models.TagGraph> RetrieveRelatedTagsAndPersistAsync(string tag, int maxArtists = 50, int top = 20, CancellationToken cancellationToken = default);
+    Task<CityFy.Retrieve.MusicBrainz.Models.TagGraph> RetrieveRelatedTagsAndPersistAsync(string tag);
 }

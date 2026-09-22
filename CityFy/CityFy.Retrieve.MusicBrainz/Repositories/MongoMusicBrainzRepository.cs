@@ -27,7 +27,8 @@ public class MongoMusicBrainzRepository : IMusicBrainzRepository
     {
         var col = _db.GetCollection<BsonDocument>("musicbrainz_tag_graphs");
         var doc = BsonDocument.Parse(JsonSerializer.Serialize(graph));
-        await col.InsertOneAsync(doc);
+        var filter = Builders<BsonDocument>.Filter.Eq("SeedTag", graph.SeedTag);
+        await col.ReplaceOneAsync(filter, doc, new ReplaceOptions { IsUpsert = true });
     }
 
     public async Task<TagGraph?> GetTagGraphByIdAsync(string id)

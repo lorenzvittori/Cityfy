@@ -1,12 +1,12 @@
-using CityFy.Retrieve.MusicBrainz.Services;
 using CityFy.Retrieve.MusicBrainz.Models;
 using CityFy.Retrieve.MusicBrainz.Repositories;
+using CityFy.Retrieve.MusicBrainz.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CityFy.Retrieve.MusicBrainz.Controllers
 {
     [ApiController]
-    [ApiExplorerSettings(GroupName = "Debug-MusicBrainz")]
+    [ApiExplorerSettings(GroupName = "debug")]
     [Route("debug/musicbrainz")]
     public class DebugMusicBrainzController : ControllerBase
     {
@@ -42,7 +42,7 @@ namespace CityFy.Retrieve.MusicBrainz.Controllers
         // POST debug/musicbrainz/start-related
         // Body: { "tag": "rock", "maxArtists": 50, "top": 20 }
         [HttpPost("start-related")]
-        public IActionResult StartRelatedRetrieve([FromBody] RelatedRetrieveRequest? req)
+        public async Task<IActionResult> StartRelatedRetrieve([FromBody] RelatedRetrieveRequest? req)
         {
             if (req == null || string.IsNullOrWhiteSpace(req.Tag))
                 return BadRequest("Provide a JSON body with 'tag' string.");
@@ -50,7 +50,7 @@ namespace CityFy.Retrieve.MusicBrainz.Controllers
             try
             {
                 // Run retrieval + persist logic in background via service
-                Task.Run(() => _service.RetrieveRelatedTagsAndPersistAsync(req.Tag!, req.MaxArtists, req.Top));
+                await _service.RetrieveRelatedTagsAndPersistAsync(req.Tag!);
 
                 return Accepted();
             }
@@ -63,14 +63,14 @@ namespace CityFy.Retrieve.MusicBrainz.Controllers
 
         // GET debug/musicbrainz/related?tag=rock&maxArtists=50&top=20
         [HttpGet("related")]
-        public async Task<IActionResult> GetRelatedTags([FromQuery] string? tag, [FromQuery] int maxArtists = 50, [FromQuery] int top = 20)
+        public async Task<IActionResult> GetRelatedTags([FromQuery] string? tag)
         {
             if (string.IsNullOrWhiteSpace(tag))
                 return BadRequest("Provide a 'tag' query parameter.");
 
             try
             {
-                var graph = await _service.RetrieveRelatedTagsAndPersistAsync(tag, maxArtists, top);
+                var graph = await _service.RetrieveRelatedTagsAndPersistAsync(tag);
                 var dto = graph.RelatedTags;
                 return Ok(dto);
             }

@@ -34,7 +34,12 @@ builder.Services.AddCors(options =>
 builder.Services.Configure<ServiceDefault.Models.MongoOptions>(builder.Configuration.GetSection("Mongo"));
 builder.Services.AddSingleton(sp => sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ServiceDefault.Models.MongoOptions>>().Value);
 
-builder.Services.AddSingleton<IMusicBrainzClient, MusicBrainzClient>();
+// Configure MusicBrainz HTTP client with a proper User-Agent including contact email from configuration
+var musicBrainzContact = builder.Configuration["Mail"] ?? "no-reply@example.com";
+builder.Services.AddHttpClient<IMusicBrainzClient, MusicBrainzClient>(client =>
+{
+    client.DefaultRequestHeaders.UserAgent.ParseAdd($"CityFy/1.0 (mailto:{musicBrainzContact})");
+});
 builder.Services.AddSingleton<IMusicBrainzRepository, MongoMusicBrainzRepository>();
 builder.Services.AddSingleton<IMusicBrainzRetrieveService, MusicBrainzRetrieveService>();
 
