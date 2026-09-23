@@ -49,18 +49,38 @@ def create_edge_csv(csv_name: str):
     csv_path = Path(__file__).parent / full_name
     edges.rename(columns={"source": "X_genere", "target": "Y_genere", "relation_type": "relazione"}).to_csv(csv_path, index=False)
     print(f"Grafo dei generi salvato in: {csv_path}")
-    
-    
+
+
+# colonna del csv dei nodi per ogni tipo di relazione genere-genere di MusicBrainz.
+# Verso (entity0 -> entity1), da link_type.long_link_phrase:
+#   subgenre      : genre "has subgenre"      rel_sub
+#   influenced by : genre "has influences of" rel_inf
+#   fusion of     : genre "is a fusion of"    rel_fus
+REL_COLUMNS = {"subgenre": "rel_sub", "influenced by": "rel_inf", "fusion of": "rel_fus"}
+
 def create_nodes_csv(csv_name: str):
     full_name = csv_name + ".csv"
     csv_path = Path(__file__).parent / full_name
-    
+
+    # una riga per arco: il genere collegato va nella colonna della sua relazione, le altre restano vuote
+    linked = pd.DataFrame({"genre": edges["source"]})
+    for relation, column in REL_COLUMNS.items():
+        linked[column] = edges["target"].where(edges["relation_type"] == relation)
+
+    # generi isolati: una riga con le tre colonne relazione vuote
+    isolated = pd.DataFrame({"genre": sorted(nx.isolates(G))})
+
+    nodes = pd.concat([linked, isolated], ignore_index=True).sort_values("genre", kind="stable")
+    nodes.to_csv(csv_path, index=False)
+    print(f"Nodi dei generi salvati in: {csv_path} (isolati: {len(isolated)})")
+
 
 def create_graphml(graph_name):
     full_name = graph_name + ".graphml"
     graphml_path = Path(__file__).parent / full_name
     nx.write_graphml(G, graphml_path)
     print(f"Grafo esportato in GraphML: {graphml_path}")
-    
+
 
 create_edge_csv("genre_graph_2")
+create_nodes_csv("genre_nodes")
