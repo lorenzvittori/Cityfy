@@ -9,11 +9,13 @@ public class RetrieveController : ControllerBase
 {
     private readonly RetrieveService _service;
     private readonly ILogger<RetrieveController> _logger;
+    private readonly IServiceScopeFactory _scopeFactory;
 
-    public RetrieveController(RetrieveService service, ILogger<RetrieveController> logger)
+    public RetrieveController(RetrieveService service, ILogger<RetrieveController> logger, IServiceScopeFactory scopeFactory)
     {
         _service = service;
         _logger = logger;
+        _scopeFactory = scopeFactory;
     }
 
     [HttpPost]
@@ -21,8 +23,23 @@ public class RetrieveController : ControllerBase
     {
         try
         {
-            var result = await _service.RunRetrieveAsync(cancellationToken);
-            return Ok(new { message = "Import completed", genres = result.Genres, relations = result.Relations });
+            // Run retrieval in a background task that creates its own scope so scoped services (DbContext, repos)
+            // remain valid for the lifetime of the background operation.
+            _ = Task.Run(async () =>
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var svc = scope.ServiceProvider.GetRequiredService<RetrieveService>();
+                try
+                {
+                    await svc.RunRetrieveAsync(cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Background retrieve failed");
+                }
+            });
+
+            return Accepted();
         }
         catch (InvalidOperationException ex)
         {
