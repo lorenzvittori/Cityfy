@@ -22,9 +22,14 @@ builder.Services.AddHttpClient<MbDumpClient>(c =>
 // Services for processing
 builder.Services.AddTransient<ArchiveExtractor>();
 builder.Services.AddTransient<GenreParser>();
+builder.Services.AddTransient<ArtistParser>();
 builder.Services.AddScoped<DataImporter>();
 builder.Services.AddScoped<IGenreRepository, GenreRepository>();
+builder.Services.AddScoped<IArtistRepository, ArtistRepository>();
 builder.Services.AddScoped<RetrieveService>();
+builder.Services.AddScoped<IGenreImportService, GenreImportService>();
+builder.Services.AddScoped<IArtistImportService, ArtistImportService>();
+builder.Services.AddScoped<IDumpDownloadService, DumpDownloadService>();
 builder.Services.AddOpenApi();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>

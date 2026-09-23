@@ -6,93 +6,33 @@ namespace CityFy.Retrieve.MusicBrainz.Services;
 
 public class DataImporter
 {
-    private readonly IGenreRepository _repo;
+    private readonly IGenreImportService _genreImport;
+    private readonly IArtistImportService? _artistImport;
     private readonly ILogger<DataImporter> _logger;
 
-    public DataImporter(IGenreRepository repo, ILogger<DataImporter> logger)
+    public DataImporter(IGenreImportService genreImport, ILogger<DataImporter> logger, IArtistImportService? artistImport = null)
     {
-        _repo = repo;
+        _genreImport = genreImport;
         _logger = logger;
+        _artistImport = artistImport;
     }
 
     // Importa generi e relazioni usando il repository (no SQL manuale)
-    public async Task ImportAsync(GenreParser.ParsedResult parsed, CancellationToken cancellationToken = default)
+    public async Task ImportAsync(GenreParser.ParsedResult parsed, ArtistParser.ParsedResult? artistsParsed = null, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Starting import: {GenreCount} genres, {RelationCount} relations", parsed.Genres.Count, parsed.Relations.Count);
 
-        // mapping dalle entità parsate alle entità persistite
-        var mapping = new Dictionary<Genre, Genre>();
-        int addedGenres = 0;
+        // import genres and relations via dedicated subservice
+        var mapping = await _genreImport.ImportGenresAsync(parsed, cancellationToken);
+        var addedRelations = await _genreImport.ImportRelationsAsync(parsed, mapping, cancellationToken);
 
-        foreach (var src in parsed.Genres)
+        // If artist data available and artist import subservice provided, delegate artist import
+        if (artistsParsed != null && _artistImport != null)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            Genre? found = null;
-            try
-            {
-                if (!string.IsNullOrEmpty(src.MusicBrainzId))
-                {
-                    found = await _repo.FindByMusicBrainzIdAsync(src.MusicBrainzId, cancellationToken);
-                }
-                if (found == null)
-                {
-                    found = await _repo.FindByNameAsync(src.Name, cancellationToken);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Error while searching for genre '{Name}'", src.Name);
-            }
-
-            if (found == null)
-            {
-                var toAdd = new Genre { Name = src.Name, Description = src.Description, MusicBrainzId = src.MusicBrainzId };
-                try
-                {
-                    found = await _repo.AddAsync(toAdd, cancellationToken);
-                    addedGenres++;
-                    _logger.LogDebug("Added genre {Name} with Id {Id}", found.Name, found.Id);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to add genre {Name}", src.Name);
-                    continue;
-                }
-            }
-
-            mapping[src] = found;
+            _logger.LogInformation("Starting artist import: {ArtistCount} artists, {RelCount} relations", artistsParsed.Artists.Count, artistsParsed.Relations.Count);
+            var artistMapping = await _artistImport.ImportArtistsAsync(artistsParsed, cancellationToken);
+            var addedArtistRelations = await _artistImport.ImportArtistRelationsAsync(artistsParsed, parsed, mapping, artistMapping, cancellationToken);
+            _logger.LogInformation("Artist import complete: added {AddedArtists} artists, added {AddedRelations} artist relations", artistMapping.Count, addedArtistRelations);
         }
-
-        _logger.LogInformation("Genres processed: {Processed}, added: {Added}", parsed.Genres.Count, addedGenres);
-
-        int addedRelations = 0;
-        // import relations
-        foreach (var rel in parsed.Relations)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (!mapping.TryGetValue(rel.Parent, out var dbParent) || !mapping.TryGetValue(rel.Child, out var dbChild))
-            {
-                _logger.LogDebug("Skipping relation because parent/child mapping missing: parent={Parent}, child={Child}", rel.Parent?.Name, rel.Child?.Name);
-                continue;
-            }
-
-            try
-            {
-                var exists = await _repo.RelationExistsAsync(dbParent.Id, dbChild.Id, rel.RelationType, cancellationToken);
-                if (!exists)
-                {
-                    var newRel = new GenreRelation { ParentId = dbParent.Id, ChildId = dbChild.Id, RelationType = rel.RelationType };
-                    await _repo.AddRelationAsync(newRel, cancellationToken);
-                    addedRelations++;
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to add relation parent={ParentId} child={ChildId}", dbParent.Id, dbChild.Id);
-            }
-        }
-
-        _logger.LogInformation("Relations processed: {Processed}, added: {Added}", parsed.Relations.Count, addedRelations);
     }
 }

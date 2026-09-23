@@ -11,6 +11,8 @@ public class MusicBrainzContext : DbContext
 
     public DbSet<Genre> Genres { get; set; } = null!;
     public DbSet<GenreRelation> GenreRelations { get; set; } = null!;
+    public DbSet<Artist> Artists { get; set; } = null!;
+    public DbSet<ArtistGenreRelation> ArtistGenreRelations { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -19,6 +21,27 @@ public class MusicBrainzContext : DbContext
             b.HasKey(g => g.Id);
             b.Property(g => g.Name).IsRequired().HasMaxLength(200);
             b.HasIndex(g => g.MusicBrainzId).IsUnique(false);
+        });
+
+        modelBuilder.Entity<Artist>(b =>
+        {
+            b.HasKey(a => a.Id);
+            b.Property(a => a.Name).IsRequired().HasMaxLength(300);
+            b.HasIndex(a => a.MusicBrainzId).IsUnique(false);
+        });
+
+        modelBuilder.Entity<ArtistGenreRelation>(b =>
+        {
+            b.HasKey(r => r.Id);
+            b.HasOne(r => r.Artist)
+             .WithMany(a => a.GenreRelations)
+             .HasForeignKey(r => r.ArtistId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            b.HasOne(r => r.Genre)
+             .WithMany()
+             .HasForeignKey(r => r.GenreId)
+             .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<GenreRelation>(b =>

@@ -3,6 +3,7 @@ using CityFy.Retrieve.MusicBrainz.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace CityFy.Retrieve.MusicBrainz.Migrations
 {
     [DbContext(typeof(MusicBrainzContext))]
-    partial class MusicBrainzContextModelSnapshot : ModelSnapshot
+    [Migration("20260923214233_AddArtists")]
+    partial class AddArtists
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
