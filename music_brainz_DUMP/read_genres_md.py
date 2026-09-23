@@ -4,18 +4,20 @@ import networkx as nx
 
 import plotly.graph_objects as go
 
-genre = pd.read_csv(Path(r"C:\Users\lvitt\OneDrive\Documenti\GiuHub Local Repository\Cityfy\music_brainz_DUMP\mbdump_use\genre"), sep="\t", header=None, na_values="\\N",
+DUMP_DIR = Path(__file__).parent / "mbdump_22_09_2026"
+
+genre = pd.read_csv(DUMP_DIR / "genre", sep="\t", header=None, na_values="\\N",
     names=["id","gid","name","comment","edits_pending","last_updated"])
 
-link = pd.read_csv(Path(r"C:\Users\lvitt\OneDrive\Documenti\GiuHub Local Repository\Cityfy\music_brainz_DUMP\mbdump_use\link"), sep="\t", header=None, na_values="\\N",
+link = pd.read_csv(DUMP_DIR / "link", sep="\t", header=None, na_values="\\N",
     names=["id","link_type","by","bm","bd","ey","em","ed","attr_count","created","ended"])
 
-link_type = pd.read_csv(Path(r"C:\Users\lvitt\OneDrive\Documenti\GiuHub Local Repository\Cityfy\music_brainz_DUMP\mbdump_use\link_type"), sep="\t", header=None, na_values="\\N",
+link_type = pd.read_csv(DUMP_DIR / "link_type", sep="\t", header=None, na_values="\\N",
     names=["id","parent","child_order","gid","entity_type0","entity_type1","name",
            "description","link_phrase","reverse_link_phrase","long_link_phrase",
            "last_updated","is_deprecated","has_dates","c0","c1"])
 
-lgg = pd.read_csv(Path(r"C:\Users\lvitt\OneDrive\Documenti\GiuHub Local Repository\Cityfy\music_brainz_DUMP\mbdump_use\l_genre_genre"), sep="\t", header=None, na_values="\\N",
+lgg = pd.read_csv(DUMP_DIR / "l_genre_genre", sep="\t", header=None, na_values="\\N",
     names=["id","link","entity0","entity1","edits_pending","last_updated",
            "link_order","entity0_credit","entity1_credit"])
 
@@ -35,6 +37,8 @@ G = nx.from_pandas_edgelist(
     edges, "source", "target", edge_attr="relation_type",
     create_using=nx.DiGraph
 )
+# aggiunge anche i generi senza alcuna relazione (nodi isolati del grafo)
+G.add_nodes_from(genre["name"])
 
 print(f"Nodi: {G.number_of_nodes()}, Archi: {G.number_of_edges()}")
 print(edges.head(10))
