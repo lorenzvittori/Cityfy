@@ -30,6 +30,9 @@ DEFAULT_FILES = [
     "link_type",
 ]
 
+manual_input = Path(r"C:\Users\sstam\Desktop\mbdump.tar.bz2")
+manual_output = Path(r"C:\Users\sstam\Documents\GitHubRepository\Cityfy\music_brainz_DUMP\mbdump_LAST")
+
 
 def extract_selected(input_path: Path, output_dir: Path, wanted: list[str]) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -71,6 +74,10 @@ def extract_selected(input_path: Path, output_dir: Path, wanted: list[str]) -> N
 
 
 def main() -> None:
+    if manual_input and manual_output:
+        extract_selected(manual_input, manual_output, DEFAULT_FILES)
+        return
+    
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", required=True, type=Path, help="percorso a mbdump.tar.bz2")
     parser.add_argument(
