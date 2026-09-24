@@ -3,6 +3,9 @@ Estrae selettivamente dai dump ufficiali MusicBrainz (mbdump.tar.bz2) solo i
 file (tabelle) necessari per costruire il grafo dei generi e l'associazione
 artista -> generi, senza decomprimere l'intero archivio.
 
+Dipendenze: tqdm (per la barra di progresso). Installare con:
+    pip install tqdm
+
 Uso:
     python extract_mbdump.py --input /percorso/mbdump.tar.bz2
     python extract_mbdump.py --input /percorso/mbdump.tar.bz2 --output mbdump_use
@@ -12,6 +15,8 @@ Uso:
 import argparse
 import tarfile
 from pathlib import Path
+
+from tqdm import tqdm
 
 # Tabelle necessarie per: (a) il grafo genere<->genere, (b) l'associazione
 # artista -> genere per nome (con gestione alias).
@@ -31,22 +36,31 @@ def extract_selected(input_path: Path, output_dir: Path, wanted: list[str]) -> N
     remaining = set(wanted)
     found = []
 
-    with tarfile.open(input_path, "r:bz2") as tar:
-        # Iterazione in streaming: non carica l'intero archivio in memoria,
-        # ma legge un membro alla volta e lo estrae solo se serve.
-        for member in tar:
-            if not remaining:
-                break
-            name = Path(member.name).name
-            if name in remaining and member.isfile():
-                extracted = tar.extractfile(member)
-                if extracted is None:
-                    continue
-                target = output_dir / name
-                with open(target, "wb") as f:
-                    f.write(extracted.read())
-                found.append(name)
-                remaining.discard(name)
+    total_size = input_path.stat().st_size
+    with open(input_path, "rb") as raw, tqdm.wrapattr(
+        raw, "read", total=total_size, desc="lettura mbdump.tar.bz2", unit="B", unit_scale=True
+    ) as tracked:
+        # Modalita' streaming ("r|bz2"): legge il .tar.bz2 in sequenza,
+        # senza possibilita' di seek e senza caricare l'intero archivio in
+        # memoria. La barra di progresso avanza in base ai byte compressi
+        # letti dal file sorgente (tracked), che e' la proxy corretta del
+        # tempo reale: bz2 va comunque decompresso in sequenza fino
+        # all'ultimo membro richiesto, indipendentemente da quanti file
+        # abbiamo gia' trovato.
+        with tarfile.open(fileobj=tracked, mode="r|bz2") as tar:
+            for member in tar:
+                if not remaining:
+                    break
+                name = Path(member.name).name
+                if name in remaining and member.isfile():
+                    extracted = tar.extractfile(member)
+                    if extracted is None:
+                        continue
+                    target = output_dir / name
+                    with open(target, "wb") as f:
+                        f.write(extracted.read())
+                    found.append(name)
+                    remaining.discard(name)
 
     missing = sorted(remaining)
     print(f"File estratti in '{output_dir}': {sorted(found)}")
