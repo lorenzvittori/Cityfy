@@ -50,7 +50,7 @@ def extract_selected(input_path: Path, output_dir: Path, wanted: list[str]) -> N
         # tempo reale: bz2 va comunque decompresso in sequenza fino
         # all'ultimo membro richiesto, indipendentemente da quanti file
         # abbiamo gia' trovato.
-        with tarfile.open(fileobj=tracked, mode="r|bz2") as tar:
+        with tarfile.open(fileobj=tracked, mode="r|bz2") as tar:        # type: ignore[arg-type]
             for member in tar:
                 if not remaining:
                     break
