@@ -18,8 +18,10 @@ from pathlib import Path
 
 from tqdm import tqdm
 
-# Tabelle necessarie per: (a) il grafo genere<->genere, (b) l'associazione
-# artista -> genere per nome (con gestione alias).
+# Tabelle necessarie per:
+#   (a) il grafo genere<->genere
+#   (b) l'associazione
+#   (c) artista -> genere per nome (con gestione alias).
 DEFAULT_FILES = [
     "artist",
     "artist_alias",
