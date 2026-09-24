@@ -21,9 +21,23 @@ public class ArtistRepository : IArtistRepository
         return await _db.Artists.FirstOrDefaultAsync(a => a.MusicBrainzId == musicBrainzId, cancellationToken);
     }
 
+    public async Task<List<Artist>> FindByMusicBrainzIdsAsync(IEnumerable<string> musicBrainzIds, CancellationToken cancellationToken = default)
+    {
+        var ids = musicBrainzIds?.Where(id => !string.IsNullOrEmpty(id)).Distinct().ToList() ?? new List<string>();
+        if (!ids.Any()) return new List<Artist>();
+        return await _db.Artists.Where(a => ids.Contains(a.MusicBrainzId)).ToListAsync(cancellationToken);
+    }
+
     public async Task<Artist?> FindByNameAsync(string name, CancellationToken cancellationToken = default)
     {
         return await _db.Artists.FirstOrDefaultAsync(a => a.Name == name, cancellationToken);
+    }
+
+    public async Task<List<Artist>> FindByNamesAsync(IEnumerable<string> names, CancellationToken cancellationToken = default)
+    {
+        var list = names?.Where(n => !string.IsNullOrEmpty(n)).Distinct().ToList() ?? new List<string>();
+        if (!list.Any()) return new List<Artist>();
+        return await _db.Artists.Where(a => list.Contains(a.Name)).ToListAsync(cancellationToken);
     }
 
     public async Task<Artist> AddAsync(Artist artist, CancellationToken cancellationToken = default)
@@ -32,6 +46,16 @@ public class ArtistRepository : IArtistRepository
         await _db.SaveChangesAsync(cancellationToken);
         _logger?.LogDebug("Artist added: {Name} (Id={Id})", artist.Name, artist.Id);
         return artist;
+    }
+
+    public async Task<List<Artist>> AddRangeAsync(IEnumerable<Artist> artists, CancellationToken cancellationToken = default)
+    {
+        var list = artists?.ToList() ?? new List<Artist>();
+        if (!list.Any()) return new List<Artist>();
+        _db.Artists.AddRange(list);
+        await _db.SaveChangesAsync(cancellationToken);
+        _logger?.LogDebug("Added {Count} artists", list.Count);
+        return list;
     }
 
     public async Task<bool> RelationExistsAsync(int artistId, int genreId, string? relationType, CancellationToken cancellationToken = default)

@@ -1,6 +1,3 @@
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Configuration;
-
 namespace CityFy.Retrieve.MusicBrainz.Services;
 
 public interface IDumpDownloadService
