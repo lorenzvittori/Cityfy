@@ -1,2 +1,8 @@
-music_brainz_DUMP/mbdump_*/
+music_brainz_DUMP/mbdump_FILES/artist
+music_brainz_DUMP/mbdump_FILES/artist_alias
+music_brainz_DUMP/mbdump_FILES/genre
+music_brainz_DUMP/mbdump_FILES/l_artist_genre
+music_brainz_DUMP/mbdump_FILES/l_genre_genre
+music_brainz_DUMP/mbdump_FILES/link
+music_brainz_DUMP/mbdump_FILES/link_type
 __pycache__/
