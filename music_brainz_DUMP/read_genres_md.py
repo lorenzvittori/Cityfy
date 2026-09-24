@@ -51,14 +51,16 @@ def create_edge_csv(csv_name: str):
     print(f"Grafo dei generi salvato in: {csv_path}")
 
 
-# colonna del csv dei nodi per ogni tipo di relazione genere-genere di MusicBrainz.
-# Verso (entity0 -> entity1), da link_type.long_link_phrase:
-#   subgenre      : genre "has subgenre"      rel_sub
-#   influenced by : genre "has influences of" rel_inf
-#   fusion of     : genre "is a fusion of"    rel_fus
-REL_COLUMNS = {"subgenre": "rel_sub", "influenced by": "rel_inf", "fusion of": "rel_fus"}
+
 
 def create_nodes_csv(csv_name: str):
+    # colonna del csv dei nodi per ogni tipo di relazione genere-genere di MusicBrainz.
+    # Verso (entity0 -> entity1), da link_type.long_link_phrase:
+    #   subgenre      : genre "has subgenre"      rel_sub
+    #   influenced by : genre "has influences of" rel_inf
+    #   fusion of     : genre "is a fusion of"    rel_fus
+    REL_COLUMNS = {"subgenre": "rel_sub", "influenced by": "rel_inf", "fusion of": "rel_fus"}
+    
     full_name = csv_name + ".csv"
     csv_path = Path(__file__).parent / full_name
 
@@ -82,5 +84,6 @@ def create_graphml(graph_name):
     print(f"Grafo esportato in GraphML: {graphml_path}")
 
 
-create_edge_csv("genre_graph_2")
+#create_edge_csv("genre_graph")
+#create_graphml("genre_graph")
 create_nodes_csv("genre_nodes")
