@@ -1,7 +1,5 @@
 # Quartiere 3D
 
-> Dati MusicBrainz (generi e artisti): vedi [NEW_MB/README.md](NEW_MB/README.md).
-
 Visualizzazione minimal di un quartiere composto da palazzi (parallelepipedi),
 con telecamera dall'alto interagibile (rotazione + zoom).
 
