@@ -1,101 +1,77 @@
+"""Lettura e scrittura dei CSV di data_raw/ e di snapshot.json.
+
+Convenzione CSV: UTF-8 senza BOM, RFC 4180, fine riga CRLF, intestazione con i
+nomi delle colonne, csv.QUOTE_NOTNULL in scrittura e lettura:
+  - NULL            -> campo vuoto senza virgolette
+  - stringa vuota   -> ""
+  - ogni altro dato -> tra virgolette
+Limite noto: una riga con un solo campo NULL non e' scrivibile (errore esplicito).
+
+Uso (da altri script):
+    from mbraw import write_table, read_rows, read_snapshot
+    write_table("x.csv", ["a", "b"], [["1", None], ["2", ""]])
+    for riga in read_rows("x.csv"):   # dict nome colonna -> valore
+        ...
+    snap = read_snapshot("data_raw")
 """
-mbraw.py -- convenzione CSV di data_raw/ e lettura di data_raw/snapshot.json.
-
-Modulo condiviso da fetch_extract.py (scrittura) e dagli script di elaborazione
-(lettura). Contiene SOLO:
-  - la convenzione CSV (scrittura e lettura con csv.QUOTE_NOTNULL);
-  - la lettura di snapshot.json.
-Il parser del formato COPY di PostgreSQL sta in fetch_extract.py.
-
-CONVENZIONE CSV (uguale a PostgreSQL  COPY ... (FORMAT csv, HEADER, FORCE_QUOTE *))
-  - UTF-8 senza BOM, separatore virgola, fine riga CRLF, quoting RFC 4180
-    (virgolette raddoppiate);
-  - prima riga: nomi delle colonne;
-  - NULL          -> campo vuoto SENZA virgolette     ...,,...
-  - stringa vuota -> campo vuoto TRA virgolette        ...,"",...
-  - ogni altro valore e' sempre tra virgolette.
-  In Python e' esattamente csv.QUOTE_NOTNULL (Python >= 3.12): in scrittura None
-  diventa un campo vuoto non quotato, in lettura un campo vuoto non quotato
-  diventa None.
-"""
-
-from __future__ import annotations
 
 import csv
 import json
 import sys
 from pathlib import Path
-from typing import Iterator
 
-if sys.version_info < (3, 12):
-    raise SystemExit("Serve Python >= 3.12 (csv.QUOTE_NOTNULL in lettura).")
-
-SNAPSHOT_FILE = "snapshot.json"
-SNAPSHOT_FORMAT_VERSION = 1
-
-CSV_ENCODING = "utf-8"
-CSV_FORMAT = {"quoting": csv.QUOTE_NOTNULL, "lineterminator": "\r\n"}
-
-# Alcune tabelle (es. annotation) hanno testi oltre il limite di default (128 KiB).
-csv.field_size_limit(2**31 - 1)
+csv.field_size_limit(min(sys.maxsize, 2**31 - 1))
 
 
-class RawDataError(RuntimeError):
-    """data_raw/ mancante, incompleta o incoerente con snapshot.json."""
+def write_table(path, columns, rows):
+    """Scrive `rows` (iterabile di sequenze) in `path` con intestazione `columns`."""
+    columns = list(columns)
+    n = len(columns)
+    if n == 0:
+        raise ValueError(f"{path}: nessuna colonna")
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        w = csv.writer(f, quoting=csv.QUOTE_NOTNULL, lineterminator="\r\n")
+        w.writerow(columns)
+        for i, row in enumerate(rows, 1):
+            if len(row) != n:
+                raise ValueError(f"{path}: riga {i}: attesi {n} campi, trovati {len(row)}")
+            if n == 1 and row[0] is None:
+                raise ValueError(
+                    f"{path}: riga {i}: una riga con un solo campo NULL non e' scrivibile in CSV"
+                )
+            w.writerow(row)
 
 
-# --------------------------------------------------------------------------- #
-# Scrittura
-# --------------------------------------------------------------------------- #
+def read_rows(path, required=()):
+    """Generatore di dict (nome colonna -> str | None); controlla l'intestazione.
 
-def open_csv_writer(path: Path):
-    """Restituisce (file, writer) per un CSV di data_raw/. Il chiamante chiude il file."""
-    fh = open(path, "w", encoding=CSV_ENCODING, newline="")
-    return fh, csv.writer(fh, **CSV_FORMAT)
-
-
-# --------------------------------------------------------------------------- #
-# Lettura
-# --------------------------------------------------------------------------- #
-
-def load_snapshot(data_raw: Path) -> dict:
-    """Legge data_raw/snapshot.json e ne controlla la versione di formato."""
-    path = Path(data_raw) / SNAPSHOT_FILE
-    if not path.is_file():
-        raise RawDataError(f"{path} non trovato: eseguire prima fetch_extract.py.")
-    with open(path, encoding="utf-8") as fh:
-        snap = json.load(fh)
-    if snap.get("format_version") != SNAPSHOT_FORMAT_VERSION:
-        raise RawDataError(f"{path}: format_version {snap.get('format_version')!r}, "
-                           f"atteso {SNAPSHOT_FORMAT_VERSION}.")
-    return snap
-
-
-def read_rows(data_raw: Path, snap: dict, table: str,
-              columns: list[str]) -> Iterator[tuple[str | None, ...]]:
-    """Itera le righe di data_raw/<table>.csv restituendo solo `columns`, nell'ordine dato.
-
-    NULL -> None. Controlla che la tabella sia in snapshot.json, che l'intestazione
-    coincida con le colonne registrate e, a fine lettura, il numero di righe.
+    `required`: nomi di colonna che devono essere presenti.
     """
-    info = snap.get("tables", {}).get(table)
-    if info is None:
-        raise RawDataError(f"Tabella {table} non estratta: attivarla in TABLES di "
-                           "fetch_extract.py e rieseguire l'estrazione.")
-    missing = [c for c in columns if c not in info["columns"]]
-    if missing:
-        raise RawDataError(f"{table}: colonne {missing} assenti dallo schema "
-                           f"(colonne: {info['columns']}).")
-    path = Path(data_raw) / info["file"]
-    with open(path, encoding=CSV_ENCODING, newline="") as fh:
-        reader = csv.reader(fh, quoting=csv.QUOTE_NOTNULL)
-        header = next(reader, None)
-        if header != info["columns"]:
-            raise RawDataError(f"{path}: intestazione {header} diversa da snapshot.json.")
-        idx = [header.index(c) for c in columns]
-        n = 0
+    with open(path, "r", encoding="utf-8", newline="") as f:
+        reader = csv.reader(f, quoting=csv.QUOTE_NOTNULL)
+        try:
+            header = next(reader)
+        except StopIteration:
+            raise ValueError(f"{path}: file vuoto (manca l'intestazione)") from None
+        if any(h is None or h == "" for h in header):
+            raise ValueError(f"{path}: intestazione non valida")
+        if header[0].startswith("﻿"):
+            raise ValueError(f"{path}: presente un BOM, atteso UTF-8 senza BOM")
+        if len(set(header)) != len(header):
+            raise ValueError(f"{path}: nomi di colonna duplicati nell'intestazione")
+        missing = [c for c in required if c not in header]
+        if missing:
+            raise ValueError(f"{path}: colonne mancanti: {', '.join(missing)}")
+        n = len(header)
         for row in reader:
-            n += 1
-            yield tuple(row[i] for i in idx)
-    if n != info["rows"]:
-        raise RawDataError(f"{path}: {n} righe lette, snapshot.json ne indica {info['rows']}.")
+            if len(row) != n:
+                raise ValueError(
+                    f"{path}: riga {reader.line_num}: attesi {n} campi, trovati {len(row)}"
+                )
+            yield dict(zip(header, row))
+
+
+def read_snapshot(directory):
+    """Legge <directory>/snapshot.json."""
+    with open(Path(directory) / "snapshot.json", "r", encoding="utf-8") as f:
+        return json.load(f)
