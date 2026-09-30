@@ -6,3 +6,9 @@ music_brainz_DUMP/mbdump_FILES/l_genre_genre
 music_brainz_DUMP/mbdump_FILES/link
 music_brainz_DUMP/mbdump_FILES/link_type
 __pycache__/
+NEW_MB/data_raw/
+NEW_MB/data_raw.tmp/
+NEW_MB/data_raw.old/
+NEW_MB/output/artist_genres.csv
+*.tar.bz2
+*.tar.bz2.part

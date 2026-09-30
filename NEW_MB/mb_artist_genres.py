@@ -2,10 +2,12 @@
 """
 mb_artist_genres.py -- associazione artista -> generi ufficiali MusicBrainz.
 
-Legge in streaming i dump PostgreSQL di MusicBrainz (senza server PostgreSQL):
-  --core     mbdump.tar.bz2          (tabelle artist, genre)
-  --derived  mbdump-derived.tar.bz2  (tabelle tag, artist_tag)
-dello STESSO snapshot, e produce in --out-dir:
+Legge i CSV di data_raw/ prodotti da fetch_extract.py dai dump PostgreSQL di
+MusicBrainz (senza server PostgreSQL):
+  mbdump.tar.bz2          -> artist.csv, genre.csv
+  mbdump-derived.tar.bz2  -> tag.csv, artist_tag.csv
+dello STESSO snapshot (data_raw/snapshot.json), e produce in --out-dir
+(default: output/ accanto allo script; file sovrascritti):
   artist_genres.csv          CSV lungo, UTF-8, RFC 4180
                              colonne: artist_mbid, artist_name, genre_mbid, genre_name, votes
   artist_genres_report.md    report con versione dello snapshot, logica replicata,
@@ -20,28 +22,29 @@ Logica replicata (musicbrainz-server, commit 3468ea32dc46795799b48bc16cef475205b
   lib/MusicBrainz/Server/WebService/Serializer/JSON/2/Utils.pm, righe 332-338:
       solo le righe con count > 0; id = genre.gid, name = genre.name.
 
-Solo libreria standard. Python >= 3.8.
+Solo libreria standard. Python >= 3.12.
 
 
 USO
 
-python3 mb_artist_genres.py --core mbdump.tar.bz2 --derived mbdump-derived.tar.bz2 \
-        --out-dir out [--genres-csv genres.csv]
+python fetch_extract.py                     # una volta: scarica/estrae in data_raw/
+python mb_artist_genres.py [--genres-csv output/genres.csv]
 """
 
 from __future__ import annotations
 
 import argparse
-import bz2
 import csv
 import datetime as _dt
 import os
 import re
 import statistics
 import sys
-import tarfile
 import time
 from collections import Counter
+from pathlib import Path
+
+import mbraw
 
 # --------------------------------------------------------------------------
 # Costanti di schema (admin/sql/CreateTables.sql, commit 3468ea3; schema 31)
@@ -49,14 +52,14 @@ from collections import Counter
 SOURCE_COMMIT = "3468ea32dc46795799b48bc16cef475205bb30d5"
 VERIFIED_SCHEMA_SEQUENCE = "31"  # lib/DBDefs.pm.sample: sub DB_SCHEMA_SEQUENCE { 31 }
 
-# Numero esatto di colonne atteso per tabella; posizioni usate:
-#   artist:     0=id, 1=gid, 2=name                 (19 colonne)
-#   genre:      0=id, 1=gid, 2=name                 (6 colonne)
-#   tag:        0=id, 1=name                        (3 colonne)
-#   artist_tag: 0=artist, 1=tag, 2=count            (4 colonne)
-EXPECTED_COLUMNS = {"artist": 19, "genre": 6, "tag": 3, "artist_tag": 4}
-
-META_FILES = ("TIMESTAMP", "SCHEMA_SEQUENCE", "REPLICATION_SEQUENCE")
+# Colonne lette da data_raw/, per nome (il numero di colonne di ogni riga e'
+# verificato da fetch_extract.py rispetto a admin/sql/CreateTables.sql).
+TABLE_COLUMNS = {
+    "artist": ["id", "gid", "name"],
+    "genre": ["id", "gid", "name"],
+    "tag": ["id", "name"],
+    "artist_tag": ["artist", "tag", "count"],
+}
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 CSV_NAME = "artist_genres.csv"
@@ -81,121 +84,24 @@ def log(msg: str) -> None:
 
 
 # --------------------------------------------------------------------------
-# Formato COPY testuale di PostgreSQL
-#   - campi separati da TAB, righe da \n
-#   - \N (campo intero) = NULL, riconosciuto prima di ogni altro escape
-#   - escape: \b \f \n \r \t \v, \ooo (1-3 cifre ottali), \xhh (1-2 cifre hex),
-#     qualsiasi altro \c rappresenta c stesso
-#   - la riga "\." e' il marcatore di fine dati
+# Lettura di data_raw/
 # --------------------------------------------------------------------------
-_ESC_RE = re.compile(rb"\\(x[0-9A-Fa-f]{1,2}|[0-7]{1,3}|.)", re.S)
-_SIMPLE_ESC = {
-    b"b": b"\x08",
-    b"f": b"\x0c",
-    b"n": b"\n",
-    b"r": b"\r",
-    b"t": b"\t",
-    b"v": b"\x0b",
-}
-
-
-def _esc_sub(m: re.Match) -> bytes:
-    s = m.group(1)
-    if len(s) > 1 and s[:1] == b"x":
-        return bytes([int(s[1:], 16)])
-    if s[0] in b"01234567":
-        return bytes([int(s, 8) & 0xFF])
-    return _SIMPLE_ESC.get(s, s)
-
-
-def copy_field(raw: bytes) -> str | None:
-    """Decodifica un campo COPY: NULL -> None, altrimenti str UTF-8 senza escape."""
-    if raw == b"\\N":
-        return None
-    if b"\\" in raw:
-        raw = _ESC_RE.sub(_esc_sub, raw)
-    return raw.decode("utf-8")
-
-
-def copy_rows(fileobj, table: str):
-    """Itera le righe di un file COPY restituendo la lista di campi grezzi (bytes).
-
-    Controlla che ogni riga abbia esattamente il numero di colonne atteso.
-    """
-    ncols = EXPECTED_COLUMNS[table]
-    for lineno, line in enumerate(fileobj, 1):
-        if line.endswith(b"\n"):
-            line = line[:-1]
-        if line == b"\\.":
-            break
-        parts = line.split(b"\t")
-        if len(parts) != ncols:
-            raise DumpError(
-                f"mbdump/{table}, riga {lineno}: {len(parts)} colonne, attese {ncols}. "
-                f"Lo schema del dump non corrisponde a quello verificato "
-                f"(CreateTables.sql, commit {SOURCE_COMMIT[:7]})."
-            )
-        yield parts
-
-
-def parse_int(raw: bytes, table: str, col: str) -> int:
+def parse_int(raw: str | None, table: str, col: str) -> int:
     try:
         return int(raw)
-    except ValueError:
-        raise DumpError(f"mbdump/{table}: valore non intero in colonna {col}: {raw[:50]!r}")
+    except (TypeError, ValueError):
+        raise DumpError(f"{table}.csv: valore non intero in colonna {col}: {str(raw)[:50]!r}")
 
 
-def parse_uuid(raw: bytes, table: str) -> str:
-    val = copy_field(raw)
+def parse_uuid(val: str | None, table: str) -> str:
     if val is None or not UUID_RE.match(val):
-        raise DumpError(f"mbdump/{table}: gid non valido: {raw[:50]!r}")
+        raise DumpError(f"{table}.csv: gid non valido: {str(val)[:50]!r}")
     return val
 
 
-# --------------------------------------------------------------------------
-# Lettura in streaming di un archivio .tar.bz2 con arresto anticipato
-# --------------------------------------------------------------------------
-def scan_archive(path: str, handlers: dict, label: str) -> dict:
-    """Scorre l'archivio in ordine e passa ai gestori i membri richiesti.
-
-    handlers: {nome_tabella: funzione(fileobj)}. La lettura si ferma appena
-    tutti i gestori hanno lavorato: i membri successivi non vengono decompressi.
-    Restituisce i metadati dello snapshot (TIMESTAMP, SCHEMA_SEQUENCE,
-    REPLICATION_SEQUENCE), che nel dump precedono tutte le tabelle.
-    """
-    size = os.path.getsize(path)
-    pending = {f"mbdump/{t}": fn for t, fn in handlers.items()}
-    meta: dict[str, str] = {}
-    log(f"{label}: apro {path} ({size / 1e9:.2f} GB); tabelle richieste: "
-        f"{', '.join(handlers)}")
-    with open(path, "rb") as raw:
-        # bz2.BZ2File gestisce anche gli stream bzip2 concatenati (multi-stream).
-        with bz2.BZ2File(raw) as bz, tarfile.open(fileobj=bz, mode="r|") as tf:
-            for member in tf:
-                name = member.name[2:] if member.name.startswith("./") else member.name
-                if name in META_FILES:
-                    f = tf.extractfile(member)
-                    meta[name] = f.read().decode("utf-8").strip() if f else ""
-                    continue
-                if name in pending:
-                    for m in META_FILES[:2]:
-                        if m not in meta:
-                            raise DumpError(f"{label}: {m} non trovato prima delle tabelle.")
-                    log(f"{label}: leggo {name} "
-                        f"(posizione compressa {raw.tell() / size:6.1%})")
-                    f = tf.extractfile(member)
-                    pending.pop(name)(f)
-                    if not pending:
-                        log(f"{label}: tabelle lette, interrompo la decompressione "
-                            f"al {raw.tell() / size:6.1%} del file compresso.")
-                        break
-    if pending:
-        raise DumpError(f"{label}: membri non trovati nell'archivio: {', '.join(pending)}")
-    for m in META_FILES[:2]:
-        if m not in meta:
-            raise DumpError(f"{label}: file {m} assente.")
-    meta.setdefault("REPLICATION_SEQUENCE", "")
-    return meta
+def table_rows(data_raw: Path, snap: dict, table: str):
+    log(f"leggo {table}.csv")
+    return mbraw.read_rows(data_raw, snap, table, TABLE_COLUMNS[table])
 
 
 # --------------------------------------------------------------------------
@@ -218,11 +124,11 @@ class State:
 
 
 def read_genre(st: State):
-    def handler(f):
-        for p in copy_rows(f, "genre"):
+    def handler(rows):
+        for p in rows:
             gid_int = parse_int(p[0], "genre", "id")
             gid = parse_uuid(p[1], "genre")
-            name = copy_field(p[2])
+            name = p[2]
             if name is None:
                 raise DumpError("mbdump/genre: name NULL.")
             if name in st.genre_by_name:
@@ -240,11 +146,11 @@ def read_genre(st: State):
 
 
 def read_tag(st: State):
-    def handler(f):
+    def handler(rows):
         genre_seen: dict[int, int] = {}
-        for p in copy_rows(f, "tag"):
+        for p in rows:
             st.tags_total += 1
-            name = copy_field(p[1])
+            name = p[1]
             g = st.genre_by_name.get(name)  # uguaglianza esatta: JOIN genre ON tag.name = genre.name
             if g is None:
                 continue
@@ -259,10 +165,10 @@ def read_tag(st: State):
 
 
 def read_artist_tag(st: State):
-    def handler(f):
+    def handler(rows):
         by_artist = st.by_artist
         t2g = st.tag_to_genre
-        for p in copy_rows(f, "artist_tag"):
+        for p in rows:
             st.artist_tag_rows += 1
             g = t2g.get(int(p[1]))
             if g is None:
@@ -297,17 +203,17 @@ class Stats:
 
 def write_artists(st: State, writer, stats: Stats, valid_genre_gids: set[str]):
     """Legge mbdump/artist e scrive il CSV nell'ordine delle righe del dump."""
-    def handler(f):
+    def handler(rows):
         by_artist = st.by_artist
         genres = st.genres
-        for p in copy_rows(f, "artist"):
+        for p in rows:
             st.artist_rows_total += 1
             aid = int(p[0])
             pairs = by_artist.pop(aid, None)  # pop: libera memoria mentre si scrive
             if pairs is None:
                 continue
             mbid = parse_uuid(p[1], "artist")
-            name = copy_field(p[2])
+            name = p[2]
             if name is None:
                 raise DumpError(f"mbdump/artist: name NULL per l'artista {mbid}.")
             gids_here = [g for g, _ in pairs]
@@ -376,9 +282,9 @@ def write_report(path, args, core_meta, derived_meta, st: State, stats: Stats,
     w("## Snapshot\n")
     w("| Archivio | File | TIMESTAMP | SCHEMA_SEQUENCE | REPLICATION_SEQUENCE |")
     w("|---|---|---|---|---|")
-    w(f"| core | `{os.path.basename(args.core)}` | {core_meta['TIMESTAMP']} | "
+    w(f"| core | `{os.path.basename(core_meta['source'])}` | {core_meta['TIMESTAMP']} | "
       f"{core_meta['SCHEMA_SEQUENCE']} | {core_meta['REPLICATION_SEQUENCE']} |")
-    w(f"| derived | `{os.path.basename(args.derived)}` | {derived_meta['TIMESTAMP']} | "
+    w(f"| derived | `{os.path.basename(derived_meta['source'])}` | {derived_meta['TIMESTAMP']} | "
       f"{derived_meta['SCHEMA_SEQUENCE']} | {derived_meta['REPLICATION_SEQUENCE']} |")
     w("")
     w("TIMESTAMP e SCHEMA_SEQUENCE coincidono tra i due archivi (verificato; in caso "
@@ -426,30 +332,29 @@ def write_report(path, args, core_meta, derived_meta, st: State, stats: Stats,
       "1580-1594; trigger righe 1619-1668; il commento alle righe 1602-1604 precisa "
       "che un conteggio 0 può corrispondere a un downvote per ogni upvote). Filtro: "
       "`votes > 0`, come nel web service.")
-    w("- Posizioni delle colonne prese da `admin/sql/CreateTables.sql` (artist 19 "
-      "colonne, genre 6, tag 3, artist_tag 4). Il dump è prodotto con "
-      "`COPY (SELECT * FROM tabella)`, quindi segue l'ordine delle colonne della "
-      "tabella. Se il numero di colonne differisce, lo script si ferma.")
-    w("- Il formato COPY testuale è decodificato così: TAB come separatore, `\\N` = "
-      "NULL, escape `\\b \\f \\n \\r \\t \\v \\ooo \\xhh`, qualsiasi altro `\\c` = "
-      "`c`, riga `\\.` = fine dati. Codifica: UTF-8.")
-    w("- Artisti nell'ordine fisico delle righe di `mbdump/artist` (il dump non ha "
-      "`ORDER BY`). Per ogni artista, generi per `votes` decrescente e poi per nome "
-      "(ordine dei code point Unicode, non la collazione `musicbrainz`).")
+    w("- Colonne lette per nome dai CSV di `data_raw/`. `fetch_extract.py` le ricava da "
+      "`admin/sql/CreateTables.sql` dello schema corrispondente a SCHEMA_SEQUENCE (il dump "
+      "è prodotto con `COPY tabella TO stdout`, quindi segue l'ordine delle colonne della "
+      "tabella) e si ferma se una riga ha un numero di colonne diverso.")
+    w("- Il formato COPY testuale è decodificato da `fetch_extract.py`: TAB come "
+      "separatore, `\\N` = NULL, escape `\\b \\f \\n \\r \\t \\v \\ooo \\xhh`, "
+      "qualsiasi altro `\\c` = `c`. Codifica: UTF-8. Nei CSV il NULL è un campo vuoto "
+      "senza virgolette, la stringa vuota `\"\"`.")
+    w("- Artisti nell'ordine delle righe di `artist.csv`, uguale all'ordine fisico di "
+      "`mbdump/artist` (il dump non ha `ORDER BY`). Per ogni artista, generi per `votes` "
+      "decrescente e poi per nome (ordine dei code point Unicode, non la collazione "
+      "`musicbrainz`).")
     w("- `artist_name` è `artist.name`, non `sort_name`. Gli MBID sono in minuscolo.")
     w("- I \"generi più frequenti\" sono ordinati per numero di artisti; a parità, "
       "per nome.")
-    w("- Ordine di lettura, scelto per tenere in RAM solo il necessario: "
-      "(1) core fino a `genre`; (2) derived fino a `tag`; (3) derived fino a "
-      "`artist_tag`; (4) core fino a `artist`, scrivendo il CSV durante la lettura. "
-      "Ogni lettura si ferma dopo l'ultima tabella necessaria. Nel dump `artist` "
-      "precede `genre` e `artist_tag` precede `tag` (ordine di `@CORE_TABLE_LIST` e "
-      "`@DERIVED_TABLE_LIST` in `lib/MusicBrainz/Server/Constants.pm`), da cui le due "
-      "letture parziali per archivio.")
+    w("- Ordine di lettura dei CSV, scelto per tenere in RAM solo il necessario: "
+      "(1) `genre`; (2) `tag`; (3) `artist_tag`; (4) `artist`, scrivendo il CSV "
+      "durante la lettura. Gli archivi sono letti una sola volta da `fetch_extract.py`, "
+      "che si ferma dopo l'ultima tabella richiesta.")
     w("- Il CSV è scritto su un file temporaneo e rinominato solo se tutti i "
       "controlli bloccanti passano. In caso di errore non si produce nessun output.")
-    w("- Il download automatico non è implementato: gli archivi sono passati con "
-      "`--core` e `--derived`.")
+    w("- Acquisizione ed estrazione affidate a `fetch_extract.py` (download HTTPS o "
+      "archivi locali); questo script legge solo `data_raw/`.")
     w("- Se `genres.csv` differisce dalla tabella `genre`, le differenze sono "
       "elencate qui sotto e segnalate su stderr, ma lo script non si ferma.\n")
 
@@ -546,32 +451,42 @@ voti > 0; dati convertiti in CSV (una riga per coppia artista-genere).
 # Main
 # --------------------------------------------------------------------------
 def main(argv=None) -> int:
+    here = Path(__file__).resolve().parent
     ap = argparse.ArgumentParser(
         description="Associa gli artisti MusicBrainz ai generi ufficiali "
-                    "(dump PostgreSQL, senza server).")
-    ap.add_argument("--core", required=True, help="percorso di mbdump.tar.bz2")
-    ap.add_argument("--derived", required=True, help="percorso di mbdump-derived.tar.bz2")
-    ap.add_argument("--out-dir", default=".", help="cartella di output (default: .)")
+                    "(CSV di data_raw/ prodotti da fetch_extract.py).")
+    ap.add_argument("--data-raw", default=str(here / "data_raw"),
+                    help="cartella prodotta da fetch_extract.py (default: data_raw/ accanto allo script)")
+    ap.add_argument("--out-dir", default=str(here / "output"),
+                    help="cartella di output (default: output/ accanto allo script)")
     ap.add_argument("--genres-csv", default=None,
                     help="genres.csv opzionale (colonna genre_mbid) per il controllo incrociato")
     args = ap.parse_args(argv)
 
-    for p in (args.core, args.derived) + ((args.genres_csv,) if args.genres_csv else ()):
-        if not os.path.isfile(p):
-            raise DumpError(f"file non trovato: {p}")
+    if args.genres_csv and not os.path.isfile(args.genres_csv):
+        raise DumpError(f"file non trovato: {args.genres_csv}")
+    data_raw = Path(args.data_raw)
+    try:
+        snap = mbraw.load_snapshot(data_raw)
+    except mbraw.RawDataError as e:
+        raise DumpError(str(e))
+    for kind in ("core", "derived"):
+        if kind not in snap["archives"]:
+            raise DumpError(f"snapshot.json: archivio {kind} assente.")
+    core_meta = snap["archives"]["core"]
+    derived_meta = snap["archives"]["derived"]
     os.makedirs(args.out_dir, exist_ok=True)
 
     st = State()
 
-    # (1) core: metadati + genre
-    core_meta = scan_archive(args.core, {"genre": read_genre(st)}, "core[1/2]")
-    # (2) derived: metadati + tag  -> controllo dello snapshot prima di proseguire
-    derived_meta = scan_archive(args.derived, {"tag": read_tag(st)}, "derived[1/2]")
+    # (1) genre  (2) tag  -> controllo dello snapshot prima di proseguire
+    read_genre(st)(table_rows(data_raw, snap, "genre"))
     for key in ("TIMESTAMP", "SCHEMA_SEQUENCE"):
         if core_meta[key] != derived_meta[key]:
             raise DumpError(
                 f"Snapshot diversi: {key} core={core_meta[key]!r} "
-                f"derived={derived_meta[key]!r}. Usa archivi della stessa cartella di snapshot.")
+                f"derived={derived_meta[key]!r}. Rieseguire fetch_extract.py.")
+    read_tag(st)(table_rows(data_raw, snap, "tag"))
     schema_warning = None
     if core_meta["SCHEMA_SEQUENCE"] != VERIFIED_SCHEMA_SEQUENCE:
         schema_warning = (
@@ -583,14 +498,12 @@ def main(argv=None) -> int:
     if not st.tag_to_genre:
         raise DumpError("Nessun tag corrisponde a un genere: impossibile proseguire.")
 
-    # (3) derived: artist_tag
-    meta3 = scan_archive(args.derived, {"artist_tag": read_artist_tag(st)}, "derived[2/2]")
-    if meta3 != derived_meta:
-        raise DumpError("Il file derived è cambiato tra le due letture.")
+    # (3) artist_tag
+    read_artist_tag(st)(table_rows(data_raw, snap, "artist_tag"))
     if not st.by_artist:
         raise DumpError("Zero coppie artista-genere con votes > 0: mi fermo.")
 
-    # (4) core: artist -> scrittura CSV
+    # (4) artist -> scrittura CSV
     valid_genre_gids = {gid for gid, _ in st.genres.values()}
     stats = Stats()
     csv_path = os.path.join(args.out_dir, CSV_NAME)
@@ -599,11 +512,7 @@ def main(argv=None) -> int:
         with open(tmp_path, "w", encoding="utf-8", newline="") as fh:
             writer = csv.writer(fh, quoting=csv.QUOTE_MINIMAL, lineterminator="\r\n")
             writer.writerow(CSV_HEADER)
-            meta4 = scan_archive(args.core,
-                                 {"artist": write_artists(st, writer, stats, valid_genre_gids)},
-                                 "core[2/2]")
-        if meta4 != core_meta:
-            raise DumpError("Il file core è cambiato tra le due letture.")
+            write_artists(st, writer, stats, valid_genre_gids)(table_rows(data_raw, snap, "artist"))
         # controlli bloccanti
         if st.by_artist:
             missing = list(st.by_artist)[:10]
@@ -645,6 +554,6 @@ def main(argv=None) -> int:
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except DumpError as e:
+    except (DumpError, mbraw.RawDataError) as e:
         log(f"ERRORE: {e}")
         sys.exit(1)

@@ -3,81 +3,36 @@
 build_genre_graph.py -- Grafo dei generi musicali di MusicBrainz (GraphML + CSV).
 
 Progetto "Categorizzazione Generi musicali e Artisti". Fonte unica: dump
-PostgreSQL ufficiale di MusicBrainz, file mbdump.tar.bz2 (licenza CC0).
-Tabelle lette: genre, l_genre_genre, link, link_type (+ TIMESTAMP, SCHEMA_SEQUENCE).
+PostgreSQL ufficiale di MusicBrainz, file mbdump.tar.bz2 (licenza CC0), estratto
+in CSV da fetch_extract.py.
+Input: data_raw/genre.csv, l_genre_genre.csv, link.csv, link_type.csv e
+data_raw/snapshot.json (snapshot, TIMESTAMP, SCHEMA_SEQUENCE).
 
-OUTPUT (in --out-dir, default: cartella corrente)
+OUTPUT (in --out-dir, default: output/ accanto allo script; file sovrascritti)
   genres.graphml     multigrafo orientato (networkx), archi entity0 -> entity1
   genres.csv         lista di adiacenza, una riga per genere
   genres_report.md   versione del dump, conteggi, controlli, decisioni e assunzioni
 
 REQUISITI
-  Python >= 3.10;  pip install "networkx>=3.0"
+  Python >= 3.12;  pip install "networkx>=3.0"
 
 USO
-  Modalita' principale (dump gia' scaricato):
-    python build_genre_graph.py --dump /percorso/20260923-002121/mbdump.tar.bz2
-  Il nome dello snapshot (es. 20260923-002121) e' ricavato dalla cartella che
-  contiene il file, se ha la forma AAAAMMGG-hhmmss; altrimenti indicarlo con
-    --snapshot 20260923-002121
-
-  Opzione: download automatico dell'ultimo snapshot (solo mbdump.tar.bz2,
-  con verifica SHA256):
-    python build_genre_graph.py --download --download-dir ./dumps
-
-DOWNLOAD MANUALE DEL DUMP (mbdump.tar.bz2 + mbdump-derived.tar.bz2)
-  Mirror ufficiale HTTPS (EU, Germania):
-    https://data.metabrainz.org/pub/musicbrainz/data/fullexport/
-  Il file LATEST contiene il nome dell'ultimo snapshot. Sul server restano solo
-  gli snapshot piu' recenti (nuovi dump il mercoledi' e il sabato): scaricare
-  subito dopo aver letto LATEST e tenere i file nella cartella dello snapshot.
-
-  Linux / macOS (bash):
-    BASE=https://data.metabrainz.org/pub/musicbrainz/data/fullexport
-    SNAP=$(curl -fsSL "$BASE/LATEST")
-    mkdir -p "$SNAP" && cd "$SNAP"
-    curl -fL -C - -O "$BASE/$SNAP/mbdump.tar.bz2"
-    curl -fL -C - -O "$BASE/$SNAP/mbdump-derived.tar.bz2"
-    curl -fL -O "$BASE/$SNAP/SHA256SUMS"
-    # verifica SHA256 -- Linux:
-    grep -E ' [*]?mbdump(-derived)?\\.tar\\.bz2$' SHA256SUMS | sha256sum -c -
-    # verifica SHA256 -- macOS:
-    grep -E ' [*]?mbdump(-derived)?\\.tar\\.bz2$' SHA256SUMS | shasum -a 256 -c -
-    # atteso:  mbdump.tar.bz2: OK   mbdump-derived.tar.bz2: OK
-
-  Windows (PowerShell, curl.exe incluso in Windows 10+):
-    $BASE = "https://data.metabrainz.org/pub/musicbrainz/data/fullexport"
-    $SNAP = (curl.exe -fsSL "$BASE/LATEST").Trim()
-    mkdir $SNAP; cd $SNAP
-    curl.exe -fL -C - -O "$BASE/$SNAP/mbdump.tar.bz2"
-    curl.exe -fL -C - -O "$BASE/$SNAP/mbdump-derived.tar.bz2"
-    curl.exe -fL -O "$BASE/$SNAP/SHA256SUMS"
-    Get-FileHash mbdump.tar.bz2 -Algorithm SHA256
-    Select-String "mbdump.tar.bz2" SHA256SUMS     # confrontare i due hash
+  python fetch_extract.py          # una volta: scarica/estrae in data_raw/
+  python build_genre_graph.py      # legge data_raw/, scrive output/
 
 STIME (indicative)
-  Disco: ~7 GB (mbdump.tar.bz2) + ~0.5 GB (mbdump-derived.tar.bz2), dimensioni
-    dello snapshot 20260923-002121. Lo script non estrae nulla su disco
-    (lettura in streaming); gli output occupano pochi MB. RAM: poche centinaia di MB.
-  Download di 7 GB: ~10 min a 100 Mbit/s, ~30 min a 30 Mbit/s.
-  Elaborazione: dominata dalla decompressione bzip2 (single-thread) della parte
-    di archivio che precede link_type; lo script si ferma appena ha letto le
-    tabelle necessarie. Stima: 10-40 min su un PC recente (vedi report per il
-    tempo effettivo).
+  Pochi secondi: la lettura dei CSV di data_raw/ e' rapida; i tempi del
+  download e della decompressione sono quelli di fetch_extract.py.
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
-import hashlib
 import itertools
 import re
 import sys
-import tarfile
 import time
-import urllib.parse
-import urllib.request
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -85,20 +40,24 @@ from pathlib import Path
 
 import networkx as nx
 
+import mbraw
+
 # --------------------------------------------------------------------------- #
 # Costanti
 # --------------------------------------------------------------------------- #
 
 SCRIPT_VERSION = "1.0"
-DEFAULT_BASE_URL = "https://data.metabrainz.org/pub/musicbrainz/data/fullexport"
-DUMP_FILENAME = "mbdump.tar.bz2"
-USER_AGENT = f"build_genre_graph/{SCRIPT_VERSION} (progetto personale di ricerca)"
 SNAPSHOT_RE = re.compile(r"^\d{8}-\d{6}$")
 
-# Colonne attese per tabella (schema v31, admin/sql/CreateTables.sql).
+# Colonne lette da data_raw/ (per nome; lo schema e il numero di colonne sono
+# verificati da fetch_extract.py su admin/sql/CreateTables.sql).
 EXPECTED_SCHEMA_SEQUENCE = 31
-TABLE_COLUMNS = {"genre": 6, "l_genre_genre": 9, "link": 11, "link_type": 16}
-META_FILES = ("TIMESTAMP", "SCHEMA_SEQUENCE")
+TABLE_COLUMNS = {
+    "genre": ["id", "gid", "name", "comment"],
+    "l_genre_genre": ["link", "entity0", "entity1"],
+    "link": ["id", "link_type"],
+    "link_type": ["id", "parent", "gid", "entity_type0", "entity_type1", "name"],
+}
 
 # link_type.gid -> etichetta dell'arco (https://musicbrainz.org/relationships/genre-genre)
 UUID_SUBGENRE = "9d61bc67-fa39-4719-8025-ea056a5bd7e6"
@@ -163,101 +122,8 @@ def log(msg: str) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Download (opzionale)
+# Lettura di data_raw/ (CSV prodotti da fetch_extract.py)
 # --------------------------------------------------------------------------- #
-
-def _urlopen(url: str):
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    return urllib.request.urlopen(req, timeout=120)
-
-
-def _sha256_file(path: Path) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        while chunk := f.read(1 << 20):
-            h.update(chunk)
-    return h.hexdigest()
-
-
-def download_latest(base_url: str, dest_root: Path) -> tuple[Path, str, str]:
-    """Scarica mbdump.tar.bz2 dell'ultimo snapshot e ne verifica lo SHA256.
-
-    Restituisce (percorso, nome snapshot, URL del file)."""
-    base = base_url.rstrip("/")
-    with _urlopen(f"{base}/LATEST") as r:
-        snap = r.read().decode("ascii").strip()
-    if not SNAPSHOT_RE.fullmatch(snap):
-        raise FatalError(f"Contenuto inatteso di LATEST: {snap!r}")
-    with _urlopen(f"{base}/{snap}/SHA256SUMS") as r:
-        sums = r.read().decode("utf-8")
-    expected = None
-    for line in sums.splitlines():
-        m = re.match(r"^([0-9a-fA-F]{64})\s+\*?(.+?)\s*$", line)
-        if m and m.group(2) == DUMP_FILENAME:
-            expected = m.group(1).lower()
-    if expected is None:
-        raise FatalError(f"{DUMP_FILENAME} non presente in SHA256SUMS dello snapshot {snap}")
-
-    dest = dest_root / snap / DUMP_FILENAME
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    url = f"{base}/{snap}/{DUMP_FILENAME}"
-    if dest.exists():
-        log(f"{dest} esiste: verifico lo SHA256...")
-        if _sha256_file(dest) == expected:
-            log("SHA256 corretto, riuso il file esistente.")
-            return dest, snap, url
-        log("SHA256 diverso: riscarico.")
-
-    part = dest.with_name(dest.name + ".part")
-    h = hashlib.sha256()
-    done = 0
-    next_report = 0
-    log(f"Download {url}")
-    with _urlopen(url) as r, open(part, "wb") as f:
-        total = int(r.headers.get("Content-Length") or 0)
-        while chunk := r.read(1 << 20):
-            f.write(chunk)
-            h.update(chunk)
-            done += len(chunk)
-            if done >= next_report:
-                pct = f" ({100 * done / total:.1f}%)" if total else ""
-                log(f"  scaricati {done / 1e9:.2f} GB{pct}")
-                next_report += 256 * 1024 * 1024
-    if h.hexdigest() != expected:
-        part.unlink(missing_ok=True)
-        raise FatalError("SHA256 del file scaricato non corrisponde a SHA256SUMS: download corrotto.")
-    part.replace(dest)
-    log("Download completato, SHA256 verificato.")
-    return dest, snap, url
-
-
-# --------------------------------------------------------------------------- #
-# Lettura del dump (formato COPY testuale di PostgreSQL)
-# --------------------------------------------------------------------------- #
-
-_ESCAPE_RE = re.compile(r"\\(?:([0-7]{1,3})|x([0-9A-Fa-f]{1,2})|(.))", re.S)
-_SIMPLE_ESCAPES = {"b": "\b", "f": "\f", "n": "\n", "r": "\r", "t": "\t", "v": "\v"}
-
-
-def _unescape(s: str) -> str:
-    if "\\" not in s:
-        return s
-
-    def rep(m: re.Match) -> str:
-        if m.group(1):
-            return chr(int(m.group(1), 8))
-        if m.group(2):
-            return chr(int(m.group(2), 16))
-        c = m.group(3)
-        return _SIMPLE_ESCAPES.get(c, c)
-
-    return _ESCAPE_RE.sub(rep, s)
-
-
-def parse_copy_line(line: str) -> list[str | None]:
-    fields = line.rstrip("\n").split("\t")
-    return [None if f == r"\N" else _unescape(f) for f in fields]
-
 
 @dataclass
 class DumpData:
@@ -269,77 +135,36 @@ class DumpData:
     stopped_early: bool = False
 
 
-def read_dump(path: Path) -> DumpData:
-    data = DumpData()
-    wanted = set(TABLE_COLUMNS) | set(META_FILES)
-    seen: set[str] = set()
-    needed_links: set[int] | None = None
+def read_raw(data_raw: Path, snap: dict) -> DumpData:
+    data = DumpData(meta={k: snap[k] for k in ("TIMESTAMP", "SCHEMA_SEQUENCE")})
+    absent = [t for t in TABLE_COLUMNS
+              if t in snap["tables"] and not snap["tables"][t]["present_in_archive"]]
+    if absent:
+        raise FatalError("Nel dump mancano: " + ", ".join(sorted(absent)) +
+                         " (una tabella vuota non viene inclusa nel tar).")
 
-    log(f"Lettura in streaming di {path}")
-    with tarfile.open(path, mode="r|bz2") as tf:
-        for member in tf:
-            name = member.name
-            while name.startswith("./"):
-                name = name[2:]
-            if not member.isfile():
-                continue
+    def rows(table: str):
+        log(f"  tabella {table}")
+        return mbraw.read_rows(data_raw, snap, table, TABLE_COLUMNS[table])
 
-            if name in META_FILES:
-                fobj = tf.extractfile(member)
-                data.meta[name] = fobj.read().decode("utf-8").strip()
-                seen.add(name)
-
-            elif name.startswith("mbdump/") and name[len("mbdump/"):] in TABLE_COLUMNS:
-                table = name[len("mbdump/"):]
-                ncol = TABLE_COLUMNS[table]
-                log(f"  tabella {table}")
-                # In modalita' streaming l'oggetto non e' seekable: niente TextIOWrapper,
-                # si itera sulle righe in byte (terminate da b"\n") e si decodifica UTF-8.
-                for raw_line in tf.extractfile(member):
-                    row = parse_copy_line(raw_line.decode("utf-8"))
-                    if len(row) != ncol:
-                        raise FatalError(
-                            f"Tabella {table}: {len(row)} colonne invece di {ncol}. "
-                            f"Lo schema del dump non corrisponde alla v{EXPECTED_SCHEMA_SEQUENCE} "
-                            "per cui lo script e' scritto."
-                        )
-                    if table == "genre":
-                        # id, gid, name, comment, edits_pending, last_updated
-                        data.genres[int(row[0])] = (row[1], row[2], row[3] or "")
-                    elif table == "l_genre_genre":
-                        # id, link, entity0, entity1, ...
-                        data.lgg.append((int(row[1]), int(row[2]), int(row[3])))
-                    elif table == "link":
-                        # id, link_type, ...
-                        lid = int(row[0])
-                        if needed_links is None or lid in needed_links:
-                            data.links[lid] = int(row[1])
-                    elif table == "link_type":
-                        # id, parent, child_order, gid, entity_type0, entity_type1, name, ...
-                        data.link_types[int(row[0])] = {
-                            "parent": int(row[1]) if row[1] is not None else None,
-                            "gid": row[3],
-                            "entity_type0": row[4],
-                            "entity_type1": row[5],
-                            "name": row[6],
-                        }
-                if table == "l_genre_genre":
-                    needed_links = {lnk for lnk, _, _ in data.lgg}
-                    if "link" in seen:  # ordine inatteso: filtro a posteriori
-                        data.links = {k: v for k, v in data.links.items() if k in needed_links}
-                seen.add(table)
-
-            if wanted <= seen:
-                data.stopped_early = True
-                log("  tutte le tabelle necessarie lette: interrompo la lettura dell'archivio")
-                break
-
-    missing = wanted - seen
-    if missing:
-        raise FatalError(
-            "Nel dump mancano: " + ", ".join(sorted(missing)) +
-            " (una tabella vuota non viene inclusa nel tar)."
-        )
+    log(f"Lettura dei CSV di {data_raw}")
+    for id_, gid, name, comment in rows("genre"):
+        data.genres[int(id_)] = (gid, name, comment or "")
+    for link, e0, e1 in rows("l_genre_genre"):
+        data.lgg.append((int(link), int(e0), int(e1)))
+    needed_links = {lnk for lnk, _, _ in data.lgg}
+    for lid, lt in rows("link"):
+        if int(lid) in needed_links:
+            data.links[int(lid)] = int(lt)
+    for id_, parent, gid, et0, et1, name in rows("link_type"):
+        data.link_types[int(id_)] = {
+            "parent": int(parent) if parent is not None else None,
+            "gid": gid,
+            "entity_type0": et0,
+            "entity_type1": et1,
+            "name": name,
+        }
+    data.stopped_early = bool(snap["archives"]["core"]["stopped_early"])
     return data
 
 
@@ -622,17 +447,20 @@ DECISIONS = [
     f"Cicli subgenre: elencati tutti i cicli semplici fino a {CYCLE_CAP:,}; oltre, elenco troncato. "
     "Sono elencate anche le componenti fortemente connesse non banali.",
     "Liste complete nel report (isolati, radici, nodi con piu' padri): possono essere lunghe.",
-    f"Formato delle tabelle verificato contando le colonne rispetto allo schema "
-    f"v{EXPECTED_SCHEMA_SEQUENCE} (admin/sql/CreateTables.sql); se il conteggio non torna lo "
-    "script si ferma. SCHEMA_SEQUENCE diversa ma colonne compatibili: solo avviso.",
-    "Nome dello snapshot: da --snapshot, altrimenti dal nome della cartella che contiene il dump "
-    "(forma AAAAMMGG-hhmmss). Viene confrontato con TIMESTAMP (solo informativo).",
-    "Lettura in streaming del tar (nessuna estrazione su disco); interruzione anticipata appena "
-    "lette le tabelle necessarie. Parsing del formato COPY testuale di PostgreSQL (\\N = NULL, "
-    "escape con backslash).",
+    "Formato delle tabelle: fetch_extract.py ricava le colonne da admin/sql/CreateTables.sql "
+    "dello schema corrispondente a SCHEMA_SEQUENCE e controlla il numero di colonne su ogni "
+    "riga; questo script legge le colonne per nome da data_raw/ e si ferma se mancano. "
+    f"SCHEMA_SEQUENCE diversa da {EXPECTED_SCHEMA_SEQUENCE}: solo avviso.",
+    "Nome dello snapshot: da data_raw/snapshot.json (fetch_extract.py: LATEST o --snapshot per "
+    "il download, cartella AAAAMMGG-hhmmss per gli archivi locali). Viene confrontato con "
+    "TIMESTAMP (solo informativo).",
+    "Input: CSV di data_raw/ prodotti da fetch_extract.py (lettura in streaming del tar, "
+    "interruzione anticipata dopo l'ultima tabella richiesta, conversione del formato COPY "
+    "testuale di PostgreSQL in CSV con NULL distinto dalla stringa vuota).",
     "Verifica aggiuntiva: che 'fusion of' abbia come padre 'influenced by' in link_type.",
-    "Download automatico (opzionale): solo mbdump.tar.bz2, mirror HTTPS data.metabrainz.org, "
-    "verifica SHA256 con SHA256SUMS dello snapshot.",
+    "Acquisizione con fetch_extract.py: mirror HTTPS data.metabrainz.org o archivi locali. Il "
+    "download e' parziale, quindi niente verifica SHA256: restano HTTPS, CRC dei blocchi bzip2 "
+    "e controllo del numero di colonne (vedi README).",
 ]
 
 
@@ -647,7 +475,7 @@ def write_report(path: Path, gg: GenreGraph, an: dict, coh: dict, ctx: dict) -> 
     a(f"Generato il {ctx['generated']} da build_genre_graph.py v{SCRIPT_VERSION}.\n")
 
     a("## Versione del dump\n")
-    a(f"- Snapshot (cartella): `{ctx['snapshot'] or 'non determinato'}`")
+    a(f"- Snapshot: `{ctx['snapshot'] or 'non determinato'}`")
     a(f"- TIMESTAMP: `{ctx['timestamp']}`")
     a(f"- SCHEMA_SEQUENCE: `{ctx['schema_sequence']}`")
     a(f"- File: `{ctx['dump_path']}`")
@@ -738,8 +566,9 @@ def write_report(path: Path, gg: GenreGraph, an: dict, coh: dict, ctx: dict) -> 
     a("")
 
     a("## Tempi\n")
-    a(f"- Lettura dump: {ctx['t_read']:.0f} s; totale: {ctx['t_total']:.0f} s")
-    a(f"- Lettura interrotta in anticipo: {'sì' if ctx['stopped_early'] else 'no'}\n")
+    a(f"- Lettura CSV (data_raw/): {ctx['t_read']:.0f} s; totale: {ctx['t_total']:.0f} s")
+    a(f"- Lettura dell'archivio core interrotta in anticipo da fetch_extract.py: "
+      f"{'sì' if ctx['stopped_early'] else 'no'}\n")
 
     a("## Decisioni e assunzioni\n")
     for i, dsc in enumerate(DECISIONS, 1):
@@ -753,47 +582,33 @@ def write_report(path: Path, gg: GenreGraph, an: dict, coh: dict, ctx: dict) -> 
 # --------------------------------------------------------------------------- #
 
 def main(argv: list[str] | None = None) -> int:
+    here = Path(__file__).resolve().parent
     ap = argparse.ArgumentParser(
         description="Grafo dei generi MusicBrainz -> genres.graphml, genres.csv, genres_report.md",
-        epilog="Istruzioni complete per il download manuale: vedi la docstring in testa al file.",
+        epilog="Legge solo data_raw/ (prodotta da fetch_extract.py).",
     )
-    src = ap.add_mutually_exclusive_group(required=True)
-    src.add_argument("--dump", type=Path, help="percorso di mbdump.tar.bz2 gia' scaricato (modalita' principale)")
-    src.add_argument("--download", action="store_true", help="scarica l'ultimo mbdump.tar.bz2 (opzione)")
-    ap.add_argument("--download-dir", type=Path, default=Path("dumps"),
-                    help="cartella per --download (default: ./dumps)")
-    ap.add_argument("--base-url", default=DEFAULT_BASE_URL, help=f"default: {DEFAULT_BASE_URL}")
-    ap.add_argument("--snapshot", help="nome della cartella dello snapshot, es. 20260923-002121")
-    ap.add_argument("--out-dir", type=Path, default=Path("."), help="cartella di output (default: .)")
+    ap.add_argument("--data-raw", type=Path, default=here / "data_raw",
+                    help="cartella prodotta da fetch_extract.py (default: data_raw/ accanto allo script)")
+    ap.add_argument("--out-dir", type=Path, default=here / "output",
+                    help="cartella di output (default: output/ accanto allo script)")
     args = ap.parse_args(argv)
 
     t0 = time.time()
     warnings: list[str] = []
     try:
-        if args.download:
-            scheme = urllib.parse.urlsplit(args.base_url).scheme.lower()
-            dump_path, snapshot, url = download_latest(args.base_url, args.download_dir)
-            if scheme != "https":
-                warnings.append(f"Download eseguito via {scheme.upper()}, non HTTPS.")
-            acquisition = f"download automatico via {scheme.upper()} da {url}, SHA256 verificato"
-            if args.snapshot and args.snapshot != snapshot:
-                warnings.append(f"--snapshot {args.snapshot} ignorato: scaricato {snapshot}.")
-        else:
-            dump_path = args.dump
-            if not dump_path.is_file():
-                raise FatalError(f"File non trovato: {dump_path}")
-            snapshot = args.snapshot
-            if snapshot is None and SNAPSHOT_RE.fullmatch(dump_path.resolve().parent.name):
-                snapshot = dump_path.resolve().parent.name
-            if snapshot is None:
-                warnings.append("Nome dello snapshot non determinato: usare --snapshot.")
-            elif not SNAPSHOT_RE.fullmatch(snapshot):
-                warnings.append(f"Nome snapshot {snapshot!r} non nella forma AAAAMMGG-hhmmss.")
-            acquisition = ("dump locale fornito con --dump (download e verifica SHA256 manuali, "
-                           "fuori dallo script)")
+        snap = mbraw.load_snapshot(args.data_raw)
+        snapshot = snap["snapshot"]
+        if snapshot is None:
+            warnings.append("Nome dello snapshot non determinato: usare --snapshot di fetch_extract.py.")
+        elif not SNAPSHOT_RE.fullmatch(snapshot):
+            warnings.append(f"Nome snapshot {snapshot!r} non nella forma AAAAMMGG-hhmmss.")
+        core = snap["archives"]["core"]
+        dump_path = core["source"]
+        acquisition = (f"fetch_extract.py, archivio {'scaricato via HTTPS' if core['mode'] == 'remote' else 'locale'}"
+                       f", estrazione del {snap['extracted_at']}; CSV letti da `{args.data_raw}`")
 
         t_read0 = time.time()
-        data = read_dump(dump_path)
+        data = read_raw(args.data_raw, snap)
         t_read = time.time() - t_read0
 
         ts = data.meta.get("TIMESTAMP", "")
@@ -834,7 +649,7 @@ def main(argv: list[str] | None = None) -> int:
             "stopped_early": data.stopped_early,
         }
         write_report(report_path, gg, an, coh, ctx)
-    except FatalError as e:
+    except (FatalError, mbraw.RawDataError) as e:
         log(f"ERRORE: {e}")
         return 2
 
