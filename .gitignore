@@ -12,3 +12,6 @@ NEW_MB/data_raw.old/
 NEW_MB/output/artist_genres.csv
 *.tar.bz2
 *.tar.bz2.part
+NEW_MB/dumps/
+NEW_MB/dumps.tmp/
+NEW_MB/dumps.old/
