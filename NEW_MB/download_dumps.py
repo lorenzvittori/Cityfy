@@ -1,10 +1,9 @@
-#!/usr/bin/env python3
-"""Scarica da MusicBrainz le tabelle che servono e le salva in dumps/ (testo COPY grezzo).
+r"""Scarica da MusicBrainz le tabelle che servono e le salva in dumps/ (testo COPY grezzo).
 
 Uso:
-    python download_dumps.py                          # ultimo snapshot
-    python download_dumps.py --snapshot 20260926-002121
-    python download_dumps.py --core mbdump.tar.bz2 --derived mbdump-derived.tar.bz2
+    python NEW_MB\download_dumps.py                          # ultimo snapshot
+    python NEW_MB\download_dumps.py --snapshot 20260926-002121
+    python NEW_MB\download_dumps.py --core mbdump.tar.bz2 --derived mbdump-derived.tar.bz2
 
 Opzioni: --snapshot (default LATEST), --out (default dumps), --base-url,
 --core/--derived (archivi locali, da passare insieme), --core-tables/--derived-tables
@@ -82,7 +81,7 @@ def copy_member(tf, member, table, dest, progress):
 def read_archive(kind, source, wanted, tmp, progress, header, tables):
     """Una passata sull'archivio; restituisce True se si e' fermata in anticipo."""
     pending = set(wanted)
-    with tarfile.open(fileobj=Bz2Reader(source), mode="r|") as tf:
+    with tarfile.open(fileobj=Bz2Reader(source), mode="r|") as tf:  # type: ignore
         for member in tf:
             name = member.name.removeprefix("./")
             progress.current = f"(salto {name})"
@@ -137,7 +136,7 @@ def parse_args(argv):
     p.add_argument("--base-url", default=BASE_URL)
     p.add_argument("--core", help="archivio core locale (mbdump.tar.bz2)")
     p.add_argument("--derived", help="archivio derived locale (mbdump-derived.tar.bz2)")
-    p.add_argument("--out", default="dumps")
+    p.add_argument("--out", default="NEW_MB/dumps")
     p.add_argument("--core-tables", nargs="+", metavar="TABELLA", default=CORE_TABLES)
     p.add_argument("--derived-tables", nargs="+", metavar="TABELLA", default=DERIVED_TABLES)
     return p.parse_args(argv)
@@ -189,7 +188,7 @@ def run(args):
         progress.kind = kind
         header = {}
         source = (FileSource if local else HttpSource)(locs[kind], progress)
-        progress.source = source
+        progress.source = source    # type: ignore
         t1 = time.monotonic()
         try:
             early = read_archive(kind, source, wanted[kind], tmp, progress, header, tables)

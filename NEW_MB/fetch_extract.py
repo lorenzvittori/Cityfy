@@ -1,11 +1,10 @@
-#!/usr/bin/env python3
-"""Scarica ed estrae le tabelle del dump PostgreSQL di MusicBrainz in CSV (data_raw/).
+r"""Scarica ed estrae le tabelle del dump PostgreSQL di MusicBrainz in CSV (data_raw/).
 
 Uso:
-    python fetch_extract.py                         # ultimo snapshot, scarica in streaming
-    python fetch_extract.py --snapshot 20260926-002121
-    python fetch_extract.py --core mbdump.tar.bz2 --derived mbdump-derived.tar.bz2
-    python fetch_extract.py --schema-dir DIR        # DIR con CreateTables.sql, Constants.pm
+    python NEW_MB\fetch_extract.py                         # ultimo snapshot, scarica in streaming
+    python NEW_MB\fetch_extract.py --snapshot 20260926-002121
+    python NEW_MB\fetch_extract.py --core mbdump.tar.bz2 --derived mbdump-derived.tar.bz2
+    python NEW_MB\fetch_extract.py --schema-dir DIR        # DIR con CreateTables.sql, Constants.pm
                                                     # e DBDefs.pm.sample (lavoro offline)
 
 Opzioni: --snapshot (default LATEST), --base-url, --core/--derived (archivi locali,
@@ -161,7 +160,7 @@ class HttpSource:
             try:
                 if self.resp is None:
                     self._open()
-                data = self.resp.read(n)
+                data = self.resp.read(n)    # type: ignore
                 if not data and self.total is not None and self.pos < self.total:
                     raise ConnectionError("connessione chiusa prima della fine del file")
                 if data:
@@ -400,7 +399,7 @@ def decode_field(b):
     if b == b"\\N":
         return None
     if b"\\" in b:
-        b = _ESC.sub(_esc_sub, b)
+        b = _ESC.sub(_esc_sub, b)        # type: ignore
     return b.decode("utf-8")
 
 
@@ -489,7 +488,7 @@ def extract_archive(kind, source, order, wanted, columns, tmp, progress, db_seq,
     hdr = {}
     checked = False
     early = False
-    with tarfile.open(fileobj=Bz2Reader(source), mode="r|") as tf:
+    with tarfile.open(fileobj=Bz2Reader(source), mode="r|") as tf:  # type: ignore
         for member in tf:
             name = member.name.removeprefix("./")
             progress.current = f"(salto {name})"
@@ -529,7 +528,7 @@ def parse_args(argv):
     p.add_argument("--base-url", default="https://data.metabrainz.org/pub/musicbrainz/data/fullexport/")
     p.add_argument("--core", help="archivio core locale (mbdump.tar.bz2)")
     p.add_argument("--derived", help="archivio derived locale (mbdump-derived.tar.bz2)")
-    p.add_argument("--out", default="data_raw")
+    p.add_argument("--out", default="NEW_MB/data_raw")
     p.add_argument("--schema-ref", default="production")
     p.add_argument("--schema-dir", help="cartella locale con i file di schema")
     return p.parse_args(argv)
@@ -592,7 +591,7 @@ def run(args):
         progress.kind = kind
         t1 = time.monotonic()
         source = (FileSource if local else HttpSource)(locs[kind], progress)
-        progress.source = source
+        progress.source = source    # type: ignore
         try:
             early = extract_archive(
                 kind, source, lists[kind], names, columns, tmp, progress, db_seq, state, tables
