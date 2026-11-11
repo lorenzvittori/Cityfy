@@ -1,106 +1,51 @@
 using CityFy.Retrieve.MusicBrainz.Data;
-using CityFy.Retrieve.MusicBrainz.Repositories;
 using CityFy.Retrieve.MusicBrainz.Services;
 using Microsoft.EntityFrameworkCore;
+using ServiceDefault.Hosting;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Logging, OpenTelemetry, health checks, service discovery
+builder.AddServiceDefaults();
+
 builder.Services.AddControllers();
-var connectionString = builder.Configuration.GetConnectionString("MusicBrainz") ?? builder.Configuration["ConnectionStrings:MusicBrainz"];
-if (!string.IsNullOrEmpty(connectionString))
-{
-    builder.Services.AddDbContext<MusicBrainzContext>(options => options.UseSqlServer(connectionString));
-}
-// Http client per il download del dump
+builder.Services.AddCityFySwagger("Retrieve MusicBrainz");
+builder.Services.AddCityFyCors(builder.Configuration);
+
+// Aspire client integration: connection string "ConnectionStrings:musicbrainz" (injected by the
+// AppHost), retries, health check and tracing included
+builder.AddSqlServerDbContext<MusicBrainzContext>("musicbrainz");
+
+// Dump download: no client timeout, the archives are several GB
 builder.Services.AddHttpClient<MbDumpClient>(c =>
 {
     c.BaseAddress = new Uri("https://data.metabrainz.org/pub/musicbrainz/data/fullexport/");
-    // No application-side timeout: allow long downloads without client-side cancellation
     c.Timeout = System.Threading.Timeout.InfiniteTimeSpan;
 });
 
-// Services for processing
-builder.Services.AddTransient<ArchiveExtractor>();
-builder.Services.AddTransient<GenreParser>();
-builder.Services.AddTransient<ArtistParser>();
-builder.Services.AddScoped<DataImporter>();
-builder.Services.AddScoped<IGenreRepository, GenreRepository>();
-builder.Services.AddScoped<IArtistRepository, ArtistRepository>();
-builder.Services.AddScoped<RetrieveService>();
-builder.Services.AddScoped<IGenreImportService, GenreImportService>();
-builder.Services.AddScoped<IArtistImportService, ArtistImportService>();
+// Retrieve pipeline: download -> extract -> import (background, one at a time)
 builder.Services.AddScoped<IDumpDownloadService, DumpDownloadService>();
-builder.Services.AddOpenApi();
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(c =>
-{
-    c.SwaggerDoc("retrieve", new Microsoft.OpenApi.OpenApiInfo { Title = "Retrieve API - MusicBrainz", Version = "v1" });
-    c.SwaggerDoc("debug", new Microsoft.OpenApi.OpenApiInfo { Title = "Debug API", Version = "v1" });
-    c.DocInclusionPredicate((docName, apiDesc) =>
-    {
-        var groupName = apiDesc.GroupName ?? "";
-        if (string.IsNullOrEmpty(groupName))
-            return docName == "debug"; // default ungrouped endpoints go to debug
-        return docName.Equals(groupName, StringComparison.OrdinalIgnoreCase) ||
-               (docName == "retrieve" && groupName.StartsWith("Retrieve", StringComparison.OrdinalIgnoreCase));
-    });
-});
+builder.Services.AddTransient<ArchiveExtractor>();
+builder.Services.AddScoped<MusicBrainzImporter>();
+builder.Services.AddScoped<RetrieveService>();
+builder.Services.AddSingleton<RetrieveRunner>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<RetrieveRunner>());
 
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("Local", policy =>
-    {
-        policy.WithOrigins("http://localhost:3000", "http://localhost:5068", "https://localhost:7028")
-              .AllowAnyHeader()
-              .AllowAnyMethod();
-    });
-});
-
-builder.Services.Configure<ServiceDefault.Models.MongoOptions>(builder.Configuration.GetSection("Mongo"));
-builder.Services.AddSingleton(sp => sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ServiceDefault.Models.MongoOptions>>().Value);
-
+// Read API
+builder.Services.AddScoped<MusicBrainzQueryService>();
 
 var app = builder.Build();
 
 // Apply EF Core migrations at startup (Code-First)
 using (var scope = app.Services.CreateScope())
 {
-    var services = scope.ServiceProvider;
-    var logger = services.GetRequiredService<ILogger<Program>>();
-    try
-    {
-        var db = services.GetService<MusicBrainzContext>();
-        if (db != null)
-        {
-            logger.LogInformation("Applying pending EF Core migrations (if any)");
-            db.Database.Migrate();
-            logger.LogInformation("Database migrations applied");
-        }
-        else
-        {
-            logger.LogWarning("MusicBrainzContext not registered; skipping migrations");
-        }
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "An error occurred while applying database migrations");
-        throw;
-    }
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    logger.LogInformation("Applying pending EF Core migrations (if any)");
+    scope.ServiceProvider.GetRequiredService<MusicBrainzContext>().Database.Migrate();
 }
 
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI(c =>
-    {
-        c.SwaggerEndpoint("/swagger/retrieve/swagger.json", "Retrieve API");
-        c.SwaggerEndpoint("/swagger/debug/swagger.json", "Debug API");
-    });
-    app.MapOpenApi();
-}
-
-app.UseHttpsRedirection();
-app.UseCors("Local");
+// Swagger (dev), HTTPS, CORS, /health and /alive
+app.UseServiceDefaults();
 app.UseAuthorization();
 app.MapControllers();
 app.Run();

@@ -1,4 +1,4 @@
-<Project Sdk="Aspire.AppHost.Sdk/13.5.3">
+﻿<Project Sdk="Aspire.AppHost.Sdk/13.6.5">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -14,10 +14,21 @@
     <ProjectReference Include="..\CityFy.Retrieve.Dump.Spotify\CityFy.Retrieve.Dump.Spotify.csproj" />
     <ProjectReference Include="..\CityFy.Retrieve.MusicBrainz\CityFy.Retrieve.MusicBrainz.csproj" />
     <ProjectReference Include="..\CityFy.Retrieve.Spotify\CityFy.Retrieve.Spotify.csproj" />
+    <ProjectReference Include="..\CityFy.Orchestrator\CityFy.Orchestrator.csproj" />
+    <ProjectReference Include="..\CityFy.Api\CityFy.Api.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <Folder Include="Controllers\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.JavaScript" Version="13.6.5" />
+    <PackageReference Include="Aspire.Hosting.MongoDB" Version="13.6.5" />
+    <PackageReference Include="Aspire.Hosting.RabbitMQ" Version="13.6.5" />
+    <PackageReference Include="Aspire.Hosting.SqlServer" Version="13.6.5" />
+  </ItemGroup>
+
 </Project>
+
+

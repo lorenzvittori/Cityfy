@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace CityFy.RtrieveSpotify.Models
+namespace CityFy.Retrieve.Spotify.Models
 {
     public class TokenResponse
     {

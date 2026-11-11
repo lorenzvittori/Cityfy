@@ -1,16 +1,15 @@
 namespace ServiceDefault.Models
 {
+    /// <summary>
+    /// "Mongo" section: collection names only. The connection comes from
+    /// "ConnectionStrings:cityfy", injected by the AppHost (see MongoExtensions.AddCityFyMongo).
+    /// </summary>
     public class MongoOptions
     {
-        public string ConnectionString { get; set; } = "mongodb://localhost:27017";
-        public string Database { get; set; } = "cityfy";
-        // Single results collection name where all streaming events are stored
-        public string ResultsCollectionName { get; set; } = "streaming_history";
-
-        // Collection to store processing tasks/status
+        // Collection to store upload processing tasks/status (Retrieve.Dump.Spotify)
         public string TaskCollectionName { get; set; } = "upload_tasks";
 
-        // legacy prefix (not used when ResultsCollectionName is set)
+        // Prefix of the legacy per-upload collections, read only by the migration endpoint
         public string CollectionPrefix { get; set; } = "streaming_history_";
     }
 }

@@ -1,35 +1,39 @@
-using CityFy.RtrieveSpotify.Models;
-using MongoDB.Bson;
 using MongoDB.Driver;
-using System.Text.Json;
+using ServiceDefault.Errors;
 using ServiceDefault.Models;
 
-namespace CityFy.RtrieveSpotify.Repositories
+namespace CityFy.Retrieve.Spotify.Repositories
 {
     public class MongoSpotifyRepository : ISpotifyRepository
     {
-        private readonly IMongoDatabase _db;
+        private const string TasksCollection = "spotify_retrieve_tasks";
 
-        public MongoSpotifyRepository(MongoOptions options)
+        private readonly IMongoCollection<ProcessingTask> _tasks;
+
+        public MongoSpotifyRepository(IMongoDatabase db)
         {
-            var client = new MongoClient(options.ConnectionString);
-            _db = client.GetDatabase(options.Database);
+            _tasks = db.GetCollection<ProcessingTask>(TasksCollection);
         }
 
-        public async Task InsertTracksAsync(IEnumerable<Track> tracks)
+        public Task CreateTaskAsync(string jobId, string userId, CancellationToken ct) =>
+            _tasks.InsertOneAsync(new ProcessingTask { UploadId = jobId, UserId = userId, Status = ProcessingStatus.Pending }, cancellationToken: ct);
+
+        public Task UpdateTaskAsync(string jobId, ProcessingStatus status, int? inserted = null, string? message = null, string? errorCode = null)
         {
-            var col = _db.GetCollection<BsonDocument>("spotify_tracks");
-            var docs = tracks.Select(t => BsonDocument.Parse(JsonSerializer.Serialize(t))).ToList();
-            if (docs.Count > 0)
-                await col.InsertManyAsync(docs);
+            var update = Builders<ProcessingTask>.Update.Set(t => t.Status, status)
+                .Set(t => t.ErrorCode, status == ProcessingStatus.FAILED ? errorCode ?? ErrorCodes.SpotifyRetrieveFailed : null);
+            if (inserted.HasValue)
+                update = update.Set(t => t.Inserted, inserted.Value);
+            if (message != null)
+                update = update.Set(t => t.Message, message);
+            if (status is ProcessingStatus.DONE or ProcessingStatus.FAILED)
+                update = update.Set(t => t.CompletedAt, DateTime.UtcNow);
+
+            // Status updates must land even when the job itself was cancelled.
+            return _tasks.UpdateOneAsync(t => t.UploadId == jobId, update, cancellationToken: CancellationToken.None);
         }
 
-        public async Task InsertAlbumsAsync(IEnumerable<Album> albums)
-        {
-            var col = _db.GetCollection<BsonDocument>("spotify_albums");
-            var docs = albums.Select(a => BsonDocument.Parse(JsonSerializer.Serialize(a))).ToList();
-            if (docs.Count > 0)
-                await col.InsertManyAsync(docs);
-        }
+        public async Task<ProcessingTask?> GetTaskAsync(string jobId, CancellationToken ct) =>
+            await _tasks.Find(t => t.UploadId == jobId).FirstOrDefaultAsync(ct);
     }
 }

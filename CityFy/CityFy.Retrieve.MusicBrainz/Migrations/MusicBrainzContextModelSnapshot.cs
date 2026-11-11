@@ -16,7 +16,7 @@ namespace CityFy.Retrieve.MusicBrainz.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.13")
+                .HasAnnotation("ProductVersion", "10.0.15")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -24,65 +24,74 @@ namespace CityFy.Retrieve.MusicBrainz.Migrations
             modelBuilder.Entity("CityFy.Retrieve.MusicBrainz.Models.Artist", b =>
                 {
                     b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("MusicBrainzId")
-                        .HasColumnType("nvarchar(450)");
+                    b.Property<string>("Gid")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("nvarchar(36)");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("nvarchar(300)");
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("TotalGenreVotes")
+                        .HasColumnType("int");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("MusicBrainzId");
+                    b.HasIndex("Gid");
+
+                    b.HasIndex("Name");
 
                     b.ToTable("Artists");
                 });
 
-            modelBuilder.Entity("CityFy.Retrieve.MusicBrainz.Models.ArtistGenreRelation", b =>
+            modelBuilder.Entity("CityFy.Retrieve.MusicBrainz.Models.ArtistGenre", b =>
                 {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
                     b.Property<int>("ArtistId")
                         .HasColumnType("int");
 
                     b.Property<int>("GenreId")
                         .HasColumnType("int");
 
-                    b.Property<string>("RelationType")
-                        .HasColumnType("nvarchar(max)");
+                    b.Property<int>("Votes")
+                        .HasColumnType("int");
 
-                    b.HasKey("Id");
-
-                    b.HasIndex("ArtistId");
+                    b.HasKey("ArtistId", "GenreId");
 
                     b.HasIndex("GenreId");
 
-                    b.ToTable("ArtistGenreRelations");
+                    b.ToTable("ArtistGenres");
+                });
+
+            modelBuilder.Entity("CityFy.Retrieve.MusicBrainz.Models.ArtistSpotifyLink", b =>
+                {
+                    b.Property<int>("ArtistId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SpotifyArtistId")
+                        .HasMaxLength(22)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(22)");
+
+                    b.HasKey("ArtistId", "SpotifyArtistId");
+
+                    b.HasIndex("SpotifyArtistId");
+
+                    b.ToTable("ArtistSpotifyLinks");
                 });
 
             modelBuilder.Entity("CityFy.Retrieve.MusicBrainz.Models.Genre", b =>
                 {
                     b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Description")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("MusicBrainzId")
-                        .HasColumnType("nvarchar(450)");
+                    b.Property<string>("Gid")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("nvarchar(36)");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -91,7 +100,7 @@ namespace CityFy.Retrieve.MusicBrainz.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("MusicBrainzId");
+                    b.HasIndex("Name");
 
                     b.ToTable("Genres");
                 });
@@ -104,30 +113,33 @@ namespace CityFy.Retrieve.MusicBrainz.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<int>("ChildId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("ParentId")
+                    b.Property<int>("FromGenreId")
                         .HasColumnType("int");
 
                     b.Property<string>("RelationType")
-                        .HasColumnType("nvarchar(max)");
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("ToGenreId")
+                        .HasColumnType("int");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ChildId");
+                    b.HasIndex("ToGenreId");
 
-                    b.HasIndex("ParentId");
+                    b.HasIndex("FromGenreId", "ToGenreId", "RelationType")
+                        .IsUnique();
 
                     b.ToTable("GenreRelations");
                 });
 
-            modelBuilder.Entity("CityFy.Retrieve.MusicBrainz.Models.ArtistGenreRelation", b =>
+            modelBuilder.Entity("CityFy.Retrieve.MusicBrainz.Models.ArtistGenre", b =>
                 {
                     b.HasOne("CityFy.Retrieve.MusicBrainz.Models.Artist", "Artist")
-                        .WithMany("GenreRelations")
+                        .WithMany("Genres")
                         .HasForeignKey("ArtistId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("CityFy.Retrieve.MusicBrainz.Models.Genre", "Genre")
@@ -141,35 +153,48 @@ namespace CityFy.Retrieve.MusicBrainz.Migrations
                     b.Navigation("Genre");
                 });
 
+            modelBuilder.Entity("CityFy.Retrieve.MusicBrainz.Models.ArtistSpotifyLink", b =>
+                {
+                    b.HasOne("CityFy.Retrieve.MusicBrainz.Models.Artist", "Artist")
+                        .WithMany("SpotifyLinks")
+                        .HasForeignKey("ArtistId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Artist");
+                });
+
             modelBuilder.Entity("CityFy.Retrieve.MusicBrainz.Models.GenreRelation", b =>
                 {
-                    b.HasOne("CityFy.Retrieve.MusicBrainz.Models.Genre", "Child")
-                        .WithMany("ParentRelations")
-                        .HasForeignKey("ChildId")
+                    b.HasOne("CityFy.Retrieve.MusicBrainz.Models.Genre", "FromGenre")
+                        .WithMany("OutgoingRelations")
+                        .HasForeignKey("FromGenreId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("CityFy.Retrieve.MusicBrainz.Models.Genre", "Parent")
-                        .WithMany("ChildRelations")
-                        .HasForeignKey("ParentId")
+                    b.HasOne("CityFy.Retrieve.MusicBrainz.Models.Genre", "ToGenre")
+                        .WithMany("IncomingRelations")
+                        .HasForeignKey("ToGenreId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.Navigation("Child");
+                    b.Navigation("FromGenre");
 
-                    b.Navigation("Parent");
+                    b.Navigation("ToGenre");
                 });
 
             modelBuilder.Entity("CityFy.Retrieve.MusicBrainz.Models.Artist", b =>
                 {
-                    b.Navigation("GenreRelations");
+                    b.Navigation("Genres");
+
+                    b.Navigation("SpotifyLinks");
                 });
 
             modelBuilder.Entity("CityFy.Retrieve.MusicBrainz.Models.Genre", b =>
                 {
-                    b.Navigation("ChildRelations");
+                    b.Navigation("IncomingRelations");
 
-                    b.Navigation("ParentRelations");
+                    b.Navigation("OutgoingRelations");
                 });
 #pragma warning restore 612, 618
         }

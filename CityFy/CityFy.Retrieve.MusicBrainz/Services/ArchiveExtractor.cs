@@ -15,17 +15,19 @@ public class ArchiveExtractor
     // Estrae un archivio .tar.bz2 in destinationDirectory usando il comando tar esterno.
     // Nota: richiede che il sistema abbia disponibile 'tar' (Windows 10+ include bsdtar),
     // altrimenti implementare l'estrazione con una libreria compatibile.
-    public async Task ExtractAsync(string archivePath, string destinationDirectory, CancellationToken cancellationToken = default)
+    // members: optional list of archive entries to extract (e.g. "mbdump/genre"); all when empty.
+    public async Task ExtractAsync(string archivePath, string destinationDirectory, IReadOnlyCollection<string>? members = null, CancellationToken cancellationToken = default)
     {
         if (!File.Exists(archivePath))
             throw new FileNotFoundException("Archive not found", archivePath);
 
         Directory.CreateDirectory(destinationDirectory);
 
+        var memberArgs = members is { Count: > 0 } ? " " + string.Join(" ", members.Select(m => $"\"{m}\"")) : "";
         var psi = new ProcessStartInfo
         {
             FileName = "tar",
-            Arguments = $"-xjf \"{archivePath}\" -C \"{destinationDirectory}\"",
+            Arguments = $"-xjf \"{archivePath}\" -C \"{destinationDirectory}\"{memberArgs}",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,

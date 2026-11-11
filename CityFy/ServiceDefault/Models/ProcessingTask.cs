@@ -17,6 +17,9 @@ namespace ServiceDefault.Models
         [BsonId]
         public string UploadId { get; set; } = null!;
 
+        // Owner of the data being processed (Spotify user id until a CityFy identity exists)
+        public string? UserId { get; set; }
+
         [BsonRepresentation(BsonType.String)]
         public ProcessingStatus Status { get; set; } = ProcessingStatus.Pending;
 
@@ -27,5 +30,8 @@ namespace ServiceDefault.Models
         public DateTime? CompletedAt { get; set; }
 
         public string? Message { get; set; }
+
+        /// <summary>Stable ErrorCodes value when Status is FAILED (Message is the technical detail).</summary>
+        public string? ErrorCode { get; set; }
     }
 }

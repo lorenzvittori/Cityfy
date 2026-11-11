@@ -1,114 +1,81 @@
-using System.IO;
 using CityFy.Retrieve.Dump.Spotify.Models;
+using CityFy.Retrieve.Dump.Spotify.Repositories;
 using CityFy.Retrieve.Dump.Spotify.Services;
 using Microsoft.AspNetCore.Mvc;
+using ServiceDefault.Errors;
 
 namespace CityFy.Retrieve.Dump.Spotify.Controllers
 {
+    // Errors are ProblemDetails with a stable "code" (ServiceDefault.Errors): CityFyException
+    // thrown by the services and unexpected exceptions are converted by the shared handler.
     [ApiController]
-    [ApiExplorerSettings(GroupName = "Debug-Dump-Spotify")]
     [Route("debug/upload")]
     public class DebugZipController : ControllerBase
     {
         private readonly IZipUploadService _zipService;
-        private readonly CityFy.Retrieve.Dump.Spotify.Repositories.IStreamingRepository _repo;
-        private readonly Microsoft.Extensions.Logging.ILogger<DebugZipController> _logger;
+        private readonly IStreamingRepository _repo;
 
-        public DebugZipController(IZipUploadService zipService, CityFy.Retrieve.Dump.Spotify.Repositories.IStreamingRepository repo, Microsoft.Extensions.Logging.ILogger<DebugZipController> logger)
+        public DebugZipController(IZipUploadService zipService, IStreamingRepository repo)
         {
             _zipService = zipService;
             _repo = repo;
-            _logger = logger;
         }
 
+        // POST debug/upload/zip (multipart: file, userId)
+        // Kestrel (30 MB) and multipart (128 MB) default limits are below DebugUpload:MaxUploadSizeBytes
+        // (200 MB, checked by the service with UPLOAD_TOO_LARGE): raised here, slightly above it.
         [HttpPost("zip")]
         [Consumes("multipart/form-data")]
-        public async Task<IActionResult> UploadZip([FromForm] UploadZipApi api)
-        {
-            var file = api?.File;
-            if (file == null)
-                return BadRequest("Missing file form field (use 'file')");
+        [RequestSizeLimit(220_000_000)]
+        [RequestFormLimits(MultipartBodyLengthLimit = 220_000_000)]
+        public async Task<IActionResult> UploadZip([FromForm] UploadZipApi api) =>
+            Ok(await _zipService.HandleZipUploadAsync(api.File!, api.UserId ?? ""));
 
-            try
-            {
-                var result = await _zipService.HandleZipUploadAsync(file);
-                return Ok(result);
-            }
-            catch (InvalidDataException)
-            {
-                return BadRequest("Invalid zip file");
-            }
-            catch (InvalidOperationException ex)
-            {
-                return BadRequest(ex.Message);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "DebugZipController error: {Message}", ex.Message);
-                return StatusCode(500, "Internal server error");
-            }
-        }
-
-        // GET debug/upload/tasks/{uploadId}
+        // GET debug/upload/tasks/{uploadId} — status of an upload (errorCode when FAILED)
         [HttpGet("tasks/{uploadId}")]
         public async Task<IActionResult> GetTaskByUploadId([FromRoute] string uploadId)
         {
-            if (string.IsNullOrWhiteSpace(uploadId)) return BadRequest("Missing uploadId");
-            try
-            {
-                var task = await _repo.GetTaskByUploadIdAsync(uploadId);
-                if (task == null) return NotFound();
-                return Ok(task);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "GetTaskByUploadId failed: {Message}", ex.Message);
-                return StatusCode(500);
-            }
+            var task = await _repo.GetTaskByUploadIdAsync(uploadId);
+            return task == null
+                ? this.CityFyProblem(ErrorCodes.UploadNotFound, $"Upload '{uploadId}' not found", StatusCodes.Status404NotFound)
+                : Ok(task);
         }
 
         // GET debug/upload/tasks?page=1&pageSize=20
         [HttpGet("tasks")]
-        public async Task<IActionResult> GetTasksPaged([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
-        {
-            try
-            {
-                var list = await _repo.GetTasksPagedAsync(page, pageSize);
-                return Ok(list);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "GetTasksPaged failed: {Message}", ex.Message);
-                return StatusCode(500);
-            }
-        }
+        public async Task<IActionResult> GetTasksPaged([FromQuery] int page = 1, [FromQuery] int pageSize = 20) =>
+            Ok(await _repo.GetTasksPagedAsync(page, pageSize));
 
         // GET debug/upload/collection/{collectionName}?page=1&pageSize=20&uploadId=...
         [HttpGet("collection/{collectionName}")]
-        public async Task<IActionResult> GetCollectionDocuments([FromRoute] string collectionName, [FromQuery] int page = 1, [FromQuery] int pageSize = 50, [FromQuery] string? uploadId = null)
+        public async Task<IActionResult> GetCollectionDocuments([FromRoute] string collectionName, [FromQuery] int page = 1, [FromQuery] int pageSize = 50, [FromQuery] string? uploadId = null) =>
+            Ok(await _repo.GetDocumentsPagedAsync(collectionName, page, pageSize, uploadId));
+
+        // POST debug/upload/migrate/{uploadId}?userId=...
+        // Copies a legacy 'streaming_history_{uploadId}' collection (pre listening_events)
+        // into 'listening_events' for the given user. Idempotent.
+        [HttpPost("migrate/{uploadId}")]
+        public async Task<IActionResult> MigrateLegacyUpload(
+            [FromRoute] string uploadId,
+            [FromQuery] string? userId,
+            [FromServices] IStreamingBlPersistenceService persistence,
+            CancellationToken ct)
         {
-            if (string.IsNullOrWhiteSpace(collectionName)) return BadRequest("Missing collectionName");
-            try
-            {
-                var docs = await _repo.GetDocumentsPagedAsync(collectionName, page, pageSize, uploadId);
-                return Ok(docs);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "GetCollectionDocuments failed: {Message}", ex.Message);
-                return StatusCode(500);
-            }
+            if (string.IsNullOrWhiteSpace(userId))
+                return this.CityFyProblem(ErrorCodes.UploadUserMissing, "userId is required", StatusCodes.Status400BadRequest);
+
+            var inserted = await persistence.MigrateLegacyUploadAsync(uploadId, userId.Trim(), ct);
+            return Ok(new { uploadId, userId, inserted });
         }
 
+        // GET debug/upload/zip/files/{id}
         [HttpGet("zip/files/{id}")]
         public IActionResult ListExtractedFiles(string id)
         {
-            if (string.IsNullOrWhiteSpace(id))
-                return BadRequest("Missing id");
-
             var result = _zipService.GetUploadResult(id);
-            if (result == null) return NotFound("Upload id not found or not extracted yet");
-            return Ok(result);
+            return result == null
+                ? this.CityFyProblem(ErrorCodes.UploadNotFound, $"Upload '{id}' not found or not extracted yet", StatusCodes.Status404NotFound)
+                : Ok(result);
         }
     }
 }

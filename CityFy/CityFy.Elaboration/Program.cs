@@ -1,41 +1,50 @@
+using CityFy.Elaboration.Clients;
+using CityFy.Elaboration.Consumers;
+using CityFy.Elaboration.Options;
 using CityFy.Elaboration.Repositories;
 using CityFy.Elaboration.Services;
+using Microsoft.Extensions.Options;
+using ServiceDefault.Hosting;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Logging, OpenTelemetry, health checks, service discovery
+builder.AddServiceDefaults();
+
 builder.Services.AddControllers();
-builder.Services.AddOpenApi();
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddCityFySwagger("Elaboration");
+builder.Services.AddCityFyCors(builder.Configuration);
+builder.Services.AddMemoryCache();
 
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("Local", policy =>
-    {
-        policy.WithOrigins("http://localhost:3000", "http://localhost:5068", "https://localhost:7028")
-              .AllowAnyHeader()
-              .AllowAnyMethod();
-    });
-});
+builder.Services.AddOptions<CityOptions>()
+    .BindConfiguration(CityOptions.SectionName)
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+builder.Services.AddOptions<MusicBrainzServiceOptions>()
+    .BindConfiguration(MusicBrainzServiceOptions.SectionName)
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
 
-builder.Services.Configure<ServiceDefault.Models.MongoOptions>(builder.Configuration.GetSection("Mongo"));
-builder.Services.AddSingleton(sp => sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ServiceDefault.Models.MongoOptions>>().Value);
+// Reads 'listening_events', writes 'city_models'
+builder.AddCityFyMongo();
+builder.Services.AddSingleton<IElaborationRepository, ElaborationRepository>();
 
-builder.Services.AddSingleton<IElaborationRepository, MongoElaborationRepository>();
-builder.Services.AddHttpClient<CityFy.Elaboration.Clients.ITagGraphClient, CityFy.Elaboration.Clients.HttpTagGraphClient>();
-builder.Services.AddSingleton<IElaborationService, ElaborationService>();
+// Service-to-service call: standard resilience (retry, circuit breaker, timeouts) is appropriate here
+builder.Services.AddHttpClient<IMusicBrainzClient, MusicBrainzClient>((sp, c) =>
+        c.BaseAddress = new Uri(sp.GetRequiredService<IOptions<MusicBrainzServiceOptions>>().Value.BaseUrl))
+    .AddStandardResilienceHandler();
+
+builder.Services.AddScoped<ICityService, CityService>();
+
+// RabbitMQ: BuildCityRequested (from the orchestrator) -> CityBuilt | CityBuildFailed
+builder.AddCityFyMessaging();
+builder.Services.AddMessageDeduplication();
+builder.Services.AddMessageConsumer<BuildCityRequestedConsumer>();
 
 var app = builder.Build();
 
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-    app.MapOpenApi();
-}
-
-app.UseHttpsRedirection();
-app.UseCors("Local");
+// Swagger (dev), HTTPS, CORS, /health and /alive
+app.UseServiceDefaults();
 app.UseAuthorization();
 app.MapControllers();
 app.Run();

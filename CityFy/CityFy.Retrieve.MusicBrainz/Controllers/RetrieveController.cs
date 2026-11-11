@@ -1,5 +1,6 @@
-using Microsoft.AspNetCore.Mvc;
 using CityFy.Retrieve.MusicBrainz.Services;
+using Microsoft.AspNetCore.Mvc;
+using ServiceDefault.Errors;
 
 namespace CityFy.Retrieve.MusicBrainz.Controllers;
 
@@ -7,44 +8,22 @@ namespace CityFy.Retrieve.MusicBrainz.Controllers;
 [Route("api/[controller]")]
 public class RetrieveController : ControllerBase
 {
-    private readonly RetrieveService _service;
-    private readonly ILogger<RetrieveController> _logger;
-    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly RetrieveRunner _runner;
 
-    public RetrieveController(RetrieveService service, ILogger<RetrieveController> logger, IServiceScopeFactory scopeFactory)
+    public RetrieveController(RetrieveRunner runner)
     {
-        _service = service;
-        _logger = logger;
-        _scopeFactory = scopeFactory;
+        _runner = runner;
     }
 
+    // POST api/retrieve — download/extract/import the latest dump in the background.
+    // Replaces all MusicBrainz data when it completes.
     [HttpPost]
-    public async Task<IActionResult> Retrieve(CancellationToken cancellationToken)
-    {
-        try
-        {
-            // Run retrieval in a background task that creates its own scope so scoped services (DbContext, repos)
-            // remain valid for the lifetime of the background operation.
-            _ = Task.Run(async () =>
-            {
-                using var scope = _scopeFactory.CreateScope();
-                var svc = scope.ServiceProvider.GetRequiredService<RetrieveService>();
-                try
-                {
-                    await svc.RunRetrieveAsync(cancellationToken);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Background retrieve failed");
-                }
-            });
+    public IActionResult Retrieve() =>
+        _runner.TryStart()
+            ? AcceptedAtAction(nameof(GetStatus), null, _runner.Status)
+            : this.CityFyProblem(ErrorCodes.MbRetrieveAlreadyRunning, "A retrieve is already queued or running", StatusCodes.Status409Conflict);
 
-            return Accepted();
-        }
-        catch (InvalidOperationException ex)
-        {
-            _logger.LogWarning(ex, "Retrieve failed");
-            return NotFound(ex.Message);
-        }
-    }
+    // GET api/retrieve/status
+    [HttpGet("status")]
+    public IActionResult GetStatus() => Ok(_runner.Status);
 }

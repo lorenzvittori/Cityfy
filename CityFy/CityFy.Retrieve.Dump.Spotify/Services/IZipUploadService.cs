@@ -6,7 +6,7 @@ namespace CityFy.Retrieve.Dump.Spotify.Services
 {
     public interface IZipUploadService
     {
-        Task<UploadResult> HandleZipUploadAsync(IFormFile file);
+        Task<UploadResult> HandleZipUploadAsync(IFormFile file, string userId);
         UploadResult? GetUploadResult(string id);
     }
 }

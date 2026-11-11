@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using CityFy.Retrieve.Dump.Spotify.Models;
+using ServiceDefault.Listening;
 
 namespace CityFy.Retrieve.Dump.Spotify.Mappers
 {
@@ -37,29 +38,28 @@ namespace CityFy.Retrieve.Dump.Spotify.Mappers
             };
         }
 
-        public StreamingMongo MapToMongo(StreamingBl bl, string uploadId)
+        public ListeningEvent? MapToListeningEvent(StreamingBl bl, string userId, string uploadId)
         {
             if (bl == null) throw new ArgumentNullException(nameof(bl));
 
-            return new StreamingMongo
+            // Only music: episodes/audiobooks have no spotify:track URI
+            if (string.IsNullOrWhiteSpace(bl.SpotifyTrackUri) ||
+                !bl.SpotifyTrackUri.StartsWith("spotify:track:", StringComparison.Ordinal))
+                return null;
+
+            // Platform, IP address and country are deliberately not carried over (personal data
+            // not needed downstream).
+            return new ListeningEvent
             {
-                Timestamp = bl.Timestamp,
-                Platform = bl.Platform,
+                UserId = userId,
+                PlayedAt = DateTime.SpecifyKind(bl.Timestamp, DateTimeKind.Utc),
                 MsPlayed = bl.MsPlayed,
-                Country = bl.Country,
-                IpAddress = bl.IpAddress,
+                Skipped = bl.Skipped,
+                TrackUri = bl.SpotifyTrackUri,
                 TrackName = bl.TrackName,
                 ArtistName = bl.ArtistName,
                 AlbumName = bl.AlbumName,
-                SpotifyTrackUri = bl.SpotifyTrackUri,
-                ReasonStart = bl.ReasonStart,
-                ReasonEnd = bl.ReasonEnd,
-                Shuffle = bl.Shuffle,
-                Skipped = bl.Skipped,
-                Offline = bl.Offline,
-                OfflineTimestamp = bl.OfflineTimestamp,
-                IncognitoMode = bl.IncognitoMode,
-                UploadId = uploadId
+                SourceRef = uploadId
             };
         }
     }

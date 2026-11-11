@@ -1,4 +1,4 @@
-namespace CityFy.RtrieveSpotify.Models
+namespace CityFy.Retrieve.Spotify.Models
 {
     public class SpotifyExternalUrlsDto
     {
@@ -54,9 +54,32 @@ namespace CityFy.RtrieveSpotify.Models
         public string? Uri { get; set; }
     }
 
-    public class SpotifyDiscographyDto
+    public class SpotifyUserDto
     {
-        public IEnumerable<SpotifyTrackDto> Tracks { get; set; } = Array.Empty<SpotifyTrackDto>();
-        public IEnumerable<SpotifyAlbumDto> Albums { get; set; } = Array.Empty<SpotifyAlbumDto>();
+        public string? Id { get; set; }
+        public string? DisplayName { get; set; }
+    }
+
+    public class SpotifyContextDto
+    {
+        public string? Type { get; set; }
+        public string? Uri { get; set; }
+        public string? Href { get; set; }
+    }
+
+    // Item of /me/player/recently-played
+    public class SpotifyPlayHistoryDto
+    {
+        public SpotifyTrackDto? Track { get; set; }
+        public DateTime PlayedAt { get; set; }
+        public SpotifyContextDto? Context { get; set; }
+    }
+
+    // Cursor-based paging object (recently-played)
+    public class SpotifyCursorPageDto<T>
+    {
+        public List<T> Items { get; set; } = new();
+        public string? Next { get; set; }
+        public int? Limit { get; set; }
     }
 }

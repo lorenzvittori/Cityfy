@@ -1,0 +1,104 @@
+.upload {
+  max-width: 640px;
+  margin: 32px auto;
+  padding: 0 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+
+  h1 {
+    margin: 0;
+  }
+}
+
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 44px 20px;
+  border: 2px dashed #cfc5b2;
+  border-radius: 12px;
+  background: #faf8f4;
+  cursor: pointer;
+  text-align: center;
+
+  &.dragging {
+    border-color: #8a6d3b;
+    background: #f3ede1;
+  }
+
+  input {
+    display: none;
+  }
+}
+
+.steps {
+  margin: 0;
+  padding-left: 22px;
+
+  li {
+    padding: 6px 0;
+    color: #aaa;
+
+    &.done {
+      color: #4a7a3a;
+    }
+
+    &.done::after {
+      content: ' ✓';
+    }
+
+    &.current {
+      color: #222;
+      font-weight: 600;
+    }
+  }
+}
+
+.success {
+  padding: 20px;
+  border-radius: 10px;
+  background: #f0f7ec;
+  border: 1px solid #c8e0bc;
+
+  h2 {
+    margin: 0 0 12px;
+    font-size: 18px;
+  }
+}
+
+.guide {
+  margin-top: 24px;
+  padding: 16px 20px;
+  border-radius: 10px;
+  background: #f7f3ec;
+
+  h2 {
+    margin: 0 0 8px;
+    font-size: 17px;
+  }
+
+  ol {
+    margin: 0;
+    padding-left: 20px;
+    line-height: 1.7;
+  }
+}
+
+.muted {
+  color: #777;
+}
+
+.small {
+  font-size: 13px;
+}
+
+.link {
+  align-self: flex-start;
+  border: 0;
+  background: none;
+  color: #8a6d3b;
+  text-decoration: underline;
+  cursor: pointer;
+}

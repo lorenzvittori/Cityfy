@@ -1,112 +1,83 @@
-using System.Text.Json;
+using System.Net;
 using System.Net.Http.Headers;
+using System.Text.Json;
+using CityFy.Retrieve.Spotify.Options;
 
-namespace CityFy.RtrieveSpotify.Clients
+namespace CityFy.Retrieve.Spotify.Clients
 {
     public abstract class SpotifyClientBase
     {
+        // Spotify returns snake_case JSON (duration_ms, played_at, ...): a case-insensitive
+        // match alone does not map underscores, so the naming policy is required.
+        protected static readonly JsonSerializerOptions JsonOptions = new()
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+            PropertyNameCaseInsensitive = true
+        };
+
+        private const int MaxAttempts = 5;
+        private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromSeconds(60);
+
+        protected readonly HttpClient _http;
         protected readonly string _apiBase;
         protected readonly int _pageSize;
-        protected readonly Microsoft.Extensions.Logging.ILogger _logger;
+        protected readonly ILogger _logger;
 
-        protected SpotifyClientBase(IConfiguration config, Microsoft.Extensions.Logging.ILogger logger)
+        protected SpotifyClientBase(HttpClient http, SpotifyOptions options, ILogger logger)
         {
-            _apiBase = config.GetValue<string>("Spotify:ApiBase") ?? "https://api.spotify.com/v1";
-            _pageSize = config.GetValue<int>("Spotify:PageSize", 50);
+            _http = http;
+            _apiBase = options.ApiBase.TrimEnd('/');
+            _pageSize = options.PageSize;
             _logger = logger;
         }
 
-        protected async Task<IEnumerable<T>> GetPagedAsync<T>(string token, string relativePath, string itemProperty)
-            where T : class
+        /// <summary>
+        /// GET on the Spotify Web API with retry on 429 (honouring Retry-After) and 5xx.
+        /// Throws <see cref="HttpRequestException"/> when the call ultimately fails, so callers
+        /// never mistake a partial result for a complete one.
+        /// </summary>
+        protected async Task<T?> GetAsync<T>(string token, string pathOrUrl, CancellationToken ct)
         {
-            var result = new List<T>();
+            var url = pathOrUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? pathOrUrl : $"{_apiBase}{pathOrUrl}";
+            var bearer = NormalizeToken(token);
 
-            using var http = new HttpClient();
-            // Normalize Authorization header: accept either "Bearer <token>" or raw token value
-            var authValue = token ?? string.Empty;
-            if (authValue.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-                authValue = authValue.Substring("Bearer ".Length);
-            http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", authValue);
-            http.DefaultRequestHeaders.Accept.Clear();
-            http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-
-            var url = relativePath.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? relativePath : $"{_apiBase}{relativePath}";
-
-            while (!string.IsNullOrEmpty(url))
+            for (var attempt = 1; ; attempt++)
             {
-                using var resp = await http.GetAsync(url);
-                if (!resp.IsSuccessStatusCode)
+                using var req = new HttpRequestMessage(HttpMethod.Get, url);
+                req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+                req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+                using var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+
+                if (resp.IsSuccessStatusCode)
                 {
-                    var body = await resp.Content.ReadAsStringAsync();
-                    _logger.LogError("Spotify API error GET {Url} -> {StatusCode}: {Body}", url, resp.StatusCode, body);
-                    break;
+                    await using var stream = await resp.Content.ReadAsStreamAsync(ct);
+                    return await JsonSerializer.DeserializeAsync<T>(stream, JsonOptions, ct);
                 }
 
-                await using var stream = await resp.Content.ReadAsStreamAsync();
-                using var doc = await JsonDocument.ParseAsync(stream);
-                var root = doc.RootElement;
+                var retriable = resp.StatusCode == HttpStatusCode.TooManyRequests || (int)resp.StatusCode >= 500;
+                var delay = resp.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds(Math.Pow(2, attempt));
 
-                if (root.TryGetProperty("items", out var items))
+                if (retriable && attempt < MaxAttempts && delay <= MaxRetryDelay)
                 {
-                    foreach (var item in items.EnumerateArray())
-                    {
-                        if (item.TryGetProperty(itemProperty, out var payload))
-                        {
-                            var raw = payload.GetRawText();
-                            var dto = JsonSerializer.Deserialize<T>(raw, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                            if (dto != null) result.Add(dto);
-                        }
-                    }
+                    _logger.LogWarning("Spotify API GET {Url} -> {StatusCode}, retry {Attempt}/{Max} in {Delay}",
+                        url, (int)resp.StatusCode, attempt, MaxAttempts - 1, delay);
+                    await Task.Delay(delay, ct);
+                    continue;
                 }
 
-                url = root.GetProperty("next").GetString();
+                var body = await resp.Content.ReadAsStringAsync(ct);
+                _logger.LogError("Spotify API error GET {Url} -> {StatusCode}: {Body}", url, (int)resp.StatusCode, body);
+                throw new HttpRequestException(
+                    $"Spotify API GET {url} failed with {(int)resp.StatusCode}: {body}", null, resp.StatusCode);
             }
-
-            return result;
         }
 
-        protected async Task<(IEnumerable<T> Items, string? Next)> GetPageAsync<T>(string token, string relativePath, string itemProperty)
-            where T : class
+        // Accept either "Bearer <token>" or the raw token value.
+        private static string NormalizeToken(string? token)
         {
-            var result = new List<T>();
-
-            using var http = new HttpClient();
-            var authValue = token ?? string.Empty;
-            if (authValue.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-                authValue = authValue.Substring("Bearer ".Length);
-            http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", authValue);
-            http.DefaultRequestHeaders.Accept.Clear();
-            http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-
-            var url = relativePath.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? relativePath : $"{_apiBase}{relativePath}";
-
-            using var resp = await http.GetAsync(url);
-            if (!resp.IsSuccessStatusCode)
-            {
-                var body = await resp.Content.ReadAsStringAsync();
-                _logger.LogError("Spotify API error GET {Url} -> {StatusCode}: {Body}", url, resp.StatusCode, body);
-                return (result, null);
-            }
-
-            await using var stream = await resp.Content.ReadAsStreamAsync();
-            using var doc = await JsonDocument.ParseAsync(stream);
-            var root = doc.RootElement;
-
-            if (root.TryGetProperty("items", out var items))
-            {
-                foreach (var item in items.EnumerateArray())
-                {
-                    if (item.TryGetProperty(itemProperty, out var payload))
-                    {
-                        var raw = payload.GetRawText();
-                        var dto = JsonSerializer.Deserialize<T>(raw, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                        if (dto != null) result.Add(dto);
-                    }
-                }
-            }
-
-            var next = root.GetProperty("next").GetString();
-            return (result, next);
+            var value = token?.Trim() ?? string.Empty;
+            return value.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? value["Bearer ".Length..].Trim() : value;
         }
     }
 }

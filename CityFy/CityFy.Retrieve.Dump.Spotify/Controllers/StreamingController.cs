@@ -1,5 +1,6 @@
 using CityFy.Retrieve.Dump.Spotify.Repositories;
 using Microsoft.AspNetCore.Mvc;
+using ServiceDefault.Errors;
 
 namespace CityFy.Retrieve.Dump.Spotify.Controllers;
 
@@ -15,21 +16,14 @@ public class StreamingController : ControllerBase
         _repo = repo;
     }
 
-    // GET api/upload/tasks/{uploadId}
+    // GET api/upload/tasks/{uploadId} — status of an upload (errorCode when FAILED)
     [HttpGet("tasks/{uploadId}")]
     public async Task<IActionResult> GetTaskByUploadId([FromRoute] string uploadId)
     {
-        if (string.IsNullOrWhiteSpace(uploadId)) return BadRequest("Missing uploadId");
-        try
-        {
-            var task = await _repo.GetTaskByUploadIdAsync(uploadId);
-            if (task == null) return NotFound();
-            return Ok(task);
-        }
-        catch (Exception)
-        {
-            return StatusCode(500);
-        }
+        var task = await _repo.GetTaskByUploadIdAsync(uploadId);
+        return task == null
+            ? this.CityFyProblem(ErrorCodes.UploadNotFound, $"Upload '{uploadId}' not found", StatusCodes.Status404NotFound)
+            : Ok(task);
     }
 
     // GET api/upload/tasks
@@ -37,20 +31,11 @@ public class StreamingController : ControllerBase
     [HttpGet("tasks")]
     public async Task<IActionResult> GetTasksPaged()
     {
-        int page = 1; int pageSize = 20;
-        if (Request.Headers.TryGetValue("X-Page", out var p) && int.TryParse(p.ToString(), out var pv)) page = Math.Max(1, pv);
-        if (Request.Headers.TryGetValue("X-Page-Size", out var ps) && int.TryParse(ps.ToString(), out var psz)) pageSize = Math.Max(1, psz);
-        try
-        {
-            var list = await _repo.GetTasksPagedAsync(page, pageSize);
-            Response.Headers["X-Page"] = page.ToString();
-            Response.Headers["X-Page-Size"] = pageSize.ToString();
-            return Ok(list);
-        }
-        catch (Exception)
-        {
-            return StatusCode(500);
-        }
+        var (page, pageSize) = ReadPaging(defaultPageSize: 20);
+        var list = await _repo.GetTasksPagedAsync(page, pageSize);
+        Response.Headers["X-Page"] = page.ToString();
+        Response.Headers["X-Page-Size"] = pageSize.ToString();
+        return Ok(list);
     }
 
     // GET api/upload/collections/{collectionName}
@@ -58,25 +43,19 @@ public class StreamingController : ControllerBase
     [HttpGet("collections/{collectionName}")]
     public async Task<IActionResult> GetCollectionDocuments([FromRoute] string collectionName)
     {
-        if (string.IsNullOrWhiteSpace(collectionName)) return BadRequest("Missing collectionName");
+        var (page, pageSize) = ReadPaging(defaultPageSize: 50);
+        string? uploadId = Request.Headers.TryGetValue("X-Upload-Id", out var uid) ? uid.ToString() : null;
 
-        int page = 1; int pageSize = 50;
-        if (Request.Headers.TryGetValue("X-Page", out var p) && int.TryParse(p.ToString(), out var pv)) page = Math.Max(1, pv);
-        if (Request.Headers.TryGetValue("X-Page-Size", out var ps) && int.TryParse(ps.ToString(), out var psz)) pageSize = Math.Max(1, psz);
+        var docs = await _repo.GetDocumentsPagedAsync(collectionName, page, pageSize, uploadId);
+        Response.Headers["X-Page"] = page.ToString();
+        Response.Headers["X-Page-Size"] = pageSize.ToString();
+        return Ok(docs);
+    }
 
-        string? uploadId = null;
-        if (Request.Headers.TryGetValue("X-Upload-Id", out var uid)) uploadId = uid.ToString();
-
-        try
-        {
-            var docs = await _repo.GetDocumentsPagedAsync(collectionName, page, pageSize, uploadId);
-            Response.Headers["X-Page"] = page.ToString();
-            Response.Headers["X-Page-Size"] = pageSize.ToString();
-            return Ok(docs);
-        }
-        catch (Exception)
-        {
-            return StatusCode(500);
-        }
+    private (int Page, int PageSize) ReadPaging(int defaultPageSize)
+    {
+        var page = Request.Headers.TryGetValue("X-Page", out var p) && int.TryParse(p.ToString(), out var pv) ? Math.Max(1, pv) : 1;
+        var pageSize = Request.Headers.TryGetValue("X-Page-Size", out var ps) && int.TryParse(ps.ToString(), out var psz) ? Math.Max(1, psz) : defaultPageSize;
+        return (page, pageSize);
     }
 }

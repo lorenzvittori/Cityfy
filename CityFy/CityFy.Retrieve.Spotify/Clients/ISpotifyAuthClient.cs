@@ -1,9 +1,13 @@
-using System.Threading.Tasks;
-using CityFy.RtrieveSpotify.Models;
-namespace CityFy.RtrieveSpotify.Clients
+using CityFy.Retrieve.Spotify.Models;
+
+namespace CityFy.Retrieve.Spotify.Clients
 {
     public interface ISpotifyAuthClient
     {
-        Task<TokenResponse?> ExchangeCodeForTokenAsync(string code, string redirectUri);
+        // authorization_code -> access + refresh token. Null on failure (logged).
+        Task<TokenResponse?> ExchangeCodeForTokenAsync(string code, CancellationToken ct = default);
+
+        // refresh_token -> new access token (and possibly a new refresh token). Null on failure (logged).
+        Task<TokenResponse?> RefreshAccessTokenAsync(string refreshToken, CancellationToken ct = default);
     }
 }

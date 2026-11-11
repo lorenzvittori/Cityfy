@@ -1,25 +1,32 @@
-using AutoMapper;
-using CityFy.RtrieveSpotify.Models;
+using CityFy.Retrieve.Spotify.Models;
+using ServiceDefault.Listening;
 
-namespace CityFy.Rtrieve.Spotify.Mappers
+namespace CityFy.Retrieve.Spotify.Mappers
 {
     public class SpotifyConverter : ISpotifyConverter
     {
-        private readonly IMapper _mapper;
-
-        public SpotifyConverter(IMapper mapper)
+        public IReadOnlyList<ListeningEvent> ToListeningEvents(IEnumerable<SpotifyPlayHistoryDto> plays, string userId, string jobId)
         {
-            _mapper = mapper;
-        }
-
-        public IEnumerable<Track> ConvertTracks(IEnumerable<SpotifyTrackDto> apiTracks)
-        {
-            return apiTracks.Select(t => _mapper.Map<Track>(t)).ToList();
-        }
-
-        public IEnumerable<Album> ConvertAlbums(IEnumerable<SpotifyAlbumDto> apiAlbums)
-        {
-            return apiAlbums.Select(a => _mapper.Map<Album>(a)).ToList();
+            return plays
+                .Where(p => p.Track?.Uri?.StartsWith("spotify:track:", StringComparison.Ordinal) == true)
+                .Select(p =>
+                {
+                    var track = p.Track!;
+                    var artist = track.Artists?.FirstOrDefault();
+                    return new ListeningEvent
+                    {
+                        UserId = userId,
+                        PlayedAt = DateTime.SpecifyKind(p.PlayedAt.ToUniversalTime(), DateTimeKind.Utc),
+                        TrackUri = track.Uri!,
+                        TrackName = track.Name,
+                        ArtistName = artist?.Name,
+                        ArtistUri = artist?.Uri,
+                        AlbumName = track.Album?.Name,
+                        ContextUri = p.Context?.Uri,
+                        SourceRef = jobId
+                    };
+                })
+                .ToList();
         }
     }
 }

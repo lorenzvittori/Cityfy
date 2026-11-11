@@ -1,46 +1,60 @@
-using CityFy.RtrieveSpotify.Models;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using CityFy.Retrieve.Spotify.Models;
+using CityFy.Retrieve.Spotify.Options;
+using Microsoft.Extensions.Options;
 
-namespace CityFy.RtrieveSpotify.Clients
+namespace CityFy.Retrieve.Spotify.Clients
 {
     public class SpotifyAuthClient : ISpotifyAuthClient
     {
-        private readonly string _tokenEndpoint = "https://accounts.spotify.com/api/token";
-        private readonly string _clientId;
-        private readonly string _clientSecret;
+        private readonly HttpClient _http;
+        private readonly ILogger<SpotifyAuthClient> _logger;
+        private readonly SpotifyOptions _options;
 
-        public SpotifyAuthClient(IConfiguration config)
+        public SpotifyAuthClient(HttpClient http, IOptions<SpotifyOptions> options, ILogger<SpotifyAuthClient> logger)
         {
-            _clientId = config.GetValue<string>("Spotify:ClientId") ?? string.Empty;
-            _clientSecret = config.GetValue<string>("Spotify:ClientSecret") ?? string.Empty;
+            _http = http;
+            _options = options.Value;
+            _logger = logger;
         }
 
-        public async Task<TokenResponse?> ExchangeCodeForTokenAsync(string code, string redirectUri)
-        {
-            using var http = new HttpClient();
-            var basic = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_clientId}:{_clientSecret}"));
-            http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", basic);
-
-            var form = new Dictionary<string, string>
+        public Task<TokenResponse?> ExchangeCodeForTokenAsync(string code, CancellationToken ct = default) =>
+            PostTokenAsync(new Dictionary<string, string>
             {
                 ["grant_type"] = "authorization_code",
                 ["code"] = code,
-                ["redirect_uri"] = redirectUri
-            };
+                ["redirect_uri"] = _options.RedirectUri
+            }, ct);
 
-            using var content = new FormUrlEncodedContent(form);
-            using var resp = await http.PostAsync(_tokenEndpoint, content);
-            var body = await resp.Content.ReadAsStringAsync();
+        public Task<TokenResponse?> RefreshAccessTokenAsync(string refreshToken, CancellationToken ct = default) =>
+            PostTokenAsync(new Dictionary<string, string>
+            {
+                ["grant_type"] = "refresh_token",
+                ["refresh_token"] = refreshToken
+            }, ct);
+
+        private async Task<TokenResponse?> PostTokenAsync(Dictionary<string, string> form, CancellationToken ct)
+        {
+            var basic = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_options.ClientId}:{_options.ClientSecret}"));
+
+            using var req = new HttpRequestMessage(HttpMethod.Post, $"{_options.AccountsBase.TrimEnd('/')}/api/token")
+            {
+                Content = new FormUrlEncodedContent(form)
+            };
+            req.Headers.Authorization = new AuthenticationHeaderValue("Basic", basic);
+
+            using var resp = await _http.SendAsync(req, ct);
+            var body = await resp.Content.ReadAsStringAsync(ct);
             if (!resp.IsSuccessStatusCode)
             {
+                _logger.LogError("Spotify token request ({GrantType}) failed -> {StatusCode}: {Body}",
+                    form["grant_type"], (int)resp.StatusCode, body);
                 return null;
             }
 
-            var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-            var token = JsonSerializer.Deserialize<TokenResponse>(body, opts);
-            return token;
+            return JsonSerializer.Deserialize<TokenResponse>(body);
         }
     }
 }

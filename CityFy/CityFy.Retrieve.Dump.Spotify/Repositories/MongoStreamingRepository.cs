@@ -1,9 +1,9 @@
-using System;
-using ServiceDefault.Models;
+using System.Globalization;
+using System.Runtime.CompilerServices;
+using CityFy.Retrieve.Dump.Spotify.Models;
 using MongoDB.Bson;
 using MongoDB.Driver;
-using System.Text.Json;
-using CityFy.Retrieve.Dump.Spotify.Models;
+using ServiceDefault.Models;
 
 namespace CityFy.Retrieve.Dump.Spotify.Repositories
 {
@@ -12,90 +12,49 @@ namespace CityFy.Retrieve.Dump.Spotify.Repositories
         private readonly IMongoDatabase _database;
         private readonly MongoOptions _options;
 
-        public MongoStreamingRepository(MongoOptions options, IConfiguration config)
+        public MongoStreamingRepository(IMongoDatabase database, MongoOptions options)
         {
+            _database = database;
             _options = options;
-            var client = new MongoClient(options.ConnectionString);
-            _database = client.GetDatabase(options.Database);
         }
 
-        public async Task EnsureCollectionExistsAsync(string collectionName)
+        private IMongoCollection<ProcessingTask> Tasks => _database.GetCollection<ProcessingTask>(_options.TaskCollectionName);
+
+        public async Task CreateTaskAsync(ProcessingTask task)
         {
-            var filter = new BsonDocument("name", collectionName);
-            var collections = await _database.ListCollectionsAsync(new ListCollectionsOptions { Filter = filter });
-            if (!await collections.AnyAsync())
-            {
-                await _database.CreateCollectionAsync(collectionName);
-            }
-        }
-
-        public async Task InsertManyAsync(string collectionName, IEnumerable<StreamingBl> documents, string uploadId)
-        {
-            var collection = _database.GetCollection<BsonDocument>(collectionName);
-
-            var docs = documents.Select(d =>
-            {
-                var json = JsonSerializer.Serialize(d);
-                var doc = BsonDocument.Parse(json);
-                if (!string.IsNullOrWhiteSpace(uploadId))
-                    doc.Set("_uploadId", uploadId);
-                return doc;
-            }).ToList();
-
-            if (docs.Count > 0)
-                await collection.InsertManyAsync(docs);
-        }
-
-        public async Task CreateTaskAsync(ServiceDefault.Models.ProcessingTask task)
-        {
-            var collection = _database.GetCollection<ServiceDefault.Models.ProcessingTask>(_options.TaskCollectionName);
-            var filter = Builders<ServiceDefault.Models.ProcessingTask>.Filter.Eq(t => t.UploadId, task.UploadId);
-            await collection.ReplaceOneAsync(filter, task, new ReplaceOptions { IsUpsert = true });
+            var filter = Builders<ProcessingTask>.Filter.Eq(t => t.UploadId, task.UploadId);
+            await Tasks.ReplaceOneAsync(filter, task, new ReplaceOptions { IsUpsert = true });
         }
 
         public async Task IncrementTaskInsertedAsync(string uploadId, int delta)
         {
-            var collection = _database.GetCollection<BsonDocument>(_options.TaskCollectionName);
-            var filter = Builders<BsonDocument>.Filter.Eq("UploadId", uploadId);
-            var update = Builders<BsonDocument>.Update.Inc("Inserted", delta);
-            await collection.UpdateOneAsync(filter, update);
+            var update = Builders<ProcessingTask>.Update.Inc(t => t.Inserted, delta);
+            await Tasks.UpdateOneAsync(t => t.UploadId == uploadId, update);
         }
 
-        public async Task UpdateTaskStatusAsync(string uploadId, ServiceDefault.Models.ProcessingStatus status, string? message = null)
+        public async Task UpdateTaskStatusAsync(string uploadId, ProcessingStatus status, string? message = null, string? errorCode = null)
         {
-            var collection = _database.GetCollection<ServiceDefault.Models.ProcessingTask>(_options.TaskCollectionName);
-            var filter = Builders<ServiceDefault.Models.ProcessingTask>.Filter.Eq(t => t.UploadId, uploadId);
-
-            var updateDef = Builders<ServiceDefault.Models.ProcessingTask>.Update.Set(t => t.Status, status);
+            var updateDef = Builders<ProcessingTask>.Update.Set(t => t.Status, status);
             if (!string.IsNullOrWhiteSpace(message))
                 updateDef = updateDef.Set(t => t.Message, message);
-            if (status == ServiceDefault.Models.ProcessingStatus.DONE || status == ServiceDefault.Models.ProcessingStatus.FAILED)
-            {
+            // The code is cleared when the task leaves FAILED (e.g. re-processed)
+            updateDef = updateDef.Set(t => t.ErrorCode, status == ProcessingStatus.FAILED ? errorCode ?? ServiceDefault.Errors.ErrorCodes.UploadProcessingFailed : null);
+            if (status is ProcessingStatus.DONE or ProcessingStatus.FAILED)
                 updateDef = updateDef.Set(t => t.CompletedAt, DateTime.UtcNow);
-            }
 
-            await collection.UpdateOneAsync(filter, updateDef);
+            await Tasks.UpdateOneAsync(t => t.UploadId == uploadId, updateDef);
         }
 
-        public async Task<IEnumerable<ServiceDefault.Models.ProcessingTask>> GetTasksByStatusAsync(ServiceDefault.Models.ProcessingStatus status)
-        {
-            var collection = _database.GetCollection<ServiceDefault.Models.ProcessingTask>(_options.TaskCollectionName);
-            var filter = Builders<ServiceDefault.Models.ProcessingTask>.Filter.Eq(t => t.Status, status);
-            return await collection.Find(filter).ToListAsync();
-        }
+        public async Task<IEnumerable<ProcessingTask>> GetTasksByStatusAsync(ProcessingStatus status) =>
+            await Tasks.Find(t => t.Status == status).ToListAsync();
 
-        public async Task<ServiceDefault.Models.ProcessingTask?> GetTaskByUploadIdAsync(string uploadId)
-        {
-            var collection = _database.GetCollection<ServiceDefault.Models.ProcessingTask>(_options.TaskCollectionName);
-            var filter = Builders<ServiceDefault.Models.ProcessingTask>.Filter.Eq(t => t.UploadId, uploadId);
-            return await collection.Find(filter).FirstOrDefaultAsync();
-        }
+        public async Task<ProcessingTask?> GetTaskByUploadIdAsync(string uploadId) =>
+            await Tasks.Find(t => t.UploadId == uploadId).FirstOrDefaultAsync();
 
-        public async Task<IEnumerable<ServiceDefault.Models.ProcessingTask>> GetTasksPagedAsync(int page, int pageSize)
+        public async Task<IEnumerable<ProcessingTask>> GetTasksPagedAsync(int page, int pageSize)
         {
-            var collection = _database.GetCollection<ServiceDefault.Models.ProcessingTask>(_options.TaskCollectionName);
             var skip = (Math.Max(1, page) - 1) * Math.Max(1, pageSize);
-            return await collection.Find(Builders<ServiceDefault.Models.ProcessingTask>.Filter.Empty).Skip(skip).Limit(Math.Max(1, pageSize)).ToListAsync();
+            return await Tasks.Find(Builders<ProcessingTask>.Filter.Empty).Skip(skip).Limit(Math.Max(1, pageSize)).ToListAsync();
         }
 
         public async Task<IEnumerable<string>> GetDocumentsPagedAsync(string collectionName, int page, int pageSize, string? providedUploadId = null)
@@ -109,5 +68,51 @@ namespace CityFy.Retrieve.Dump.Spotify.Repositories
             var docs = await collection.Find(filter).Skip(skip).Limit(Math.Max(1, pageSize)).ToListAsync();
             return docs.Select(d => d.ToJson());
         }
+
+        public async IAsyncEnumerable<IReadOnlyList<StreamingBl>> ReadLegacyUploadAsync(
+            string uploadId, int batchSize, [EnumeratorCancellation] CancellationToken ct)
+        {
+            var collection = _database.GetCollection<BsonDocument>(_options.CollectionPrefix + uploadId);
+            using var cursor = await collection.FindAsync(
+                FilterDefinition<BsonDocument>.Empty,
+                new FindOptions<BsonDocument> { BatchSize = batchSize },
+                ct);
+
+            while (await cursor.MoveNextAsync(ct))
+            {
+                var batch = cursor.Current.Select(FromLegacy).Where(b => b != null).Select(b => b!).ToList();
+                if (batch.Count > 0)
+                    yield return batch;
+            }
+        }
+
+        // Legacy documents were written as System.Text.Json(StreamingBl) -> BsonDocument.Parse,
+        // so field names are PascalCase and dates are ISO strings.
+        private static StreamingBl? FromLegacy(BsonDocument d)
+        {
+            var ts = d.GetValue("Timestamp", BsonNull.Value);
+            DateTime timestamp;
+            if (ts.IsBsonDateTime)
+                timestamp = ts.ToUniversalTime();
+            else if (ts.IsString && DateTime.TryParse(ts.AsString, CultureInfo.InvariantCulture,
+                         DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var parsed))
+                timestamp = parsed;
+            else
+                return null;
+
+            return new StreamingBl
+            {
+                Timestamp = DateTime.SpecifyKind(timestamp, DateTimeKind.Utc),
+                MsPlayed = d.GetValue("MsPlayed", 0).ToInt32(),
+                TrackName = Str(d, "TrackName"),
+                ArtistName = Str(d, "ArtistName"),
+                AlbumName = Str(d, "AlbumName"),
+                SpotifyTrackUri = Str(d, "SpotifyTrackUri"),
+                Skipped = d.GetValue("Skipped", false).ToBoolean(),
+            };
+        }
+
+        private static string? Str(BsonDocument d, string name) =>
+            d.TryGetValue(name, out var v) && v.IsString ? v.AsString : null;
     }
 }

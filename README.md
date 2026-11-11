@@ -12,6 +12,124 @@ L’obiettivo è costruire una “città dell’ascolto” partendo da dati prov
 
 ---
 
+## Avvio in locale (solution .NET)
+
+### Prerequisiti
+- .NET SDK 10
+- Docker Desktop **avviato**: MongoDB, SQL Server e RabbitMQ girano come container gestiti da Aspire.
+
+### Configurazione (una volta sola)
+Lo Spotify Client Secret è un parametro dell'AppHost. Si imposta con:
+
+```powershell
+dotnet user-secrets set "Parameters:spotify-client-secret" "<client secret>" --project CityFy\CityFy.AppHost
+```
+
+In alternativa, la dashboard di Aspire lo chiede al primo avvio. Le password di Mongo, SQL Server e RabbitMQ le genera Aspire e le salva negli user-secrets dell'AppHost: non vanno configurate a mano.
+
+### Avvio
+```powershell
+dotnet run --project CityFy\CityFy.AppHost
+```
+
+La dashboard di Aspire (l'URL compare nel terminale) mostra:
+- lo stato dei servizi;
+- i log;
+- le tracce distribuite;
+- gli endpoint di ogni servizio. Swagger è disponibile su `/swagger` di ciascun servizio.
+
+I container hanno lifetime *persistent* e volumi dati, quindi restano attivi e conservano i dati tra un avvio e l'altro. Mongo Express (interfaccia web per Mongo) è raggiungibile dalla dashboard.
+
+### API pubblica (CityFy.Api)
+Il frontend parla solo con **Api** (`https://localhost:7300`, Swagger su `/swagger`), passando dal proxy del dev server. Gli altri servizi sono interni.
+
+| Endpoint | Descrizione |
+|---|---|
+| `GET /api/v1/auth/login?returnUrl=/...` | Accesso con Spotify (navigazione del browser, non fetch) |
+| `GET /api/v1/auth/callback` | Redirect URI di Spotify: apre la sessione (cookie `cityfy.auth`) |
+| `POST /api/v1/auth/logout` | Chiude la sessione |
+| `GET /api/v1/me` | Utente corrente e ultimo aggiornamento da Spotify |
+| `GET /api/v1/city?period=all\|1y\|6m\|30d` | Città completa |
+| `GET /api/v1/districts`, `/districts/{id}` | Quartieri |
+| `GET /api/v1/genres`, `/genres/{genreId}` | Generi (blocchi) |
+| `GET /api/v1/artists/{artistId}` | Artista (edificio) |
+| `POST /api/v1/uploads`, `GET /api/v1/uploads/{id}` | Caricamento dell'export e suo stato |
+| `POST /api/v1/spotify/sync`, `GET /api/v1/spotify/sync/{id}` | Aggiornamento immediato da Spotify |
+| `GET /api/v1/pipeline/runs` | Stato delle costruzioni della città |
+
+**Configurazione del login Spotify.** Registrare sulla dashboard Spotify la redirect URI `http://127.0.0.1:4200/api/v1/auth/callback`. È già il valore di `Spotify:RedirectUri` negli appsettings di Retrieve.Spotify, e ngrok non serve. Spotify accetta `http` solo sull'indirizzo di loopback `127.0.0.1`, non su `localhost`.
+
+### Frontend (cityfy-web)
+L'app Angular (`cityfy-web/`, nella root del repo) parte insieme al resto con l'AppHost (risorsa **Web**). L'indirizzo è **http://127.0.0.1:4200**: va usato proprio `127.0.0.1`, non `localhost`, altrimenti il login Spotify non torna sulla stessa origine.
+
+Il dev server inoltra `/api` all'API (`proxy.conf.mjs`). In questo modo browser, callback di Spotify e cookie di sessione stanno sulla stessa origine e non serve configurare CORS.
+
+Per avviarlo da solo, con l'API già in esecuzione:
+```powershell
+cd cityfy-web
+npm install
+npm start
+```
+
+- **Test:** `npm run test:ci` (Vitest).
+- **Angular 21, non 22:** Angular 22 richiede Node ≥ 22.22, qui è installata la 22.17. Si può aggiornare dopo aver aggiornato Node.
+- **`.npmrc`:** contiene `legacy-peer-deps=true` per aggirare un bug di npm 10 nella risoluzione delle dipendenze peer.
+
+### Primo giro completo
+1. **Generi:** `POST /api/retrieve` su **RetrieveMusicBrainz**. Scarica e importa il dump MusicBrainz. Dura a lungo; lo stato si legge su `GET /api/retrieve/status`.
+2. **Ascolti:** si possono caricare in due modi:
+   - `POST /debug/upload/zip` su **RetriveDumpSpotify**, con il file dell'export e lo `userId`;
+   - login su `/debug/spotify/login` di **RetrieveSpotify**, poi `POST /debug/spotify/start/{userId}`.
+3. **Città:** si costruisce da sola. Circa 30 secondi dopo l'ultimo import con nuovi ascolti, l'**Orchestrator** fa ricostruire a **Elaboration** la città per i periodi `all`, `1y`, `6m` e `30d`.
+   - Avanzamento: `GET /api/pipeline/runs?userId=...` su **Orchestrator**.
+   - Risultato: `GET /api/elaboration/city/{userId}?period=all` su **Elaboration**.
+   - Ricostruzione senza nuovi import: `POST /debug/pipeline/trigger/{userId}` su **Orchestrator**.
+
+   Il retrieve Spotify parte da solo ogni 30 minuti per tutti gli account collegati (`Spotify:ScheduledRetrieveMinutes`).
+
+### Pipeline a eventi (RabbitMQ)
+```
+Dump.Spotify   upload ──► UploadReceived ──► import ──► ListeningImported ─┐
+Spotify        retrieve (manuale o programmato) ───────► ListeningImported ─┤
+Orchestrator   ListeningImported ──► debounce ──► BuildCityRequested ──────►│
+Elaboration    BuildCityRequested ──► CityBuilt | CityBuildFailed ─────────►│
+Orchestrator   pipeline run ──► DONE | FAILED ◄─────────────────────────────┘
+```
+
+**Struttura delle code:**
+- tutti i messaggi passano sull'exchange `cityfy.events`;
+- ogni consumer ha la propria coda, più tre code di ritardo per i retry (5 s, 30 s, 2 min) e una coda `.dlq` per i messaggi che falliscono tutti i tentativi;
+- i contratti dei messaggi sono in `ServiceDefault/Contracts`.
+
+Il pannello di gestione di RabbitMQ è raggiungibile dalla dashboard di Aspire.
+
+### Errori
+Tutti i servizi rispondono agli errori con `application/problem+json`, cioè ProblemDetails con due campi aggiuntivi:
+- `code`: codice stabile, definito in `ServiceDefault/Errors/ErrorCodes.cs`;
+- `traceId`: identificativo per ritrovare la richiesta nei log.
+
+Anche upload, job Spotify ed esecuzioni della pipeline espongono un `errorCode` quando falliscono. La città espone `warnings`.
+
+Il catalogo per la grafica e il frontend è in [ERRORI_UI.md](ERRORI_UI.md). Un test fallisce se un codice del backend non vi è documentato.
+
+### Test
+```powershell
+cd CityFy
+dotnet test --solution CityFy.slnx
+```
+
+I test di integrazione su Mongo usano Testcontainers: se Docker non è attivo vengono saltati.
+
+### Migration EF (Retrieve.MusicBrainz)
+Gli strumenti `dotnet ef` hanno bisogno di una connection string, perché quella vera la inietta l'AppHost solo a runtime:
+
+```powershell
+$env:ConnectionStrings__musicbrainz = "Server=localhost,1433;Database=musicbrainz;User Id=sa;Password=...;TrustServerCertificate=True"
+dotnet ef migrations add <Nome> --project CityFy\CityFy.Retrieve.MusicBrainz
+```
+
+---
+
 ## Architettura del progetto
 
 Il progetto è pensato come una pipeline in 3 parti:

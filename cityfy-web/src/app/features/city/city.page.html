@@ -1,0 +1,120 @@
+<div class="toolbar">
+  <div class="periods" role="tablist" aria-label="Periodo">
+    @for (p of periods; track p.value) {
+      <button type="button" role="tab" [class.active]="period() === p.value" [attr.aria-selected]="period() === p.value" (click)="setPeriod(p.value)">
+        {{ p.label }}
+      </button>
+    }
+  </div>
+</div>
+
+@switch (state().kind) {
+  @case ('loading') {
+    <div class="center"><div class="spinner" aria-label="Caricamento"></div></div>
+  }
+
+  @case ('ready') {
+    @if (state(); as s) {
+      @if (s.kind === 'ready') {
+        <div class="layout">
+          <div class="scene">
+            @for (w of s.city.warnings; track w) {
+              <div class="warning" [class.blocking]="w !== 'CITY_LOW_COVERAGE'">
+                {{ message(w).message }}
+                @if (w === 'CITY_LOW_COVERAGE') { <span class="muted">({{ s.city.summary.coveragePercent }}% degli ascolti)</span> }
+              </div>
+            }
+            <app-city-scene [city]="s.city" [selected]="selectedArtistId()" (artistSelected)="select($event)" />
+          </div>
+
+          <aside class="panel">
+            @if (selected(); as sel) {
+              <section class="artist">
+                <button type="button" class="close" aria-label="Chiudi" (click)="selectedArtistId.set(null)">×</button>
+                <span class="swatch" [style.background]="sel.color"></span>
+                <h2>{{ sel.building.name }}</h2>
+                <p class="muted">{{ sel.genre }} · quartiere {{ sel.district }}</p>
+                <dl>
+                  <dt>Ascolti</dt><dd>{{ sel.building.qualifiedPlays }}</dd>
+                  <dt>Tempo</dt><dd>{{ minutes(sel.building) }}</dd>
+                </dl>
+                @if (sel.building.genres.length) {
+                  <p class="tags">@for (g of sel.building.genres.slice(0, 5); track g) { <span>{{ g }}</span> }</p>
+                }
+                @if (sel.building.spotifyArtistUri) {
+                  <a [href]="spotifyUrl(sel.building.spotifyArtistUri)" target="_blank" rel="noopener">Apri su Spotify</a>
+                }
+              </section>
+            }
+
+            <section>
+              <h3>La tua città</h3>
+              <p class="muted">
+                {{ s.city.summary.placedArtists }} artisti · {{ s.city.summary.listeningHours }} ore di ascolto
+              </p>
+            </section>
+
+            <section>
+              <h3>Quartieri</h3>
+              <ul class="legend">
+                @for (d of s.city.districts; track d.districtId) {
+                  <li>
+                    <span class="swatch" [style.background]="d.color"></span>
+                    <span class="name">{{ d.name }}</span>
+                    <span class="value">{{ d.listeningIntensity }}%</span>
+                  </li>
+                }
+              </ul>
+            </section>
+          </aside>
+        </div>
+      }
+    }
+  }
+
+  @case ('building') {
+    <div class="center state">
+      <div class="crane" aria-hidden="true">🏗️</div>
+      @if (state(); as s) {
+        @if (s.kind === 'building' && s.run.status === 'Pending') {
+          <h2>Stiamo raccogliendo i tuoi ascolti…</h2>
+          <p class="muted">La costruzione partirà tra pochi secondi.</p>
+        } @else {
+          <h2>Stiamo costruendo la tua città…</h2>
+          <p class="muted">Può richiedere qualche minuto.</p>
+        }
+      }
+    </div>
+  }
+
+  @case ('failed') {
+    @if (state(); as s) {
+      @if (s.kind === 'failed') {
+        <div class="center state">
+          <app-error-message [code]="s.run.errorCode ?? 'CITY_BUILD_FAILED'" (retry)="load()" />
+        </div>
+      }
+    }
+  }
+
+  @case ('welcome') {
+    <div class="center state">
+      <h2>Ancora nessuna città</h2>
+      <p class="muted">Aggiorna gli ascolti da Spotify o carica il tuo export per iniziare.</p>
+      <div class="buttons">
+        <a class="button primary" routerLink="/upload">Carica l'export</a>
+      </div>
+      <p class="muted small">Gli ascolti recenti da Spotify arrivano anche da soli ogni 30 minuti.</p>
+    </div>
+  }
+
+  @case ('error') {
+    @if (state(); as s) {
+      @if (s.kind === 'error') {
+        <div class="center state">
+          <app-error-message [code]="s.error.code" [traceId]="s.error.traceId" (retry)="load()" />
+        </div>
+      }
+    }
+  }
+}

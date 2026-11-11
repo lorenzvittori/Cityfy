@@ -1,78 +1,91 @@
-using CityFy.Retrieve.Dump.Spotify.Repositories;
-using ServiceDefault.Models;
+using CityFy.Retrieve.Dump.Spotify.Mappers;
 using CityFy.Retrieve.Dump.Spotify.Models;
+using CityFy.Retrieve.Dump.Spotify.Repositories;
+using ServiceDefault.Listening;
+using ServiceDefault.Models;
 
 namespace CityFy.Retrieve.Dump.Spotify.Services
 {
     public class StreamingBlPersistenceService : IStreamingBlPersistenceService
     {
-        private readonly IStreamingRepository _repository;
-        private readonly Microsoft.Extensions.Logging.ILogger<StreamingBlPersistenceService> _logger;
+        private const int MigrationBatchSize = 1000;
 
-        public StreamingBlPersistenceService(IStreamingRepository repository, Microsoft.Extensions.Logging.ILogger<StreamingBlPersistenceService> logger)
+        private readonly IStreamingRepository _repository;
+        private readonly IListeningEventStore _store;
+        private readonly IStreamingMapper _mapper;
+        private readonly ILogger<StreamingBlPersistenceService> _logger;
+
+        public StreamingBlPersistenceService(
+            IStreamingRepository repository,
+            IListeningEventStore store,
+            IStreamingMapper mapper,
+            ILogger<StreamingBlPersistenceService> logger)
         {
             _repository = repository;
+            _store = store;
+            _mapper = mapper;
             _logger = logger;
         }
 
-        public async Task EnsureCollectionExistsAsync(string collectionName)
+        public async Task<int> PersistBufferAsync(string userId, IReadOnlyList<StreamingBl> buffer, string uploadId, CancellationToken ct = default)
         {
-            await _repository.EnsureCollectionExistsAsync(collectionName);
-        }
+            if (buffer.Count == 0) return 0;
 
-        public async Task<int> PersistBufferAsync(string collectionName, IEnumerable<StreamingBl> buffer, string uploadId)
-        {
-            if (buffer == null) return 0;
-            var list = buffer as IList<StreamingBl> ?? new List<StreamingBl>(buffer);
-            if (list.Count == 0) return 0;
+            var events = buffer
+                .Select(b => _mapper.MapToListeningEvent(b, userId, uploadId))
+                .Where(e => e != null)
+                .Select(e => e!)
+                .ToList();
 
-            try
+            // Errors propagate: the caller marks the task FAILED instead of reporting a partial import as DONE
+            var inserted = await _store.UpsertAsync(events, ListeningSources.Dump, ct);
+
+            if (inserted > 0)
             {
-                await _repository.InsertManyAsync(collectionName, list, uploadId);
-                // update task progress
                 try
                 {
-                    await _repository.IncrementTaskInsertedAsync(uploadId, list.Count);
+                    await _repository.IncrementTaskInsertedAsync(uploadId, inserted);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Failed to update task progress: {Message}", ex.Message);
+                    _logger.LogWarning(ex, "Failed to update task progress for {UploadId}", uploadId);
                 }
-                return list.Count;
             }
-            catch (Exception e)
-            {
-                _logger.LogError(e, "Failed to persist buffer in persistence service: {Message}", e.Message);
-                return 0;
-            }
+
+            return inserted;
         }
 
-        public async Task CreateTaskAsync(string uploadId)
-        {
-            var task = new ServiceDefault.Models.ProcessingTask
+        public Task CreateTaskAsync(string uploadId, string userId) =>
+            _repository.CreateTaskAsync(new ProcessingTask
             {
                 UploadId = uploadId,
-                Status = ServiceDefault.Models.ProcessingStatus.Pending,
+                UserId = userId,
+                Status = ProcessingStatus.Pending,
                 Inserted = 0,
                 StartedAt = DateTime.UtcNow
-            };
+            });
 
-            await _repository.CreateTaskAsync(task);
-        }
+        public Task UpdateTaskStatusAsync(string uploadId, ProcessingStatus status, string? message = null) =>
+            _repository.UpdateTaskStatusAsync(uploadId, status, message);
 
-        public async Task IncrementTaskProgressAsync(string uploadId, int delta)
+        public Task<IEnumerable<ProcessingTask>> GetTasksByStatusAsync(ProcessingStatus status) =>
+            _repository.GetTasksByStatusAsync(status);
+
+        public async Task<int> MigrateLegacyUploadAsync(string uploadId, string userId, CancellationToken ct = default)
         {
-            await _repository.IncrementTaskInsertedAsync(uploadId, delta);
-        }
+            var total = 0;
+            await foreach (var batch in _repository.ReadLegacyUploadAsync(uploadId, MigrationBatchSize, ct))
+            {
+                var events = batch
+                    .Select(b => _mapper.MapToListeningEvent(b, userId, uploadId))
+                    .Where(e => e != null)
+                    .Select(e => e!)
+                    .ToList();
+                total += await _store.UpsertAsync(events, ListeningSources.Dump, ct);
+            }
 
-        public async Task UpdateTaskStatusAsync(string uploadId, ServiceDefault.Models.ProcessingStatus status, string? message = null)
-        {
-            await _repository.UpdateTaskStatusAsync(uploadId, status, message);
-        }
-
-        public async Task<IEnumerable<ServiceDefault.Models.ProcessingTask>> GetTasksByStatusAsync(ServiceDefault.Models.ProcessingStatus status)
-        {
-            return await _repository.GetTasksByStatusAsync(status);
+            _logger.LogInformation("Legacy upload {UploadId} migrated for user {UserId}: {Inserted} new plays", uploadId, userId, total);
+            return total;
         }
     }
 }

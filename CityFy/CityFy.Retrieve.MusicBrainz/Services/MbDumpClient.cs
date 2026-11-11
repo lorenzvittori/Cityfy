@@ -55,35 +55,30 @@ public class MbDumpClient
         }
     }
 
-    // Cerca la directory export più recente (yyyyMMdd-HHmmss) e poi mbdump.tar.bz2 al suo interno
-    public async Task<string?> FindLatestDumpAsync(CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Most recent export directory (yyyyMMdd-HHmmss) that contains all the requested archives.
+    /// Newer directories that are still incomplete (upload in progress) are skipped.
+    /// </summary>
+    public async Task<string?> FindLatestDumpDirectoryAsync(IReadOnlyCollection<string> requiredFiles, CancellationToken cancellationToken = default)
     {
         var html = await _http.GetStringAsync("", cancellationToken);
-        var matches = Regex.Matches(html, "href=[\"'](?<dir>\\d{8}-\\d{6}/)[\"']", RegexOptions.IgnoreCase);
-        DateTime? bestDate = null;
-        string? bestDir = null;
-        foreach (Match m in matches)
+        var dirs = Regex.Matches(html, "href=[\"'](?<dir>\\d{8}-\\d{6})/[\"']", RegexOptions.IgnoreCase)
+            .Select(m => m.Groups["dir"].Value)
+            .Where(d => DateTime.TryParseExact(d, "yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out _))
+            .Distinct()
+            .OrderByDescending(d => d, StringComparer.Ordinal);
+
+        foreach (var dir in dirs.Take(3))
         {
-            var dir = m.Groups["dir"].Value.TrimEnd('/');
-            if (DateTime.TryParseExact(dir, "yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var dt))
-            {
-                if (!bestDate.HasValue || dt > bestDate.Value)
-                {
-                    bestDate = dt;
-                    bestDir = dir;
-                }
-            }
+            var dirHtml = await _http.GetStringAsync(dir + "/", cancellationToken);
+            if (requiredFiles.All(f => dirHtml.Contains($"\"{f}\"", StringComparison.OrdinalIgnoreCase) ||
+                                       dirHtml.Contains($"'{f}'", StringComparison.OrdinalIgnoreCase)))
+                return dir;
+
+            _logger.LogInformation("Dump directory {Dir} is incomplete, trying the previous one", dir);
         }
 
-        if (bestDir == null)
-            return null;
-
-        var dirHtml = await _http.GetStringAsync(bestDir + "/", cancellationToken);
-        var fileMatch = Regex.Match(dirHtml, "href=[\"'](?<file>mbdump\\.tar\\.bz2)[\"']", RegexOptions.IgnoreCase);
-        if (!fileMatch.Success)
-            return null;
-
-        return bestDir + "/" + fileMatch.Groups["file"].Value;
+        return null;
     }
 
     // Scarica il file specificato dalla base URL in modo streaming, con report di progresso (percentuale)

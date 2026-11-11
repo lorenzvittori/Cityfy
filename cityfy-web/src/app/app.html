@@ -1,0 +1,40 @@
+@if (auth.me(); as me) {
+  <header class="topbar">
+    <a class="brand" routerLink="/city">Cityfy</a>
+    <nav>
+      <a routerLink="/city" routerLinkActive="active">Città</a>
+      <a routerLink="/upload" routerLinkActive="active">Carica export</a>
+    </nav>
+    <div class="spacer"></div>
+
+    @switch (sync().kind) {
+      @case ('running') { <span class="sync muted">Aggiornamento da Spotify…</span> }
+      @case ('done') {
+        @if (sync(); as s) {
+          @if (s.kind === 'done') {
+            <span class="sync muted">{{ s.newPlays > 0 ? s.newPlays + ' nuovi ascolti: la città si aggiornerà a breve' : 'Nessun ascolto nuovo' }}</span>
+          }
+        }
+      }
+      @default {
+        <button type="button" class="ghost" (click)="syncNow()">Aggiorna da Spotify</button>
+      }
+    }
+
+    <span class="user">{{ me.displayName ?? me.userId }}</span>
+    <button type="button" class="ghost" (click)="logout()">Esci</button>
+  </header>
+
+  @if (sync(); as s) {
+    @if (s.kind === 'error') {
+      <!-- SPOTIFY_REAUTH_REQUIRED and the other sync errors: persistent banner with the action -->
+      <div class="banner">
+        <app-error-message [code]="s.code" [compact]="true" (retry)="syncNow()" />
+      </div>
+    }
+  }
+}
+
+<main>
+  <router-outlet />
+</main>

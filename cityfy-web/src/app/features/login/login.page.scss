@@ -1,0 +1,27 @@
+.login {
+  max-width: 460px;
+  margin: 12vh auto 0;
+  padding: 0 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  text-align: center;
+
+  h1 {
+    margin: 0;
+    font-size: 44px;
+    letter-spacing: -1px;
+  }
+
+  .lead {
+    margin: 0;
+    font-size: 17px;
+    color: #4a4a4a;
+  }
+
+  .hint {
+    margin: 0;
+    font-size: 13px;
+    color: #777;
+  }
+}
