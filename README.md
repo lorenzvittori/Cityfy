@@ -180,6 +180,12 @@ dotnet ef migrations add <Nome> --project CityFy\CityFy.Retrieve.MusicBrainz
 
 ---
 
+## Deploy
+
+Pubblicazione a costo zero su una macchina gratuita di Oracle Cloud, con il catalogo su Azure SQL gratuito. GitHub Actions esegue i test e pubblica a ogni push su `main`. La guida completa è in [DEPLOY.md](DEPLOY.md).
+
+---
+
 ## Architettura del progetto
 
 Il progetto è pensato come una pipeline in 3 parti:

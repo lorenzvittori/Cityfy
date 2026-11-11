@@ -1,0 +1,152 @@
+# Production: the same resources as CityFy.AppHost, on one machine (Oracle Cloud Always Free, ARM).
+#   - public: only "web" (Caddy, ports 80/443): Angular + /api -> Api, HTTPS certificate included;
+#   - internal network: the 7 .NET services, MongoDB, RabbitMQ;
+#   - SQL Server (MusicBrainz catalog) is outside: Azure SQL Database free offer
+#     (SQL Server has no ARM image).
+# Values come from .env (written by .github/workflows/deploy.yml from the GitHub secrets/variables;
+# see .env.example). Keep it in sync with the AppHost when services or settings change.
+#
+# Configuration names are the ones the AppHost injects in development:
+#   ConnectionStrings__<name>          connection strings (cityfy, musicbrainz, broker)
+#   services__<Resource>__http__0      service discovery ("https+http://<Resource>" in the code)
+
+x-dotnet: &dotnet
+  restart: unless-stopped
+  depends_on:
+    mongo: { condition: service_healthy }
+    broker: { condition: service_healthy }
+    init-volumes: { condition: service_completed_successfully }
+  logging:
+    driver: json-file
+    options: { max-size: 10m, max-file: "3" }
+
+x-env: &env
+  ASPNETCORE_ENVIRONMENT: Production
+  ConnectionStrings__cityfy: mongodb://cityfy:${MONGO_PASSWORD}@mongo:27017/cityfy?authSource=admin
+  ConnectionStrings__broker: amqp://cityfy:${RABBITMQ_PASSWORD}@broker:5672
+  ConnectionStrings__musicbrainz: ${MUSICBRAINZ_SQL_CONNECTION}
+
+services:
+  # --- Infrastructure ----------------------------------------------------------------------
+
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: cityfy
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+    volumes: [mongo-data:/data/db]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      retries: 12
+
+  broker:
+    image: rabbitmq:4-alpine
+    restart: unless-stopped
+    hostname: broker # RabbitMQ stores its data per node name
+    environment:
+      RABBITMQ_DEFAULT_USER: cityfy
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    volumes: [rabbitmq-data:/var/lib/rabbitmq]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      retries: 12
+
+  # The .NET images run as the non-root user 1654: give it the data volumes once
+  init-volumes:
+    image: busybox
+    command: chown -R 1654:1654 /keys-api /keys-spotify /uploads /mb-dumps
+    volumes:
+      - api-keys:/keys-api
+      - spotify-keys:/keys-spotify
+      - uploads:/uploads
+      - mb-dumps:/mb-dumps
+
+  # --- Services ------------------------------------------------------------------------------
+
+  api:
+    <<: *dotnet
+    image: ${REGISTRY}/cityfy-api:${TAG}
+    environment:
+      <<: *env
+      Frontend__BaseUrl: https://${DOMAIN}
+      DataProtection__KeysPath: /data/keys # session cookie keys: survive deploys
+      services__Elaboration__http__0: http://elaboration:8080
+      services__Orchestrator__http__0: http://orchestrator:8080
+      services__RetrieveSpotify__http__0: http://retrieve-spotify:8080
+      services__RetrieveDumpSpotify__http__0: http://retrieve-dump-spotify:8080
+      services__RetrieveMusicBrainz__http__0: http://retrieve-musicbrainz:8080
+    volumes: [api-keys:/data/keys]
+
+  elaboration:
+    <<: *dotnet
+    image: ${REGISTRY}/cityfy-elaboration:${TAG}
+    environment:
+      <<: *env
+      services__RetrieveMusicBrainz__http__0: http://retrieve-musicbrainz:8080
+
+  orchestrator:
+    <<: *dotnet
+    image: ${REGISTRY}/cityfy-orchestrator:${TAG}
+    environment: *env
+
+  retrieve-spotify:
+    <<: *dotnet
+    image: ${REGISTRY}/cityfy-retrieve-spotify:${TAG}
+    environment:
+      <<: *env
+      Spotify__ClientSecret: ${SPOTIFY_CLIENT_SECRET}
+      Spotify__RedirectUri: https://${DOMAIN}/api/v1/auth/callback
+      DataProtection__KeysPath: /data/keys # encrypts the stored refresh tokens: must never be lost
+    volumes: [spotify-keys:/data/keys]
+
+  retrieve-dump-spotify:
+    <<: *dotnet
+    image: ${REGISTRY}/cityfy-retrieve-dump-spotify:${TAG}
+    environment:
+      <<: *env
+      DebugUpload__RootPath: /data/uploads
+    volumes: [uploads:/data/uploads]
+
+  retrieve-musicbrainz:
+    <<: *dotnet
+    image: ${REGISTRY}/cityfy-retrieve-musicbrainz:${TAG}
+    environment:
+      <<: *env
+      DumpStorage__RootPath: /data/mb-dumps # the dump archives are several GB
+    volumes: [mb-dumps:/data/mb-dumps]
+
+  # --- Public entry point ------------------------------------------------------------------
+
+  web:
+    image: ${REGISTRY}/cityfy-web:${TAG}
+    restart: unless-stopped
+    depends_on: [api]
+    environment:
+      DOMAIN: ${DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - caddy-data:/data # certificates
+      - caddy-config:/config
+
+  # --- Tools (not started by "up"): calls to the internal services ---------------------------
+  # e.g. MusicBrainz import: docker compose run --rm tools -X POST http://retrieve-musicbrainz:8080/api/retrieve
+  tools:
+    image: curlimages/curl
+    profiles: [tools]
+    entrypoint: ["curl", "-sS"]
+
+volumes:
+  mongo-data:
+  rabbitmq-data:
+  api-keys:
+  spotify-keys:
+  uploads:
+  mb-dumps:
+  caddy-data:
+  caddy-config:

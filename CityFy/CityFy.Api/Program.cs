@@ -1,6 +1,7 @@
 using CityFy.Api.Auth;
 using CityFy.Api.Clients;
 using CityFy.Api.Options;
+using Microsoft.AspNetCore.DataProtection;
 using ServiceDefault.Hosting;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -12,6 +13,12 @@ builder.Services.AddControllers();
 builder.Services.AddCityFySwagger("CityFy");
 builder.Services.AddCityFyCors(builder.Configuration);
 builder.Services.AddCityFyAuth(builder.Environment);
+
+// Encrypts the session cookie. In a container the key ring must live on a persistent volume
+// (DataProtection:KeysPath), otherwise every deploy/restart logs everybody out.
+var dataProtection = builder.Services.AddDataProtection().SetApplicationName("CityFy.Api");
+if (builder.Configuration["DataProtection:KeysPath"] is { Length: > 0 } keysPath)
+    dataProtection.PersistKeysToFileSystem(new DirectoryInfo(keysPath));
 
 builder.Services.AddOptions<FrontendOptions>()
     .BindConfiguration(FrontendOptions.SectionName)

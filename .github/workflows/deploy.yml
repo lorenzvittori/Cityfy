@@ -1,0 +1,177 @@
+# Deploy to the production server (Oracle Cloud Always Free, ARM64) — see DEPLOY.md.
+#   1. CI (build + all tests);
+#   2. ARM64 images on GitHub Container Registry, tagged with the commit sha:
+#      .NET services with the SDK container support (no Dockerfile, no emulation needed),
+#      RetrieveMusicBrainz and the frontend (Caddy) with their Dockerfiles in deploy/;
+#   3. over SSH: docker-compose.yml + .env (from the secrets) on the server, pull, up.
+# Runs on every push to main and by hand. Does nothing until the DEPLOY_HOST variable is set.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    if: vars.DEPLOY_HOST != ''
+    uses: ./.github/workflows/ci.yml
+
+  images:
+    needs: ci
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Registry name (lowercase owner)
+        run: |
+          echo "OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+          echo "REGISTRY=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      # Images built by the SDK straight from the arm64 base image (no Docker build, no QEMU)
+      - name: .NET services
+        working-directory: CityFy
+        run: |
+          set -e
+          for pair in \
+            api:CityFy.Api \
+            elaboration:CityFy.Elaboration \
+            orchestrator:CityFy.Orchestrator \
+            retrieve-spotify:CityFy.Retrieve.Spotify \
+            retrieve-dump-spotify:CityFy.Retrieve.Dump.Spotify
+          do
+            name="${pair%%:*}"; project="${pair#*:}"
+            echo "::group::$name"
+            dotnet publish "$project/$project.csproj" -c Release -r linux-arm64 \
+              -t:PublishContainer \
+              -p:ContainerRegistry=ghcr.io \
+              -p:ContainerRepository="$OWNER/cityfy-$name" \
+              -p:ContainerImageTag="$TAG"
+            echo "::endgroup::"
+          done
+
+      - uses: docker/setup-qemu-action@v3 # RUN apt-get of the MusicBrainz image runs as arm64
+      - uses: docker/setup-buildx-action@v3
+
+      - name: RetrieveMusicBrainz (needs bzip2)
+        run: |
+          dotnet publish CityFy/CityFy.Retrieve.MusicBrainz/CityFy.Retrieve.MusicBrainz.csproj \
+            -c Release -r linux-arm64 --self-contained false -o publish/musicbrainz
+          docker buildx build --platform linux/arm64 --push \
+            -f deploy/musicbrainz.Dockerfile \
+            -t "$REGISTRY/cityfy-retrieve-musicbrainz:$TAG" \
+            publish/musicbrainz
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: cityfy-web/package-lock.json
+
+      - name: Frontend (Caddy)
+        run: |
+          (cd cityfy-web && npm ci && npx ng build)
+          docker buildx build --platform linux/arm64 --push \
+            -f deploy/web.Dockerfile \
+            -t "$REGISTRY/cityfy-web:$TAG" \
+            .
+
+  deploy:
+    needs: images
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      HOST: ${{ vars.DEPLOY_HOST }}
+      USER_NAME: ${{ vars.DEPLOY_USER }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the configuration
+        env:
+          DOMAIN: ${{ vars.DOMAIN }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          MONGO_PASSWORD: ${{ secrets.MONGO_PASSWORD }}
+          RABBITMQ_PASSWORD: ${{ secrets.RABBITMQ_PASSWORD }}
+          MUSICBRAINZ_SQL_CONNECTION: ${{ secrets.MUSICBRAINZ_SQL_CONNECTION }}
+          SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
+        run: |
+          missing=0
+          for v in HOST USER_NAME DOMAIN SSH_KEY MONGO_PASSWORD RABBITMQ_PASSWORD MUSICBRAINZ_SQL_CONNECTION SPOTIFY_CLIENT_SECRET; do
+            if [ -z "${!v}" ]; then echo "::error::$v is not set (see DEPLOY.md)"; missing=1; fi
+          done
+          exit $missing
+
+      # Single-quoted values: the passwords must not contain single quotes
+      - name: Write .env
+        env:
+          DOMAIN: ${{ vars.DOMAIN }}
+          MONGO_PASSWORD: ${{ secrets.MONGO_PASSWORD }}
+          RABBITMQ_PASSWORD: ${{ secrets.RABBITMQ_PASSWORD }}
+          MUSICBRAINZ_SQL_CONNECTION: ${{ secrets.MUSICBRAINZ_SQL_CONNECTION }}
+          SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
+        run: |
+          umask 077
+          {
+            printf "REGISTRY='%s'\n" "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}"
+            printf "TAG='%s'\n" "$GITHUB_SHA"
+            printf "DOMAIN='%s'\n" "$DOMAIN"
+            printf "MONGO_PASSWORD='%s'\n" "$MONGO_PASSWORD"
+            printf "RABBITMQ_PASSWORD='%s'\n" "$RABBITMQ_PASSWORD"
+            printf "MUSICBRAINZ_SQL_CONNECTION='%s'\n" "$MUSICBRAINZ_SQL_CONNECTION"
+            printf "SPOTIFY_CLIENT_SECRET='%s'\n" "$SPOTIFY_CLIENT_SECRET"
+          } > deploy/.env
+
+      - name: SSH key
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
+
+      - name: Copy compose and .env
+        run: |
+          ssh -i ~/.ssh/id_deploy "$USER_NAME@$HOST" 'mkdir -p ~/cityfy'
+          scp -i ~/.ssh/id_deploy deploy/docker-compose.yml deploy/.env "$USER_NAME@$HOST:~/cityfy/"
+          ssh -i ~/.ssh/id_deploy "$USER_NAME@$HOST" 'chmod 600 ~/cityfy/.env'
+
+      # The job token can read the (private) images while the job runs: login only for the pull
+      - name: Pull and start
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$GHCR_TOKEN" | ssh -i ~/.ssh/id_deploy "$USER_NAME@$HOST" \
+            "docker login ghcr.io -u '${{ github.actor }}' --password-stdin"
+          ssh -i ~/.ssh/id_deploy "$USER_NAME@$HOST" '
+            cd ~/cityfy
+            docker compose pull --quiet
+            docker compose up -d --remove-orphans
+            rc=$?
+            docker logout ghcr.io
+            docker image prune -f
+            exit $rc'
+
+      - name: Status
+        if: always()
+        run: ssh -i ~/.ssh/id_deploy "$USER_NAME@$HOST" 'cd ~/cityfy && docker compose ps' || true

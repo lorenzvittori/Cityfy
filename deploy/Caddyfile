@@ -1,0 +1,24 @@
+# The only public service. Browser, Spotify callback (/api/v1/auth/callback) and session cookie
+# live on this single origin, as in development (proxy.conf.mjs).
+{$DOMAIN} {
+	encode zstd gzip
+
+	# Api: the only backend reachable from outside (the other services stay on the internal network)
+	handle /api/* {
+		reverse_proxy api:8080
+	}
+
+	# Angular: static files, unknown paths -> index.html (client-side routes like /city, /account)
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+}
