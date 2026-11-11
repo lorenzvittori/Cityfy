@@ -52,7 +52,9 @@ var retrieveSpotify = builder.AddProject<Projects.CityFy_Retrieve_Spotify>("Retr
 var retrieveMusicBrainz = builder.AddProject<Projects.CityFy_Retrieve_MusicBrainz>("RetrieveMusicBrainz")
     .WithHttpHealthCheck("/health")
     .WithReference(musicBrainzDb)
-    .WaitFor(musicBrainzDb);
+    .WaitFor(musicBrainzDb)
+    .WithReference(broker)   // publishes CatalogUpdated after an import
+    .WaitFor(broker);
 
 // Elaboration calls the MusicBrainz read API (artist resolve, genre graph) via service discovery
 var elaboration = builder.AddProject<Projects.CityFy_Elaboration>("Elaboration")

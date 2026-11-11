@@ -153,6 +153,45 @@ public class CityBuilderTests
     }
 
     [Fact]
+    public void BeyondMaxDistricts_TheLeastListenedAreMergedIntoOtherGenres()
+    {
+        var options = new CityOptions { MaxDistricts = 2 };
+        var city = new CityBuilder(options).Build("user1", "all", null, Now,
+            [Plays("R", 30), Plays("E", 20), Plays("J", 10)],
+            new Dictionary<string, ResolvedArtist>
+            {
+                ["R"] = Artist("R", "mb-r", (1, "rock", 1)),
+                ["E"] = Artist("E", "mb-e", (4, "electronic", 1)),
+                ["J"] = Artist("J", "mb-j", (99, "jazz", 1)), // genre without parents: its own district
+            },
+            new GenreHierarchy(GenreHierarchyTests.SampleGraph()));
+
+        // 3 districts, max 2: rock (30) stays, electronic (20) and jazz (10) are merged
+        Assert.Equal(["rock", CityBuilder.OtherDistrictId], city.Districts.Select(d => d.DistrictId));
+        var other = city.Districts[1];
+        Assert.Equal("Altri generi", other.Name);
+        Assert.Equal(2, other.Blocks.Count);
+        Assert.Equal(30, other.Score);
+        Assert.Equal(100, city.Districts.Sum(d => d.ListeningIntensity), 1);
+    }
+
+    [Fact]
+    public void SpotifyLink_ComesFromThePlays_ElseFromMusicBrainz()
+    {
+        var city = Build(
+            [Plays("Api", 5, uri: "spotify:artist:fromPlays"), Plays("Export", 3)],
+            new()
+            {
+                ["Api"] = Artist("Api", "mb-api", (1, "rock", 1)) with { SpotifyArtistId = "fromMusicBrainz1" },
+                ["Export"] = Artist("Export", "mb-export", (1, "rock", 1)) with { SpotifyArtistId = "fromMusicBrainz2" },
+            });
+
+        var buildings = city.Districts.SelectMany(d => d.Blocks).SelectMany(b => b.Buildings).ToDictionary(b => b.Name);
+        Assert.Equal("spotify:artist:fromPlays", buildings["Api"].SpotifyArtistUri);       // the export has no artist ids:
+        Assert.Equal("spotify:artist:fromMusicBrainz2", buildings["Export"].SpotifyArtistUri); // MusicBrainz link
+    }
+
+    [Fact]
     public void DistrictColor_IsStableAcrossBuilds()
     {
         var resolved = new Dictionary<string, ResolvedArtist> { ["R"] = Artist("R", "mb-r", (1, "rock", 1)) };

@@ -35,6 +35,33 @@ public sealed class ListeningImportedConsumer(IConnection connection, IServiceSc
     }
 }
 
+/// <summary>New genre catalog: every user's city may change, rebuild them all (normal debounce per user).</summary>
+public sealed class CatalogUpdatedConsumer(IConnection connection, IServiceScopeFactory scopes, ILogger<CatalogUpdatedConsumer> logger)
+    : MessageConsumer<CatalogUpdated>(connection, scopes, logger)
+{
+    protected override string QueueName => "orchestrator.catalog-updated";
+
+    protected override async Task HandleAsync(CatalogUpdated message, MessageContext context, IServiceProvider services, CancellationToken ct)
+    {
+        var options = services.GetRequiredService<IOptions<PipelineOptions>>().Value;
+        var repo = services.GetRequiredService<PipelineRunRepository>();
+
+        // Users = whoever has plays (the cities to rebuild)
+        using var cursor = await services.GetRequiredService<MongoDB.Driver.IMongoDatabase>()
+            .GetCollection<ServiceDefault.Listening.ListeningEvent>(ServiceDefault.Listening.ListeningEvent.CollectionName)
+            .DistinctAsync<string>(nameof(ServiceDefault.Listening.ListeningEvent.UserId),
+                MongoDB.Driver.Builders<ServiceDefault.Listening.ListeningEvent>.Filter.Empty, cancellationToken: ct);
+        var users = await MongoDB.Driver.IAsyncCursorExtensions.ToListAsync(cursor, ct);
+
+        foreach (var userId in users)
+            await repo.AddTriggerAsync(userId,
+                new PipelineTrigger { Source = "catalog", SourceRef = message.DumpName ?? "musicbrainz", NewPlays = 0, At = DateTime.UtcNow },
+                options.Periods, TimeSpan.FromSeconds(options.DebounceSeconds), TimeSpan.FromSeconds(options.MaxWaitSeconds), ct);
+
+        Logger.LogInformation("Genre catalog {Dump} updated: rebuild queued for {Count} users", message.DumpName, users.Count);
+    }
+}
+
 public sealed class CityBuiltConsumer(IConnection connection, IServiceScopeFactory scopes, ILogger<CityBuiltConsumer> logger)
     : MessageConsumer<CityBuilt>(connection, scopes, logger)
 {

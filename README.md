@@ -103,7 +103,28 @@ Il pannello è attivo solo in Development (`appsettings.Development.json` dell'A
 3. **Città:** si costruisce da sola. Circa 30 secondi dopo l'ultimo import con nuovi ascolti, l'**Orchestrator** fa ricostruire a **Elaboration** la città per i periodi `all`, `1y`, `6m` e `30d`.
    - Avanzamento: `GET /api/pipeline/runs?userId=...` su **Orchestrator**.
    - Risultato: `GET /api/elaboration/city/{userId}?period=all` su **Elaboration**.
-   - Ricostruzione senza nuovi import: `POST /debug/pipeline/trigger/{userId}` su **Orchestrator**.
+   - Ricostruzione senza nuovi import: dal pulsante **Ricostruisci la città** nella pagina della città (`POST /api/v1/city/rebuild`, usa tutti gli ascolti importati da qualunque fonte), oppure `POST /debug/pipeline/trigger/{userId}` su **Orchestrator**.
+   - Quando un import di MusicBrainz finisce, **RetrieveMusicBrainz** pubblica `CatalogUpdated` e l'Orchestrator ricostruisce le città di tutti gli utenti che hanno ascolti: una città costruita con il catalogo ancora vuoto si sistema da sola.
+   - Una città ha al massimo `City:MaxDistricts` quartieri (default 12); i macro-generi meno ascoltati finiscono nel quartiere "Altri generi".
+
+   **La città nel browser:** l'utente sceglie lo stile dal menu **Stile** (la scelta resta salvata nel browser):
+   - **Organica:** quartieri irregolari che coprono tutta la città (Voronoi pesato, aree proporzionali agli edifici). Al centro di ogni quartiere c'è una piazza con rotonda, i blocchi dei generi stanno attorno a spicchi;
+   - **Griglia:** isolati rettangolari e strade dritte, come Manhattan;
+   - **Raggiera:** quartieri a spicchi attorno a una grande rotonda centrale, collegati da viali.
+
+   In tutti gli stili:
+   - i generi con più di 16 artisti sono divisi in isolati da strade interne;
+   - ogni isolato ha un marciapiede rialzato;
+   - le strade hanno la segnaletica orizzontale: mezzeria tratteggiata, doppia linea continua sulle strade principali, strisce pedonali agli incroci;
+   - c'è anche la segnaletica verticale: lampioni, semafori sulle strade principali, cartelli di stop, dare precedenza e attraversamento pedonale.
+
+   Le strade sono ricavate dalla geometria: il bordo condiviso tra due celle è l'asse di una strada (`layout/streets.ts`).
+
+   **Tema chiaro/scuro:** il pulsante ◐/☀/☾ nella barra passa tra automatico (come il sistema), chiaro e scuro; la scelta resta salvata nel browser. In tema scuro la città è di notte: lampioni accesi, edifici illuminati.
+
+   **Link a Spotify:** nel dettaglio dell'artista. L'export di Spotify non contiene gli id degli artisti: in quel caso si usa il link Spotify che MusicBrainz conosce per l'artista; se manca anche quello, il pulsante diventa "Cerca su Spotify".
+
+   Il layout è calcolato nel browser (`cityfy-web/src/app/features/city/layout/`), i dati della città non cambiano. Navigazione da mappa: trascinare per spostarsi, tasto destro per ruotare, rotella per lo zoom verso il cursore, WASD/frecce e Q/E, doppio clic per avvicinarsi, minimappa cliccabile in basso a sinistra.
 
    Il retrieve Spotify parte da solo ogni 30 minuti per tutti gli account collegati (`Spotify:ScheduledRetrieveMinutes`).
 
@@ -111,6 +132,7 @@ Il pannello è attivo solo in Development (`appsettings.Development.json` dell'A
 ```
 Dump.Spotify   upload ──► UploadReceived ──► import ──► ListeningImported ─┐
 Spotify        retrieve (manuale o programmato) ───────► ListeningImported ─┤
+MusicBrainz    import finito ──► CatalogUpdated (ricostruisce tutte le città)│
 Orchestrator   ListeningImported ──► debounce ──► BuildCityRequested ──────►│
 Elaboration    BuildCityRequested ──► CityBuilt | CityBuildFailed ─────────►│
 Orchestrator   pipeline run ──► DONE | FAILED ◄─────────────────────────────┘

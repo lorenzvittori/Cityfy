@@ -26,6 +26,7 @@ builder.Services.AddSingleton<PipelineRunRepository>();
 // RabbitMQ: consumes the pipeline events, publishes BuildCityRequested
 builder.AddCityFyMessaging();
 builder.Services.AddMessageConsumer<ListeningImportedConsumer>();
+builder.Services.AddMessageConsumer<CatalogUpdatedConsumer>();
 builder.Services.AddMessageConsumer<CityBuiltConsumer>();
 builder.Services.AddMessageConsumer<CityBuildFailedConsumer>();
 builder.Services.AddHostedService<PipelineScheduler>();

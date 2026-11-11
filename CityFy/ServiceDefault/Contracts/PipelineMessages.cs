@@ -15,6 +15,12 @@ namespace ServiceDefault.Contracts
     /// <summary>New plays were stored in 'listening_events' for a user.</summary>
     public sealed record ListeningImported(string UserId, string Source, string SourceRef, int NewPlays, DateTime ImportedAt);
 
+    /// <summary>
+    /// The MusicBrainz genre catalog was (re)imported: every existing city may change (artists that
+    /// had no genre now have one), so the orchestrator rebuilds the cities of all users.
+    /// </summary>
+    public sealed record CatalogUpdated(string? DumpName, DateTime UpdatedAt);
+
     /// <summary>Command: (re)build the user's city for the given periods.</summary>
     public sealed record BuildCityRequested(string RunId, string UserId, IReadOnlyList<string> Periods);
 

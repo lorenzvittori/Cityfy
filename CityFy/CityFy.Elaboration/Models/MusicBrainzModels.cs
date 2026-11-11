@@ -11,7 +11,9 @@ public sealed class ResolveArtistsRequest
 
 public sealed record ResolvedGenre(int Id, string Name, int Votes);
 
-public sealed record ResolvedArtist(string Input, string MatchType, int? ArtistId, string? Mbid, string? Name, List<ResolvedGenre> Genres);
+public sealed record ResolvedArtist(
+    string Input, string MatchType, int? ArtistId, string? Mbid, string? Name, List<ResolvedGenre> Genres,
+    string? SpotifyArtistId = null);
 
 public sealed record ResolveArtistsResponse(List<ResolvedArtist> BySpotifyId, List<ResolvedArtist> ByName);
 

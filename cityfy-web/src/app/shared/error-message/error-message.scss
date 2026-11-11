@@ -1,9 +1,9 @@
 .error {
   padding: 16px 20px;
   border-radius: 10px;
-  background: #fff4f0;
-  border: 1px solid #f1c7b8;
-  color: #5b2a1c;
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
+  color: var(--error-text);
 
   &.compact {
     padding: 10px 14px;
@@ -20,7 +20,7 @@
   details {
     margin-top: 10px;
     font-size: 12px;
-    color: #8a5a4a;
+    color: var(--error-soft);
 
     code {
       user-select: all;

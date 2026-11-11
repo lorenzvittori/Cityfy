@@ -33,6 +33,13 @@ public class CityController : ControllerBase
     public async Task<ActionResult<CityDto>> GetCity([FromQuery] string? period, CancellationToken ct) =>
         Ok((await CityAsync(period, ct)).ToDto());
 
+    // POST api/v1/city/rebuild — rebuild the user's city now (all periods) from the plays already
+    // imported: useful when the genre catalog changed or after combining sources. Follow it with
+    // GET api/v1/pipeline/runs.
+    [HttpPost("city/rebuild")]
+    public async Task<ActionResult<PipelineRunDto>> Rebuild([FromServices] OrchestratorClient orchestrator, CancellationToken ct) =>
+        Accepted((await orchestrator.TriggerAsync(User.UserId(), ct)).ToDto());
+
     // GET api/v1/districts?period=30d
     [HttpGet("districts")]
     public async Task<ActionResult<IReadOnlyList<DistrictSummaryDto>>> GetDistricts([FromQuery] string? period, CancellationToken ct) =>

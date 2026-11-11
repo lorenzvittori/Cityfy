@@ -21,6 +21,7 @@
       }
     }
 
+    <button type="button" class="ghost theme" [title]="themeLabel()" [attr.aria-label]="themeLabel()" (click)="theme.cycle()">{{ themeIcon() }}</button>
     <span class="user">{{ me.displayName ?? me.userId }}</span>
     <button type="button" class="ghost" (click)="logout()">Esci</button>
   </header>
@@ -33,6 +34,9 @@
       </div>
     }
   }
+} @else {
+  <!-- login and other pages without the top bar -->
+  <button type="button" class="ghost theme floating" [title]="themeLabel()" [attr.aria-label]="themeLabel()" (click)="theme.cycle()">{{ themeIcon() }}</button>
 }
 
 <main>

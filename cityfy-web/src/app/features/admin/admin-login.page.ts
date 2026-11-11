@@ -25,8 +25,8 @@ import { ErrorMessage } from '../../shared/error-message/error-message';
     .admin-login { max-width: 360px; margin: 12vh auto 0; padding: 0 20px; display: flex; flex-direction: column; gap: 14px; }
     h1 { margin: 0 0 6px; }
     label { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
-    input { font: inherit; padding: 8px 10px; border: 1px solid #cfc5b2; border-radius: 8px; }
-    .hint { font-size: 12px; color: #777; }
+    input { font: inherit; padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: 8px; }
+    .hint { font-size: 12px; color: var(--text-muted); }
   `,
 })
 export class AdminLoginPage {

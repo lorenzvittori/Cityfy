@@ -74,7 +74,8 @@ namespace CityFy.Retrieve.MusicBrainz.Migrations
                     b.Property<string>("SpotifyArtistId")
                         .HasMaxLength(22)
                         .IsUnicode(false)
-                        .HasColumnType("varchar(22)");
+                        .HasColumnType("varchar(22)")
+                        .UseCollation("Latin1_General_100_BIN2");
 
                     b.HasKey("ArtistId", "SpotifyArtistId");
 

@@ -9,8 +9,8 @@
   align-items: center;
   gap: 16px;
   padding: 10px 16px;
-  border-bottom: 1px solid #e2dccf;
-  background: #fff;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
 
   .brand {
     font-weight: 700;
@@ -21,11 +21,11 @@
 
   nav a {
     margin-right: 12px;
-    color: #555;
+    color: var(--text-muted);
     text-decoration: none;
 
     &.active {
-      color: #222;
+      color: var(--text);
       font-weight: 600;
     }
   }
@@ -35,7 +35,7 @@
   }
 
   .user {
-    color: #555;
+    color: var(--text-muted);
   }
 
   .sync {
@@ -43,13 +43,26 @@
   }
 }
 
+.theme {
+  padding: 4px 10px;
+  font-size: 17px;
+  line-height: 1;
+
+  &.floating {
+    position: fixed;
+    top: 10px;
+    right: 12px;
+    z-index: 10;
+  }
+}
+
 .banner {
   padding: 8px 16px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .muted {
-  color: #777;
+  color: var(--text-muted);
 }
 
 main {

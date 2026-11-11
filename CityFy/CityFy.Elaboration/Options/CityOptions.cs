@@ -23,6 +23,10 @@ public class CityOptions
     [Range(1, 1000)]
     public double MaxWidth { get; set; } = 12;
 
+    /// <summary>Districts shown on the map; the least listened beyond this are merged into "Altri generi".</summary>
+    [Range(2, 100)]
+    public int MaxDistricts { get; set; } = 12;
+
     /// <summary>Below this share (0-100) of placed qualified plays the city gets the CITY_LOW_COVERAGE warning.</summary>
     [Range(0, 100)]
     public double LowCoveragePercent { get; set; } = 50;

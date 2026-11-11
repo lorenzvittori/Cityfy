@@ -13,15 +13,15 @@ import { Component, computed, input } from '@angular/core';
   `,
   styles: `
     :host { display: flex; align-items: center; gap: 8px; min-width: 160px; }
-    .track { flex: 1; height: 8px; border-radius: 4px; background: #e6e6e6; overflow: hidden; }
-    .fill { height: 100%; background: #3b82f6; transition: width 0.4s ease; }
+    .track { flex: 1; height: 8px; border-radius: 4px; background: var(--track); overflow: hidden; }
+    .fill { height: 100%; background: var(--progress); transition: width 0.4s ease; }
     .indeterminate .fill {
       width: 100% !important;
-      background: repeating-linear-gradient(-45deg, #93c5fd 0 10px, #3b82f6 10px 20px);
+      background: repeating-linear-gradient(-45deg, var(--progress-light) 0 10px, var(--progress) 10px 20px);
       background-size: 28px 28px;
       animation: move 0.8s linear infinite;
     }
-    .value { font-size: 12px; color: #555; font-variant-numeric: tabular-nums; min-width: 42px; text-align: right; }
+    .value { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; min-width: 42px; text-align: right; }
     @keyframes move { to { background-position: 28px 0; } }
   `,
 })

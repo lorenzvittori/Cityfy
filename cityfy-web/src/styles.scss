@@ -1,3 +1,112 @@
+// Theme: CSS variables, light by default, dark with <html data-theme="dark"> (ThemeService).
+// Components use only these variables, never raw colors (district colors excluded: they are data).
+
+:root {
+  color-scheme: light;
+
+  --bg: #f7f3ec;
+  --surface: #ffffff;
+  --surface-alt: #faf8f4;
+  --surface-sunken: #f0ebe1;
+  --border: #e2dccf;
+  --border-strong: #cfc5b2;
+  --text: #222;
+  --text-soft: #4a4a4a;
+  --text-muted: #777;
+  --text-faint: #aaa;
+  --accent: #8a6d3b;
+  --spotify: #1db954;
+  --spotify-text: #fff;
+
+  --segmented: #e9e2d5;
+  --segmented-active: #fff;
+  --overlay: rgba(255, 255, 255, 0.92);
+  --shadow: rgba(0, 0, 0, 0.18);
+  --track: #e6e6e6;
+  --progress: #3b82f6;
+  --progress-light: #93c5fd;
+
+  --warning-bg: rgba(255, 251, 235, 0.95);
+  --warning-border: #ecd9a0;
+  --warning-text: #7a5a00;
+  --error-bg: #fff4f0;
+  --error-border: #f1c7b8;
+  --error-text: #5b2a1c;
+  --error-soft: #8a5a4a;
+  --danger: #8a2a17;
+  --success-bg: #f0f7ec;
+  --success-border: #c8e0bc;
+  --success-text: #4a7a3a;
+  --info-bg: #e7f1fb;
+
+  --table-head: #f2f2f2;
+  --row-border: #eee;
+  --hover: #eee;
+  --selected: #dfe7f5;
+  --badge: #e8e8e8;
+  --ok-bg: #dff1d8;
+  --ok-text: #2f6b1f;
+  --ko-bg: #f9dcd6;
+  --ko-text: #8a2a17;
+  --run-bg: #fdf0cf;
+  --run-text: #7a5a00;
+  --off-bg: #e4e4e7;
+  --off-text: #52525b;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg: #15171b;
+  --surface: #1e2127;
+  --surface-alt: #1a1d22;
+  --surface-sunken: #262a31;
+  --border: #2f343c;
+  --border-strong: #454b55;
+  --text: #e8e6e1;
+  --text-soft: #c9c6bf;
+  --text-muted: #9a9ea6;
+  --text-faint: #6b7079;
+  --accent: #d9b77a;
+  --spotify: #1db954;
+  --spotify-text: #0b0b0b;
+
+  --segmented: #2a2e35;
+  --segmented-active: #3a3f48;
+  --overlay: rgba(30, 33, 39, 0.92);
+  --shadow: rgba(0, 0, 0, 0.5);
+  --track: #2f343c;
+  --progress: #60a5fa;
+  --progress-light: #1e3a5f;
+
+  --warning-bg: rgba(58, 48, 20, 0.95);
+  --warning-border: #6b5a2a;
+  --warning-text: #e9c46a;
+  --error-bg: #3a2320;
+  --error-border: #6e3a30;
+  --error-text: #f3cfc4;
+  --error-soft: #c9958a;
+  --danger: #f08a72;
+  --success-bg: #1f3020;
+  --success-border: #3c5a3a;
+  --success-text: #8fcf7f;
+  --info-bg: #1f2d3d;
+
+  --table-head: #262a31;
+  --row-border: #2a2e35;
+  --hover: #2a2e35;
+  --selected: #28374f;
+  --badge: #2f343c;
+  --ok-bg: #1f3a1c;
+  --ok-text: #9bd68a;
+  --ko-bg: #4a2219;
+  --ko-text: #f3a38f;
+  --run-bg: #3d3214;
+  --run-text: #e9c46a;
+  --off-bg: #2f3036;
+  --off-text: #a1a1aa;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -10,12 +119,12 @@ body {
 
 body {
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  color: #222;
-  background: #f7f3ec;
+  color: var(--text);
+  background: var(--bg);
 }
 
 a {
-  color: #8a6d3b;
+  color: var(--accent);
 }
 
 button,
@@ -23,9 +132,9 @@ button,
   font: inherit;
   padding: 8px 16px;
   border-radius: 8px;
-  border: 1px solid #cfc5b2;
-  background: #fff;
-  color: #222;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
   cursor: pointer;
   text-decoration: none;
   display: inline-block;
@@ -33,18 +142,62 @@ button,
 
 button.primary,
 .button.primary {
-  border-color: #1db954;
-  background: #1db954;
-  color: #fff;
+  border-color: var(--spotify);
+  background: var(--spotify);
+  color: var(--spotify-text);
   font-weight: 600;
 }
 
 button.ghost {
   border-color: transparent;
   background: transparent;
-  color: #555;
+  color: var(--text-muted);
 }
 
 button:hover {
   filter: brightness(0.97);
+}
+
+// "Open on Spotify" link: green pill (outline when it is only a search)
+a.spotify {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--spotify);
+  background: var(--spotify);
+  color: var(--spotify-text);
+  font-weight: 600;
+  text-decoration: none;
+
+  &.outline {
+    background: transparent;
+    color: var(--text);
+  }
+
+  &:hover {
+    filter: brightness(1.06);
+  }
+
+  // Spotify mark: circle with three arcs
+  .logo {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 50% 120%, transparent 52%, currentColor 53% 59%, transparent 60%) 0 -1px / 100% 100%,
+      radial-gradient(circle at 50% 130%, transparent 54%, currentColor 55% 61%, transparent 62%) 0 3px / 100% 100%,
+      radial-gradient(circle at 50% 140%, transparent 56%, currentColor 57% 63%, transparent 64%) 0 7px / 100% 100%;
+    box-shadow: inset 0 0 0 1.5px currentColor;
+  }
+}
+
+input,
+select,
+textarea {
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--border-strong);
 }

@@ -59,7 +59,10 @@ public sealed class CityBuilder
                 Plays = g.Sum(x => x.Plays.Plays),
                 Qualified = g.Sum(x => x.Plays.QualifiedPlays),
                 Ms = g.Sum(x => x.Plays.MsPlayed),
+                // Spotify page: from the plays (API retrieve), else the one linked in MusicBrainz (export)
                 Uri = g.Select(x => x.Plays.ArtistUri).FirstOrDefault(u => u != null)
+                      ?? g.Select(x => x.Artist.SpotifyArtistId).Where(id => !string.IsNullOrEmpty(id))
+                          .Select(id => $"spotify:artist:{id}").FirstOrDefault()
             })
             .ToList();
 
@@ -118,6 +121,8 @@ public sealed class CityBuilder
             .OrderByDescending(d => d.Score)
             .ToList();
 
+        districts = MergeSmallDistricts(districts);
+
         var maxArtists = districts.Count > 0 ? districts.Max(d => d.Blocks.Sum(b => b.Buildings.Count)) : 1;
         foreach (var d in districts)
         {
@@ -157,6 +162,32 @@ public sealed class CityBuilder
                 .Select(u => new UnresolvedArtist { Name = u.ArtistName, SpotifyArtistUri = u.ArtistUri, Plays = u.QualifiedPlays })
                 .ToList()
         };
+    }
+
+    public const string OtherDistrictId = "altri_generi";
+
+    /// <summary>
+    /// MusicBrainz has many top-level genres: a large listening history produces 100+ districts,
+    /// which no map can show legibly. The most listened (MaxDistricts - 1) stay, the rest become
+    /// one "Altri generi" district whose blocks keep their genre (and their buildings their colors).
+    /// </summary>
+    private List<CityDistrict> MergeSmallDistricts(List<CityDistrict> districts)
+    {
+        if (districts.Count <= _options.MaxDistricts)
+            return districts;
+
+        var keep = districts.Take(_options.MaxDistricts - 1).ToList();
+        var rest = districts.Skip(_options.MaxDistricts - 1).ToList();
+        keep.Add(new CityDistrict
+        {
+            DistrictId = OtherDistrictId,
+            Name = "Altri generi",
+            GenreId = 0,
+            Color = "#9e9e9e",
+            Score = rest.Sum(d => d.Score),
+            Blocks = rest.SelectMany(d => d.Blocks).OrderByDescending(b => b.Score).ToList()
+        });
+        return keep;
     }
 
     // Root collecting most of the artist's genre votes (a genre with k roots gives 1/k of its votes to each)

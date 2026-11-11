@@ -17,15 +17,15 @@
   align-items: center;
   gap: 6px;
   padding: 44px 20px;
-  border: 2px dashed #cfc5b2;
+  border: 2px dashed var(--border-strong);
   border-radius: 12px;
-  background: #faf8f4;
+  background: var(--surface-alt);
   cursor: pointer;
   text-align: center;
 
   &.dragging {
-    border-color: #8a6d3b;
-    background: #f3ede1;
+    border-color: var(--accent);
+    background: var(--surface-sunken);
   }
 
   input {
@@ -39,10 +39,10 @@
 
   li {
     padding: 6px 0;
-    color: #aaa;
+    color: var(--text-faint);
 
     &.done {
-      color: #4a7a3a;
+      color: var(--success-text);
     }
 
     &.done::after {
@@ -50,7 +50,7 @@
     }
 
     &.current {
-      color: #222;
+      color: var(--text);
       font-weight: 600;
     }
   }
@@ -59,8 +59,8 @@
 .success {
   padding: 20px;
   border-radius: 10px;
-  background: #f0f7ec;
-  border: 1px solid #c8e0bc;
+  background: var(--success-bg);
+  border: 1px solid var(--success-border);
 
   h2 {
     margin: 0 0 12px;
@@ -72,7 +72,7 @@
   margin-top: 24px;
   padding: 16px 20px;
   border-radius: 10px;
-  background: #f7f3ec;
+  background: var(--surface-sunken);
 
   h2 {
     margin: 0 0 8px;
@@ -87,7 +87,7 @@
 }
 
 .muted {
-  color: #777;
+  color: var(--text-muted);
 }
 
 .small {
@@ -98,7 +98,7 @@
   align-self: flex-start;
   border: 0;
   background: none;
-  color: #8a6d3b;
+  color: var(--accent);
   text-decoration: underline;
   cursor: pointer;
 }

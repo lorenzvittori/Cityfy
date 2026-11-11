@@ -29,6 +29,8 @@ builder.Services.AddTransient<ArchiveExtractor>();
 builder.Services.AddScoped<MusicBrainzImporter>();
 builder.Services.AddScoped<RetrieveService>();
 builder.Services.AddSingleton<ImportProgress>();
+// RabbitMQ: CatalogUpdated after an import, so the orchestrator rebuilds every city
+builder.AddCityFyMessaging();
 builder.Services.AddSingleton<RetrieveRunner>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<RetrieveRunner>());
 

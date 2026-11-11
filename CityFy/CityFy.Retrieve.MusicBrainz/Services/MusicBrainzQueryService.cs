@@ -49,14 +49,20 @@ public class MusicBrainzQueryService
                 a.Name,
                 Genres = a.Genres.OrderByDescending(g => g.Votes)
                     .Select(g => new ResolvedGenre(g.GenreId, g.Genre.Name, g.Votes))
-                    .ToList()
+                    .ToList(),
+                // an artist may have more than one Spotify page: take a stable one
+                SpotifyId = a.SpotifyLinks.OrderBy(l => l.SpotifyArtistId).Select(l => l.SpotifyArtistId).FirstOrDefault()
             })
             .ToDictionaryAsync(a => a.Id, ct);
 
         ResolvedArtist Build(string input, int? artistId, string matchType)
         {
             if (artistId is { } id && artists.TryGetValue(id, out var a))
-                return new ResolvedArtist(input, matchType, a.Id, a.Gid, a.Name, a.Genres);
+            {
+                // matched by Spotify id: that is the right page; by name: the one linked in MusicBrainz
+                var spotifyId = matchType == ArtistMatchTypes.SpotifyUrl ? spotifyIds[input] : a.SpotifyId;
+                return new ResolvedArtist(input, matchType, a.Id, a.Gid, a.Name, a.Genres, spotifyId);
+            }
             return new ResolvedArtist(input, ArtistMatchTypes.None, null, null, null, []);
         }
 

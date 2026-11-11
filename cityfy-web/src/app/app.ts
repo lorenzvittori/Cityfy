@@ -1,4 +1,4 @@
-import { Component, DestroyRef, inject, signal } from '@angular/core';
+import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { filter, switchMap, take, timer } from 'rxjs';
@@ -6,6 +6,7 @@ import { ApiService } from './core/api/api.service';
 import { AuthService } from './core/auth/auth.service';
 import { ApiError } from './core/errors/api-error';
 import { ErrorMessage } from './shared/error-message/error-message';
+import { ThemeService } from './core/theme/theme.service';
 
 type SyncState = { kind: 'idle' } | { kind: 'running' } | { kind: 'done'; newPlays: number } | { kind: 'error'; code: string };
 
@@ -20,6 +21,12 @@ export class App {
   private readonly api = inject(ApiService);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+
+  protected readonly theme = inject(ThemeService);
+  protected readonly themeLabel = computed(
+    () => ({ system: 'Tema: automatico (come il sistema)', light: 'Tema: chiaro', dark: 'Tema: scuro' })[this.theme.preference()],
+  );
+  protected readonly themeIcon = computed(() => ({ system: '◐', light: '☀', dark: '☾' })[this.theme.preference()]);
 
   protected readonly sync = signal<SyncState>({ kind: 'idle' });
 

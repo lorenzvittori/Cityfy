@@ -65,13 +65,15 @@ public sealed class MusicBrainzImporterReadTests : IDisposable
         Write("l_artist_url",
             "1\t502\t100\t9000\t0\t2020-01-01\t0\t\t",
             "2\t502\t100\t9001\t0\t2020-01-01\t0\t\t",
-            "3\t502\t300\t9002\t0\t2020-01-01\t0\t\t"); // artist not imported
+            "3\t502\t300\t9002\t0\t2020-01-01\t0\t\t", // artist not imported
+            "4\t502\t100\t9003\t0\t2020-01-01\t0\t\t"); // same id as 9000 but lowercase
 
         // url: id | gid | url | edits_pending | last_updated
         Write("url",
             "9000\tgid\thttps://open.spotify.com/artist/6olE6TJLqED3rqDCT0FyPh\t0\t2020-01-01",
             "9001\tgid\thttps://www.youtube.com/channel/abc\t0\t2020-01-01",
-            "9002\tgid\thttps://open.spotify.com/artist/0000000000000000000000\t0\t2020-01-01");
+            "9002\tgid\thttps://open.spotify.com/artist/0000000000000000000000\t0\t2020-01-01",
+            "9003\tgid\thttps://open.spotify.com/artist/6ole6tjlqed3rqdct0fyph\t0\t2020-01-01");
     }
 
     private void Write(string table, params string[] rows) =>
@@ -114,13 +116,16 @@ public sealed class MusicBrainzImporterReadTests : IDisposable
     }
 
     [Fact]
-    public void SpotifyLinks_AreExtractedFromSpotifyArtistUrlsOnly()
+    public void SpotifyLinks_AreExtractedFromSpotifyArtistUrlsOnly_KeepingCase()
     {
         var data = Read();
 
-        var link = Assert.Single(data.SpotifyLinks);
-        Assert.Equal(100, link.ArtistId);
-        Assert.Equal("6olE6TJLqED3rqDCT0FyPh", link.SpotifyArtistId);
+        // Spotify ids are case-sensitive: the lowercase variant is a different id (stored as such,
+        // the SQL column has a binary collation so they do not collide on the primary key)
+        Assert.Equal(2, data.SpotifyLinks.Count);
+        Assert.All(data.SpotifyLinks, l => Assert.Equal(100, l.ArtistId));
+        Assert.Contains(data.SpotifyLinks, l => l.SpotifyArtistId == "6olE6TJLqED3rqDCT0FyPh");
+        Assert.Contains(data.SpotifyLinks, l => l.SpotifyArtistId == "6ole6tjlqed3rqdct0fyph");
     }
 
     [Fact]

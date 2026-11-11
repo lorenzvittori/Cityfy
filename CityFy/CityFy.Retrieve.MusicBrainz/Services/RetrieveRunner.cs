@@ -1,5 +1,7 @@
 using System.Threading.Channels;
 using CityFy.Retrieve.MusicBrainz.Models;
+using ServiceDefault.Contracts;
+using ServiceDefault.Messaging;
 
 namespace CityFy.Retrieve.MusicBrainz.Services;
 
@@ -32,14 +34,16 @@ public class RetrieveRunner : BackgroundService
     private readonly Channel<bool> _trigger = Channel.CreateBounded<bool>(1);
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ImportProgress _progress;
+    private readonly IMessagePublisher _publisher;
     private readonly ILogger<RetrieveRunner> _logger;
     private volatile RetrieveStatus _status = new(RetrieveState.Idle);
     private volatile CancellationTokenSource? _current;
 
-    public RetrieveRunner(IServiceScopeFactory scopeFactory, ImportProgress progress, ILogger<RetrieveRunner> logger)
+    public RetrieveRunner(IServiceScopeFactory scopeFactory, ImportProgress progress, IMessagePublisher publisher, ILogger<RetrieveRunner> logger)
     {
         _scopeFactory = scopeFactory;
         _progress = progress;
+        _publisher = publisher;
         _logger = logger;
     }
 
@@ -77,6 +81,19 @@ public class RetrieveRunner : BackgroundService
         return _trigger.Writer.TryWrite(true);
     }
 
+    /// <summary>The orchestrator rebuilds every city with the new catalog. A failure here does not fail the import.</summary>
+    private async Task NotifyCatalogUpdatedAsync(RetrieveResult result, CancellationToken ct)
+    {
+        try
+        {
+            await _publisher.PublishAsync(new CatalogUpdated(result.DumpName, DateTime.UtcNow), result.DumpName, ct);
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning(ex, "Catalog imported, but CatalogUpdated could not be published: cities are not rebuilt automatically");
+        }
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         try
@@ -96,6 +113,7 @@ public class RetrieveRunner : BackgroundService
                     var result = await service.RunRetrieveAsync(cts.Token);
                     _status = new RetrieveStatus(RetrieveState.Done, startedAt, DateTime.UtcNow, result);
                     _progress.Clear();
+                    await NotifyCatalogUpdatedAsync(result, stoppingToken);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {

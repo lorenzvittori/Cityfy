@@ -28,7 +28,10 @@ public sealed record ResolvedArtist(
     int? ArtistId,
     string? Mbid,
     string? Name,
-    IReadOnlyList<ResolvedGenre> Genres);
+    IReadOnlyList<ResolvedGenre> Genres,
+    // Spotify id linked to the artist in MusicBrainz (url relationships): link to Spotify even
+    // when the plays come from the export, which has no artist ids
+    string? SpotifyArtistId = null);
 
 public sealed record ResolveArtistsResponse(
     IReadOnlyList<ResolvedArtist> BySpotifyId,

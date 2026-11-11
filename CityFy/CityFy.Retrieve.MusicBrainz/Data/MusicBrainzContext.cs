@@ -61,7 +61,11 @@ public class MusicBrainzContext : DbContext
         modelBuilder.Entity<ArtistSpotifyLink>(b =>
         {
             b.HasKey(l => new { l.ArtistId, l.SpotifyArtistId });
-            b.Property(l => l.SpotifyArtistId).IsRequired().HasMaxLength(22).IsUnicode(false);
+            // Spotify ids are base62, i.e. CASE-SENSITIVE: the default (case-insensitive) collation would
+            // treat "6D8m8pBW..." and "6d8m8pbw..." as the same key (MusicBrainz has both) and exact
+            // lookups would match the wrong artist. Binary collation compares them like Spotify does.
+            b.Property(l => l.SpotifyArtistId).IsRequired().HasMaxLength(22).IsUnicode(false)
+                .UseCollation("Latin1_General_100_BIN2");
             b.HasOne(l => l.Artist).WithMany(a => a.SpotifyLinks)
                 .HasForeignKey(l => l.ArtistId).OnDelete(DeleteBehavior.Cascade);
             b.HasIndex(l => l.SpotifyArtistId);

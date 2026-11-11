@@ -31,6 +31,11 @@ export class ApiService {
     return this.wrap(this.http.get<PipelineRun[]>(`${this.base}/pipeline/runs`, { params: new HttpParams().set('limit', limit) }));
   }
 
+  /** Rebuilds the user's city now, from all the plays already imported (any source). */
+  rebuild(): Observable<PipelineRun> {
+    return this.wrap(this.http.post<PipelineRun>(`${this.base}/city/rebuild`, null));
+  }
+
   upload(file: File): Observable<{ uploadId: string }> {
     const form = new FormData();
     form.append('file', file, file.name);

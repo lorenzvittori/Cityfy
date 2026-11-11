@@ -9,6 +9,9 @@ import { errorMessage } from '../../core/errors/error-messages';
 import { AuthService } from '../../core/auth/auth.service';
 import { ErrorMessage } from '../../shared/error-message/error-message';
 import { CityScene } from './city-scene/city-scene';
+import { CITY_TEMPLATES, CityTemplate, isCityTemplate } from './layout/city-layout';
+
+const TEMPLATE_KEY = 'cityfy.city-template';
 
 /**
  * The user's city. States (ERRORI_UI.md §5):
@@ -46,9 +49,14 @@ export class CityPage {
     { value: '30d', label: '30 giorni' },
   ];
 
+  protected readonly templates = CITY_TEMPLATES;
+  /** City design chosen by the user, remembered in this browser. */
+  protected readonly template = signal<CityTemplate>(storedTemplate());
+
   protected readonly period = signal<Period>('all');
   protected readonly state = signal<ViewState>({ kind: 'loading' });
   protected readonly selectedArtistId = signal<string | null>(null);
+  protected readonly rebuilding = signal(false);
   protected readonly message = errorMessage;
 
   protected readonly selected = computed(() => {
@@ -67,6 +75,16 @@ export class CityPage {
 
   constructor() {
     this.load();
+  }
+
+  protected setTemplate(value: string): void {
+    if (!isCityTemplate(value)) return;
+    this.template.set(value);
+    try {
+      localStorage.setItem(TEMPLATE_KEY, value);
+    } catch {
+      // storage disabled: the choice lasts for this page only
+    }
   }
 
   protected setPeriod(period: Period): void {
@@ -122,6 +140,26 @@ export class CityPage {
       });
   }
 
+  /** Rebuild from all the imported plays (Spotify API + export): e.g. after a new genre catalog. */
+  protected rebuild(): void {
+    this.polling?.unsubscribe();
+    this.rebuilding.set(true);
+    this.api
+      .rebuild()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (run) => {
+          this.rebuilding.set(false);
+          this.selectedArtistId.set(null);
+          this.waitForRun(run);
+        },
+        error: (e: ApiError) => {
+          this.rebuilding.set(false);
+          this.state.set({ kind: 'error', error: e });
+        },
+      });
+  }
+
   protected select(artistId: string): void {
     this.selectedArtistId.set(this.selectedArtistId() === artistId ? null : artistId);
   }
@@ -131,7 +169,20 @@ export class CityPage {
     return `https://open.spotify.com/artist/${encodeURIComponent(uri.replace('spotify:artist:', ''))}`;
   }
 
+  protected spotifySearchUrl(name: string): string {
+    return `https://open.spotify.com/search/${encodeURIComponent(name)}/artists`;
+  }
+
   protected minutes(b: Building): string {
     return b.listeningMinutes >= 60 ? `${Math.round(b.listeningMinutes / 60)} ore` : `${Math.round(b.listeningMinutes)} min`;
+  }
+}
+
+function storedTemplate(): CityTemplate {
+  try {
+    const value = localStorage.getItem(TEMPLATE_KEY);
+    return isCityTemplate(value) ? value : 'organic';
+  } catch {
+    return 'organic';
   }
 }

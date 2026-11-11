@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: #fafafa;
+  background: var(--bg);
   font-size: 14px;
 }
 
@@ -50,19 +50,19 @@ h2 {
 table {
   width: 100%;
   border-collapse: collapse;
-  background: #fff;
+  background: var(--surface);
   margin-bottom: 10px;
 
   th,
   td {
     padding: 6px 8px;
-    border-bottom: 1px solid #eee;
+    border-bottom: 1px solid var(--row-border);
     text-align: left;
     vertical-align: top;
   }
 
   th {
-    background: #f2f2f2;
+    background: var(--table-head);
     font-weight: 600;
     white-space: nowrap;
   }
@@ -73,42 +73,42 @@ table {
   padding: 1px 8px;
   border-radius: 999px;
   font-size: 12px;
-  background: #e8e8e8;
+  background: var(--badge);
 
   &.Healthy,
   &.Done,
   &.DONE {
-    background: #dff1d8;
-    color: #2f6b1f;
+    background: var(--ok-bg);
+    color: var(--ok-text);
   }
 
   &.Unhealthy,
   &.Unreachable,
   &.Failed,
   &.FAILED {
-    background: #f9dcd6;
-    color: #8a2a17;
+    background: var(--ko-bg);
+    color: var(--danger);
   }
 
   &.Running,
   &.Building,
   &.Pending,
   &.WORKING_IN_PROGRESS {
-    background: #fdf0cf;
-    color: #7a5a00;
+    background: var(--run-bg);
+    color: var(--run-text);
   }
 
   &.Cancelled,
   &.CANCELLED {
-    background: #e4e4e7;
-    color: #52525b;
+    background: var(--off-bg);
+    color: var(--off-text);
   }
 }
 
 button.cancel {
   margin-left: auto;
-  border-color: #e3b3a6;
-  color: #8a2a17;
+  border-color: var(--error-border);
+  color: var(--danger);
 }
 
 .facts {
@@ -117,7 +117,7 @@ button.cancel {
   gap: 6px 16px;
 
   dt {
-    color: #777;
+    color: var(--text-muted);
   }
 
   dd {
@@ -136,7 +136,7 @@ button.cancel {
   input {
     font: inherit;
     padding: 6px 10px;
-    border: 1px solid #ccc;
+    border: 1px solid var(--border-strong);
     border-radius: 6px;
     min-width: 280px;
   }
@@ -151,12 +151,12 @@ button.small {
   max-width: 760px;
   margin: 0 0 12px;
   padding: 12px 14px;
-  border: 1px solid #e3e3e3;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
 
   &.failed {
-    border-color: #f1c7b8;
+    border-color: var(--error-border);
   }
 
   header {
@@ -174,31 +174,31 @@ button.small {
   .detail {
     margin-top: 4px;
     font-size: 13px;
-    color: #555;
+    color: var(--text-muted);
   }
 
   .stuck {
     margin-top: 4px;
     font-size: 12px;
-    color: #9a6700;
+    color: var(--warning-text);
   }
 }
 
 .idle {
   padding: 14px;
   border-radius: 8px;
-  background: #f2f2f2;
-  color: #666;
+  background: var(--table-head);
+  color: var(--text-muted);
 }
 
 .notice {
   padding: 8px 12px;
   border-radius: 6px;
-  background: #e7f1fb;
+  background: var(--info-bg);
 }
 
 .muted {
-  color: #777;
+  color: var(--text-muted);
 }
 
 .small {
@@ -206,7 +206,7 @@ button.small {
 }
 
 .error-text {
-  color: #8a2a17;
+  color: var(--danger);
 }
 
 .db {
@@ -220,7 +220,7 @@ button.small {
       margin: 12px 0 6px;
       font-size: 12px;
       text-transform: uppercase;
-      color: #777;
+      color: var(--text-muted);
     }
 
     ul {
@@ -237,11 +237,11 @@ button.small {
       cursor: pointer;
 
       &:hover {
-        background: #eee;
+        background: var(--row-border);
       }
 
       &.active {
-        background: #dfe7f5;
+        background: var(--selected);
       }
     }
   }
