@@ -21,6 +21,9 @@ namespace CityFy.Retrieve.Spotify.Services
         /// must be linked again.
         /// </summary>
         Task<string> GetAccessTokenAsync(string userId, CancellationToken ct);
+
+        /// <summary>Forgets the cached access token (account deleted).</summary>
+        void Forget(string userId);
     }
 
     /// <summary>The linked account cannot be used: not linked (404) or must log in again (401).</summary>
@@ -122,6 +125,8 @@ namespace CityFy.Retrieve.Spotify.Services
             if (lifetime > TimeSpan.Zero)
                 _cache.Set(CacheKey(userId), token.AccessToken, lifetime);
         }
+
+        public void Forget(string userId) => _cache.Remove(CacheKey(userId));
 
         private static string CacheKey(string userId) => $"spotify:access-token:{userId}";
     }

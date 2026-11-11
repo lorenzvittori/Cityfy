@@ -111,4 +111,15 @@ public class MeController : ControllerBase
             throw new CityFyException(ErrorCodes.Unauthenticated, "Account no longer linked", StatusCodes.Status401Unauthorized);
         }
     }
+
+    // DELETE api/v1/me/data — the user deletes everything Cityfy keeps about them, then is logged out.
+    // USER_DATA_DELETION_INCOMPLETE (502) when a service did not answer: the session stays open so the
+    // user can retry (the deletion is idempotent).
+    [HttpDelete("data")]
+    public async Task<IActionResult> DeleteData([FromServices] CityFy.Api.Account.UserDataEraser eraser, CancellationToken ct)
+    {
+        var result = await eraser.DeleteAsync(User.UserId(), "user", ct);
+        await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        return Ok(result);
+    }
 }

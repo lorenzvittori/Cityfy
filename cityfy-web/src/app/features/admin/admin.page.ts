@@ -223,6 +223,27 @@ export class AdminPage {
     this.load(this.admin.sync(userId), (job) => this.notice.set(`Sincronizzazione avviata per ${userId} (job ${job.jobId.slice(0, 8)}).`));
   }
 
+  protected deleteUserId = '';
+
+  /** Everything Cityfy keeps about the user: plays, cities, uploads (files too), runs, Spotify link. */
+  protected deleteUserData(userId: string): void {
+    const id = userId.trim();
+    if (!id) return;
+    const question =
+      `Cancellare TUTTI i dati dell'utente ${id}?\n\n` +
+      'Ascolti, città, upload (anche i file), costruzioni e collegamento con Spotify. ' +
+      "L'operazione non si può annullare; le sue sessioni verranno chiuse.";
+    if (!confirm(question)) return;
+    this.load(this.admin.deleteUserData(id), (result) => {
+      const summary = result.deleted
+        .flatMap((d) => Object.entries(d.deleted).filter(([, n]) => n > 0).map(([what, n]) => `${what} ${n}`))
+        .join(', ');
+      this.notice.set(`Dati di ${id} cancellati${summary ? ': ' + summary : ' (non c\'era nulla)'}.`);
+      this.deleteUserId = '';
+      this.show(this.tab());
+    });
+  }
+
   // --- Database ----------------------------------------------------------------------
 
   protected open(source: Source, name: string, pageNumber = 1): void {

@@ -3,6 +3,7 @@ using CityFy.Elaboration.Models;
 using CityFy.Elaboration.Services;
 using Microsoft.AspNetCore.Mvc;
 using ServiceDefault.Errors;
+using ServiceDefault.Models;
 
 namespace CityFy.Elaboration.Controllers;
 
@@ -30,5 +31,21 @@ public class CityController : ControllerBase
         return city == null
             ? this.CityFyProblem(ErrorCodes.CityNotReady, $"No city built for user '{userId}' and period '{p}'", StatusCodes.Status404NotFound)
             : Ok(city);
+    }
+}
+
+/// <summary>Service-to-service endpoint used by CityFy.Api when a user (or the admin) deletes the user's data.</summary>
+[ApiController]
+[ApiExplorerSettings(GroupName = "Internal")]
+[Route("internal/users")]
+public class InternalUserDataController : ControllerBase
+{
+    // DELETE internal/users/{userId}/data — every play (all sources) and every city of the user
+    [HttpDelete("{userId}/data")]
+    public async Task<ActionResult<UserDataDeletion>> Delete(string userId,
+        [FromServices] CityFy.Elaboration.Repositories.IElaborationRepository repo, CancellationToken ct)
+    {
+        var (plays, cities) = await repo.DeleteUserDataAsync(userId, ct);
+        return Ok(new UserDataDeletion("Elaboration", new Dictionary<string, long> { ["plays"] = plays, ["cities"] = cities }));
     }
 }

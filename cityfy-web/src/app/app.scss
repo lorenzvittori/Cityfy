@@ -36,6 +36,13 @@
 
   .user {
     color: var(--text-muted);
+    text-decoration: none;
+
+    &:hover,
+    &.active {
+      color: var(--text);
+      text-decoration: underline;
+    }
   }
 
   .sync {

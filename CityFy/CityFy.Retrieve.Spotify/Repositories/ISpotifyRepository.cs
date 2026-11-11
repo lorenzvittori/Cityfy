@@ -14,5 +14,11 @@ namespace CityFy.Retrieve.Spotify.Repositories
 
         /// <summary>Most recent jobs first.</summary>
         Task<IReadOnlyList<ProcessingTask>> ListTasksAsync(int limit, CancellationToken ct);
+
+        /// <summary>Jobs of a user still Pending or running.</summary>
+        Task<IReadOnlyList<ProcessingTask>> ListActiveTasksAsync(string userId, CancellationToken ct);
+
+        /// <summary>Every job of a user (data deletion). Returns how many.</summary>
+        Task<long> DeleteTasksAsync(string userId, CancellationToken ct);
     }
 }

@@ -130,6 +130,13 @@ public class PipelineRunRepository
         return result.ModifiedCount;
     }
 
+    /// <summary>
+    /// Every run of a user (data deletion): Pending runs never start, a Building one is forgotten
+    /// (its late CityBuilt/CityBuildFailed finds nothing to close). Returns how many.
+    /// </summary>
+    public async Task<long> DeleteUserAsync(string userId, CancellationToken ct) =>
+        (await _runs.DeleteManyAsync(r => r.UserId == userId, ct)).DeletedCount;
+
     public async Task<PipelineRun?> GetAsync(string runId, CancellationToken ct) =>
         await _runs.Find(r => r.RunId == runId).FirstOrDefaultAsync(ct);
 

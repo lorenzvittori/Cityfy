@@ -14,6 +14,12 @@ public interface IElaborationRepository
 
     Task SaveCityAsync(CityModel city, CancellationToken ct);
     Task<CityModel?> GetCityAsync(string userId, string period, CancellationToken ct);
+
+    /// <summary>Has the user any play at all (any period, any source)?</summary>
+    Task<bool> HasPlaysAsync(string userId, CancellationToken ct);
+
+    /// <summary>Data deletion: every play and every city of the user.</summary>
+    Task<(long Plays, long Cities)> DeleteUserDataAsync(string userId, CancellationToken ct);
 }
 
 public class ElaborationRepository : IElaborationRepository
@@ -76,5 +82,15 @@ public class ElaborationRepository : IElaborationRepository
     {
         var id = CityModel.BuildId(userId, period);
         return await _cities.Find(c => c.Id == id).FirstOrDefaultAsync(ct);
+    }
+
+    public async Task<bool> HasPlaysAsync(string userId, CancellationToken ct) =>
+        await _events.Find(new BsonDocument(nameof(ListeningEvent.UserId), userId)).Limit(1).AnyAsync(ct);
+
+    public async Task<(long Plays, long Cities)> DeleteUserDataAsync(string userId, CancellationToken ct)
+    {
+        var plays = await _events.DeleteManyAsync(new BsonDocument(nameof(ListeningEvent.UserId), userId), ct);
+        var cities = await _cities.DeleteManyAsync(c => c.UserId == userId, ct);
+        return (plays.DeletedCount, cities.DeletedCount);
     }
 }

@@ -53,6 +53,9 @@ namespace CityFy.Retrieve.Spotify.Repositories
                 .SortByDescending(a => a.LinkedAt)
                 .ToListAsync(ct);
 
+        public async Task<long> DeleteAsync(string userId, CancellationToken ct) =>
+            (await _accounts.DeleteOneAsync(a => a.UserId == userId, ct)).DeletedCount;
+
         public async Task<IReadOnlyList<string>> GetAllUserIdsAsync(CancellationToken ct) =>
             await _accounts.Find(Builders<SpotifyAccount>.Filter.Empty)
                 .Project(a => a.UserId)

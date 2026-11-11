@@ -68,6 +68,12 @@ const MESSAGES: Record<string, ErrorMessage> = {
   PIPELINE_TIMEOUT: { message: 'La costruzione sta richiedendo troppo tempo. Riprova.', action: 'retry' },
   PROCESS_CANCELLED: { message: 'L\'operazione è stata annullata. Puoi riprovare.', action: 'retry' },
 
+  // --- User data
+  USER_DATA_DELETION_INCOMPLETE: {
+    message: 'Non siamo riusciti a cancellare tutti i tuoi dati. Riprova tra poco: la cancellazione riprende da dove si è fermata.',
+    action: 'retry',
+  },
+
   // --- Administration (never shown to end users, mapped to the generic message)
   MB_RETRIEVE_ALREADY_RUNNING: { message: 'Qualcosa è andato storto. Riprova tra poco.', action: 'retry' },
   MB_TOO_MANY_ITEMS: { message: 'Qualcosa è andato storto. Riprova tra poco.', action: 'retry' },

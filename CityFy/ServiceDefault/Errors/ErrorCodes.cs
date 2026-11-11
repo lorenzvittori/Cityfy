@@ -73,5 +73,12 @@ namespace ServiceDefault.Errors
 
         // --- Admin panel --------------------------------------------------------
         public const string AdminInvalidCredentials = "ADMIN_INVALID_CREDENTIALS";
+
+        // --- User data ------------------------------------------------------------
+        /// <summary>
+        /// Data deletion stopped half-way (a service did not answer): some data may remain. Deleting
+        /// again is safe and completes it.
+        /// </summary>
+        public const string UserDataDeletionIncomplete = "USER_DATA_DELETION_INCOMPLETE";
     }
 }

@@ -161,6 +161,14 @@ public class AdminController : ControllerBase
     public async Task<IActionResult> CancelRun(string runId, [FromServices] OrchestratorClient orchestrator, CancellationToken ct) =>
         Accepted(await orchestrator.CancelRunAsync(runId, ct));
 
+    // --- User data ----------------------------------------------------------------------
+
+    // DELETE api/admin/users/{userId}/data — everything Cityfy keeps about that user (same as the
+    // user's own "Cancella i miei dati"); the user's sessions end at their next request
+    [HttpDelete("users/{userId}/data")]
+    public async Task<IActionResult> DeleteUserData(string userId, [FromServices] CityFy.Api.Account.UserDataEraser eraser, CancellationToken ct) =>
+        Ok(await eraser.DeleteAsync(userId, $"admin {User.Identity?.Name}", ct));
+
     // --- Databases (read-only) ---------------------------------------------------------
 
     [HttpGet("db/mongo")]

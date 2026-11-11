@@ -18,6 +18,12 @@ export const routes: Routes = [
     title: 'Cityfy · Carica export',
   },
   {
+    path: 'account',
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/account/account.page').then((m) => m.AccountPage),
+    title: 'Cityfy · Il tuo account',
+  },
+  {
     path: 'admin/login',
     loadComponent: () => import('./features/admin/admin-login.page').then((m) => m.AdminLoginPage),
     title: 'Cityfy · Admin',

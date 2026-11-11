@@ -105,10 +105,22 @@ table {
   }
 }
 
+.actions-cell {
+  white-space: nowrap;
+
+  button + button {
+    margin-left: 6px;
+  }
+}
+
 button.cancel {
-  margin-left: auto;
   border-color: var(--error-border);
   color: var(--danger);
+}
+
+// "Annulla" at the end of the activity headers
+.activity header button.cancel {
+  margin-left: auto;
 }
 
 .facts {

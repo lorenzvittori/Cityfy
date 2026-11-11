@@ -16,5 +16,8 @@ namespace CityFy.Retrieve.Spotify.Repositories
 
         /// <summary>All accounts, most recently linked first. ProtectedRefreshToken is NOT loaded.</summary>
         Task<IReadOnlyList<SpotifyAccount>> ListAsync(CancellationToken ct);
+
+        /// <summary>Removes the account and its refresh token (data deletion). Returns how many (0 or 1).</summary>
+        Task<long> DeleteAsync(string userId, CancellationToken ct);
     }
 }

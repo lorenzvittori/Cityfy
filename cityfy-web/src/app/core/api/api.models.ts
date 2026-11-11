@@ -73,7 +73,13 @@ export interface ImportStatus {
   errorCode: string | null;
 }
 
-export type RunState = 'Pending' | 'Building' | 'Done' | 'Failed' | 'Cancelled';
+/** What each service deleted (name -> count), e.g. Elaboration { plays: 1234, cities: 4 }. */
+export interface UserDataDeletionResult {
+  userId: string;
+  deleted: { service: string; deleted: Record<string, number> }[];
+}
+
+export type RunState ='Pending' | 'Building' | 'Done' | 'Failed' | 'Cancelled';
 
 export interface PipelineRun {
   runId: string;

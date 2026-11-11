@@ -107,6 +107,21 @@ namespace CityFy.Retrieve.Dump.Spotify.Repositories
             }
         }
 
+        public async Task<IReadOnlyList<ProcessingTask>> GetTasksByUserAsync(string userId, CancellationToken ct) =>
+            await Tasks.Find(t => t.UserId == userId).ToListAsync(ct);
+
+        public async Task<long> DeleteTasksByUserAsync(string userId, CancellationToken ct) =>
+            (await Tasks.DeleteManyAsync(t => t.UserId == userId, ct)).DeletedCount;
+
+        public async Task DropLegacyUploadAsync(string uploadId, CancellationToken ct)
+        {
+            var name = _options.CollectionPrefix + uploadId;
+            var existing = await (await _database.ListCollectionNamesAsync(
+                new ListCollectionNamesOptions { Filter = new BsonDocument("name", name) }, ct)).ToListAsync(ct);
+            if (existing.Count > 0)
+                await _database.DropCollectionAsync(name, ct);
+        }
+
         // Legacy documents were written as System.Text.Json(StreamingBl) -> BsonDocument.Parse,
         // so field names are PascalCase and dates are ISO strings.
         private static StreamingBl? FromLegacy(BsonDocument d)

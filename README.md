@@ -92,7 +92,7 @@ Il pannello è attivo solo in Development (`appsettings.Development.json` dell'A
 | Servizi e log | Stato `/health` di ogni servizio, link a log strutturati e tracce (dashboard Aspire) e a RabbitMQ (code e DLQ) |
 | MusicBrainz | Avvio dell'import del catalogo generi e avanzamento |
 | Pipeline | Esecuzioni dell'orchestratore di tutti gli utenti, ricostruzione manuale della città di un utente |
-| Spotify e upload | Account collegati con sincronizzazione su richiesta, elenco degli upload con stato e codice d'errore |
+| Spotify e upload | Account collegati con sincronizzazione su richiesta, elenco degli upload con stato e codice d'errore, **cancellazione di tutti i dati di un utente** (anche indicando lo userId a mano) |
 | Database | Sola lettura con paginazione: collection Mongo (`cityfy`) e tabelle SQL Server (`musicbrainz`). I campi sensibili (token, secret, password) sono oscurati |
 
 ### Primo giro completo
@@ -119,6 +119,14 @@ Il pannello è attivo solo in Development (`appsettings.Development.json` dell'A
    - c'è anche la segnaletica verticale: lampioni, semafori sulle strade principali, cartelli di stop, dare precedenza e attraversamento pedonale.
 
    Le strade sono ricavate dalla geometria: il bordo condiviso tra due celle è l'asse di una strada (`layout/streets.ts`).
+
+   **Cancellazione dei dati:** cliccando il proprio nome nella barra si apre "Il tuo account" con **Cancella i miei dati** (`DELETE /api/v1/me/data`); l'admin fa lo stesso dal pannello (`DELETE /api/admin/users/{userId}/data`). L'Api chiama `DELETE .../users/{userId}/data` su ogni servizio che possiede dati dell'utente, in quest'ordine:
+   1. **RetrieveSpotify:** ferma i retrieve, cancella i job e l'account collegato con il refresh token;
+   2. **RetrieveDumpSpotify:** ferma gli import, cancella gli upload, gli zip e i file estratti su disco;
+   3. **Orchestrator:** cancella le esecuzioni della pipeline;
+   4. **Elaboration:** cancella ascolti e città.
+
+   Ogni passo si può ripetere senza problemi: se un servizio non risponde gli altri completano comunque la loro parte, e la risposta è `USER_DATA_DELETION_INCOMPLETE` (basta riprovare). Una build già in corso non salva la città di un utente rimasto senza ascolti.
 
    **Tema chiaro/scuro:** il pulsante ◐/☀/☾ nella barra passa tra automatico (come il sistema), chiaro e scuro; la scelta resta salvata nel browser. In tema scuro la città è di notte: lampioni accesi, edifici illuminati.
 

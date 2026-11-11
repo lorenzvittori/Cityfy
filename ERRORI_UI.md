@@ -136,6 +136,14 @@ La città si mostra, con un messaggio sopra o accanto.
 | `CITY_GENRES_UNAVAILABLE` | Ci sono ascolti, ma nessun artista è stato associato a un genere | "Non riusciamo ancora a riconoscere i generi dei tuoi artisti." | Stato vuoto dedicato; nessuna azione per l'utente |
 | `CITY_LOW_COVERAGE` | Meno della metà degli ascolti è stata collocata nella città | "La città mostra solo una parte dei tuoi ascolti: alcuni artisti non sono nel nostro catalogo." | Avviso discreto; nel dettaglio la percentuale (`summary.coveragePercent`) |
 
+### Cancellazione dei dati
+
+Dal menu dell'utente, **Cancella i miei dati** elimina ascolti, città, caricamenti (anche i file), costruzioni e collegamento con Spotify, poi esce dall'app. L'amministratore può fare lo stesso per un utente dal pannello.
+
+| Codice | Quando succede | Messaggio suggerito | Cosa mostrare / azione |
+|---|---|---|---|
+| `USER_DATA_DELETION_INCOMPLETE` | Un servizio non ha risposto durante la cancellazione: una parte dei dati può essere rimasta | "Non siamo riusciti a cancellare tutti i tuoi dati. Riprova tra poco: la cancellazione riprende da dove si è fermata." | **Riprova** (la cancellazione si può ripetere senza problemi) |
+
 ---
 
 ## 6. Codici solo tecnici (amministrazione)

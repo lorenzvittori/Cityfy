@@ -22,7 +22,7 @@
     }
 
     <button type="button" class="ghost theme" [title]="themeLabel()" [attr.aria-label]="themeLabel()" (click)="theme.cycle()">{{ themeIcon() }}</button>
-    <span class="user">{{ me.displayName ?? me.userId }}</span>
+    <a class="user" routerLink="/account" routerLinkActive="active" title="Il tuo account e i tuoi dati">{{ me.displayName ?? me.userId }}</a>
     <button type="button" class="ghost" (click)="logout()">Esci</button>
   </header>
 

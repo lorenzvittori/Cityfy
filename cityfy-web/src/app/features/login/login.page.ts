@@ -14,6 +14,10 @@ import { ErrorMessage } from '../../shared/error-message/error-message';
       <h1>Cityfy</h1>
       <p class="lead">La tua musica, trasformata in una città: ogni genere un quartiere, ogni artista un palazzo.</p>
 
+      @if (deleted()) {
+        <p class="notice" role="status">I tuoi dati sono stati cancellati. Puoi ricominciare quando vuoi accedendo di nuovo.</p>
+      }
+
       @if (error(); as code) {
         @if (code !== 'UNAUTHENTICATED') {
           <app-error-message [code]="code" [compact]="true" />
@@ -31,9 +35,13 @@ import { ErrorMessage } from '../../shared/error-message/error-message';
 export class LoginPage {
   private readonly route = inject(ActivatedRoute);
   private readonly auth = inject(AuthService);
-  private readonly params = toSignal(this.route.queryParamMap.pipe(map((p) => ({ error: p.get('error'), returnUrl: p.get('returnUrl') }))));
+  private readonly params = toSignal(
+    this.route.queryParamMap.pipe(map((p) => ({ error: p.get('error'), returnUrl: p.get('returnUrl'), deleted: p.has('deleted') }))),
+  );
 
   protected readonly error = computed(() => this.params()?.error ?? null);
+  /** Back from "Cancella i miei dati". */
+  protected readonly deleted = computed(() => this.params()?.deleted ?? false);
 
   protected login(): void {
     this.auth.login(this.params()?.returnUrl ?? '/city');

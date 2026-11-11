@@ -70,10 +70,10 @@ namespace CityFy.Retrieve.Spotify.Services
 
         public async Task<int> RunRetrieveAsync(RetrieveJob job, CancellationToken stoppingToken)
         {
-            // Cancelled by the admin while still in the queue
-            if ((await _repo.GetTaskAsync(job.JobId, stoppingToken))?.Status == ProcessingStatus.CANCELLED)
+            // Cancelled while still in the queue, or deleted with the user's data
+            if ((await _repo.GetTaskAsync(job.JobId, stoppingToken)) is not { } queued || queued.Status == ProcessingStatus.CANCELLED)
             {
-                _logger.LogInformation("Spotify retrieve job {JobId} was cancelled before starting", job.JobId);
+                _logger.LogInformation("Spotify retrieve job {JobId} was cancelled or deleted before starting", job.JobId);
                 return 0;
             }
 

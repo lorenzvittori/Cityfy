@@ -51,6 +51,8 @@ foreach (var service in CityFy.Api.Controllers.AdminController.Services.Where(s 
 builder.AddCityFyMongo();
 builder.AddSqlServerClient("musicbrainz");
 builder.Services.AddScoped<CityFy.Api.Admin.DatabaseBrowser>();
+// Data deletion (user "Cancella i miei dati" and admin)
+builder.Services.AddScoped<CityFy.Api.Account.UserDataEraser>();
 
 var app = builder.Build();
 

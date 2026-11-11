@@ -60,5 +60,13 @@ namespace CityFy.Retrieve.Spotify.Repositories
         public async Task<IReadOnlyList<ProcessingTask>> ListTasksAsync(int limit, CancellationToken ct) =>
             await _tasks.Find(Builders<ProcessingTask>.Filter.Empty)
                 .SortByDescending(t => t.StartedAt).Limit(limit).ToListAsync(ct);
+
+        public async Task<IReadOnlyList<ProcessingTask>> ListActiveTasksAsync(string userId, CancellationToken ct) =>
+            await _tasks.Find(t => t.UserId == userId &&
+                                   (t.Status == ProcessingStatus.Pending || t.Status == ProcessingStatus.WORKING_IN_PROGRESS))
+                .ToListAsync(ct);
+
+        public async Task<long> DeleteTasksAsync(string userId, CancellationToken ct) =>
+            (await _tasks.DeleteManyAsync(t => t.UserId == userId, ct)).DeletedCount;
     }
 }

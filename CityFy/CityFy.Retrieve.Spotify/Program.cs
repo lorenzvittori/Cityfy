@@ -48,6 +48,7 @@ builder.Services.AddSingleton<ISpotifyAccountRepository, MongoSpotifyAccountRepo
 builder.Services.AddScoped<ISpotifyAccountService, SpotifyAccountService>();
 builder.Services.AddScoped<ISpotifyAuthService, SpotifyAuthService>();
 builder.Services.AddScoped<ISpotifyRetrieveService, SpotifyRetrieveService>();
+builder.Services.AddScoped<UserDataService>();
 
 // Background retrieve: controller/scheduler enqueue, hosted service executes
 builder.Services.AddSingleton<IRetrieveJobQueue, RetrieveJobQueue>();

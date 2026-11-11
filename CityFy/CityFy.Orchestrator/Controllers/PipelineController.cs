@@ -48,6 +48,19 @@ public class PipelineController : ControllerBase
         Ok(await _repo.ListAsync(userId, Math.Clamp(limit, 1, 200), ct));
 }
 
+/// <summary>Service-to-service endpoint used by CityFy.Api when a user (or the admin) deletes the user's data.</summary>
+[ApiController]
+[ApiExplorerSettings(GroupName = "Internal")]
+[Route("internal/users")]
+public class InternalUserDataController : ControllerBase
+{
+    // DELETE internal/users/{userId}/data — every pipeline run of the user
+    [HttpDelete("{userId}/data")]
+    public async Task<ActionResult<ServiceDefault.Models.UserDataDeletion>> Delete(string userId, [FromServices] PipelineRunRepository repo, CancellationToken ct) =>
+        Ok(new ServiceDefault.Models.UserDataDeletion("Orchestrator",
+            new Dictionary<string, long> { ["pipelineRuns"] = await repo.DeleteUserAsync(userId, ct) }));
+}
+
 [ApiController]
 [Route("debug/pipeline")]
 public class DebugPipelineController : ControllerBase

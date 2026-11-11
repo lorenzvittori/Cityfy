@@ -2,7 +2,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable, catchError, throwError } from 'rxjs';
 import { ApiError } from '../errors/api-error';
-import { City, ImportStatus, Me, Period, PipelineRun } from './api.models';
+import { City, ImportStatus, Me, Period, PipelineRun, UserDataDeletionResult } from './api.models';
 
 /** Calls to CityFy.Api (/api/v1, same origin through the dev-server proxy). Errors are ApiError. */
 @Injectable({ providedIn: 'root' })
@@ -34,6 +34,11 @@ export class ApiService {
   /** Rebuilds the user's city now, from all the plays already imported (any source). */
   rebuild(): Observable<PipelineRun> {
     return this.wrap(this.http.post<PipelineRun>(`${this.base}/city/rebuild`, null));
+  }
+
+  /** Deletes everything Cityfy keeps about the user; the session is closed by the server. */
+  deleteMyData(): Observable<UserDataDeletionResult> {
+    return this.wrap(this.http.delete<UserDataDeletionResult>(`${this.base}/me/data`));
   }
 
   upload(file: File): Observable<{ uploadId: string }> {

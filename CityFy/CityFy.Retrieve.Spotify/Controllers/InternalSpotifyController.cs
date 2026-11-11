@@ -103,6 +103,11 @@ namespace CityFy.Retrieve.Spotify.Controllers
             return Accepted(new { jobId, status = "CANCELLED" });
         }
 
+        // DELETE internal/spotify/users/{userId}/data — stop the user's retrieves, delete jobs and account
+        [HttpDelete("users/{userId}/data")]
+        public async Task<IActionResult> DeleteUserData(string userId, [FromServices] UserDataService data, CancellationToken ct) =>
+            Ok(await data.DeleteAsync(userId, ct));
+
         // GET internal/spotify/jobs/{jobId}
         [HttpGet("jobs/{jobId}")]
         public async Task<IActionResult> GetJob(string jobId, CancellationToken ct)

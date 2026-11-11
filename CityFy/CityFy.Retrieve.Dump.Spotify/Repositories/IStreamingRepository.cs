@@ -25,5 +25,11 @@ namespace CityFy.Retrieve.Dump.Spotify.Repositories
         /// written before the switch to 'listening_events'. Used only by the migration.
         /// </summary>
         IAsyncEnumerable<IReadOnlyList<StreamingBl>> ReadLegacyUploadAsync(string uploadId, int batchSize, CancellationToken ct);
+
+        // Data deletion
+        Task<IReadOnlyList<ServiceDefault.Models.ProcessingTask>> GetTasksByUserAsync(string userId, CancellationToken ct);
+        Task<long> DeleteTasksByUserAsync(string userId, CancellationToken ct);
+        /// <summary>Drops the legacy per-upload collection, if any.</summary>
+        Task DropLegacyUploadAsync(string uploadId, CancellationToken ct);
     }
 }

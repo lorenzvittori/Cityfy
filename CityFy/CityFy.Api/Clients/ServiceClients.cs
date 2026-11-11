@@ -1,18 +1,33 @@
 using System.Net.Http.Json;
 using ServiceDefault.City;
+using ServiceDefault.Models;
 
 namespace CityFy.Api.Clients;
 
-public sealed class ElaborationClient(HttpClient http) : DownstreamClient(http, "Elaboration")
+/// <summary>A service that owns part of a user's data and deletes it on DELETE .../users/{userId}/data.</summary>
+public interface IUserDataOwner
 {
+    Task<UserDataDeletion> DeleteUserDataAsync(string userId, CancellationToken ct);
+}
+
+public sealed class ElaborationClient(HttpClient http) : DownstreamClient(http, "Elaboration"), IUserDataOwner
+{
+    /// <summary>Every play (all sources) and every city of the user.</summary>
+    public Task<UserDataDeletion> DeleteUserDataAsync(string userId, CancellationToken ct) =>
+        SendAsync<UserDataDeletion>(new HttpRequestMessage(HttpMethod.Delete, $"internal/users/{Uri.EscapeDataString(userId)}/data"), ct);
+
     /// <summary>Throws CITY_NOT_READY (404) when the city of that period was never built.</summary>
     public Task<CityModel> GetCityAsync(string userId, string period, CancellationToken ct) =>
         SendAsync<CityModel>(new HttpRequestMessage(HttpMethod.Get,
             $"api/elaboration/city/{Uri.EscapeDataString(userId)}?period={Uri.EscapeDataString(period)}"), ct);
 }
 
-public sealed class OrchestratorClient(HttpClient http) : DownstreamClient(http, "Orchestrator")
+public sealed class OrchestratorClient(HttpClient http) : DownstreamClient(http, "Orchestrator"), IUserDataOwner
 {
+    /// <summary>Every pipeline run of the user (Pending ones never start).</summary>
+    public Task<UserDataDeletion> DeleteUserDataAsync(string userId, CancellationToken ct) =>
+        SendAsync<UserDataDeletion>(new HttpRequestMessage(HttpMethod.Delete, $"internal/users/{Uri.EscapeDataString(userId)}/data"), ct);
+
     public Task<List<PipelineRunInfo>> ListRunsAsync(string userId, int limit, CancellationToken ct) =>
         SendAsync<List<PipelineRunInfo>>(new HttpRequestMessage(HttpMethod.Get,
             $"api/pipeline/runs?userId={Uri.EscapeDataString(userId)}&limit={limit}"), ct);
@@ -44,8 +59,12 @@ public sealed class MusicBrainzServiceClient(HttpClient http) : DownstreamClient
         SendAsync<System.Text.Json.JsonElement>(new HttpRequestMessage(HttpMethod.Post, "api/retrieve"), ct);
 }
 
-public sealed class SpotifyServiceClient(HttpClient http) : DownstreamClient(http, "Retrieve.Spotify")
+public sealed class SpotifyServiceClient(HttpClient http) : DownstreamClient(http, "Retrieve.Spotify"), IUserDataOwner
 {
+    /// <summary>Stops the user's retrieves, deletes the jobs and the linked account (refresh token).</summary>
+    public Task<UserDataDeletion> DeleteUserDataAsync(string userId, CancellationToken ct) =>
+        SendAsync<UserDataDeletion>(new HttpRequestMessage(HttpMethod.Delete, $"internal/spotify/users/{Uri.EscapeDataString(userId)}/data"), ct);
+
     private sealed record AuthorizeUrl(string Url);
 
     public async Task<string> GetAuthorizeUrlAsync(CancellationToken ct) =>
@@ -79,8 +98,12 @@ public sealed class SpotifyServiceClient(HttpClient http) : DownstreamClient(htt
 }
 
 /// <summary>Registered without the standard resilience handler: uploads are large and must not be retried/time out at 30s.</summary>
-public sealed class DumpClient(HttpClient http) : DownstreamClient(http, "Retrieve.Dump.Spotify")
+public sealed class DumpClient(HttpClient http) : DownstreamClient(http, "Retrieve.Dump.Spotify"), IUserDataOwner
 {
+    /// <summary>Stops the user's imports, deletes the uploaded archives, extracted files and tasks.</summary>
+    public Task<UserDataDeletion> DeleteUserDataAsync(string userId, CancellationToken ct) =>
+        SendAsync<UserDataDeletion>(new HttpRequestMessage(HttpMethod.Delete, $"internal/users/{Uri.EscapeDataString(userId)}/data"), ct);
+
     public Task<UploadAccepted> UploadAsync(Stream zip, string fileName, string userId, CancellationToken ct)
     {
         var form = new MultipartFormDataContent

@@ -2,6 +2,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable, catchError, throwError } from 'rxjs';
 import { ApiError } from '../errors/api-error';
+import { UserDataDeletionResult } from './api.models';
 
 // Admin panel API (CityFy/CityFy.Api/Controllers/AdminController.cs).
 
@@ -154,6 +155,11 @@ export class AdminService {
   }
   table(name: string, page: number, pageSize = 25) {
     return this.wrap(this.http.get<TablePage>(`${this.base}/db/sql/${encodeURIComponent(name)}`, { params: this.paging(page, pageSize) }));
+  }
+
+  /** Deletes everything Cityfy keeps about a user (USER_DATA_DELETION_INCOMPLETE: retry). */
+  deleteUserData(userId: string) {
+    return this.wrap(this.http.delete<UserDataDeletionResult>(`${this.base}/users/${encodeURIComponent(userId)}/data`));
   }
 
   // --- Cancellation: 409 PROCESS_NOT_CANCELLABLE if already finished

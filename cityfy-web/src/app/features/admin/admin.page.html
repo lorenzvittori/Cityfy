@@ -232,13 +232,23 @@
               <td>{{ a.linkedAt | date: 'short' }}</td>
               <td>{{ a.lastRetrieveAt | date: 'short' }}</td>
               <td>{{ a.lastPlayedAt | date: 'short' }}</td>
-              <td><button type="button" class="small" (click)="sync(a.userId)">Sincronizza ora</button></td>
+              <td class="actions-cell">
+                <button type="button" class="small" (click)="sync(a.userId)">Sincronizza ora</button>
+                <button type="button" class="small cancel" (click)="deleteUserData(a.userId)">Cancella dati</button>
+              </td>
             </tr>
           } @empty {
             <tr><td colspan="6" class="muted">Nessun account collegato.</td></tr>
           }
         </tbody>
       </table>
+
+      <h2>Cancella i dati di un utente</h2>
+      <p class="muted small">Anche per utenti senza account collegato (per esempio con dati rimasti da una cancellazione non completata).</p>
+      <form class="inline" (ngSubmit)="deleteUserData(deleteUserId)">
+        <input name="deleteUserId" [(ngModel)]="deleteUserId" placeholder="Spotify user id" />
+        <button type="submit" class="cancel">Cancella tutti i dati</button>
+      </form>
 
       <h2>Upload dell'export</h2>
       <table>

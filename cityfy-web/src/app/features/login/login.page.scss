@@ -19,6 +19,14 @@
     color: var(--text-soft);
   }
 
+  .notice {
+    margin: 0;
+    padding: 10px 14px;
+    border-radius: 8px;
+    background: var(--success-bg);
+    border: 1px solid var(--success-border);
+  }
+
   .hint {
     margin: 0;
     font-size: 13px;

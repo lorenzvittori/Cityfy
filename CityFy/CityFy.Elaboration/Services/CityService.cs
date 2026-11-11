@@ -52,6 +52,15 @@ public class CityService : ICityService
         var hierarchy = await GetHierarchyAsync(ct);
 
         var city = new CityBuilder(_options).Build(userId, period, from, now, plays, resolved, hierarchy);
+
+        // A user without any play (e.g. data deleted while a build was queued) gets no city: storing
+        // one would bring back data the user asked to delete. Checked right before saving.
+        if (plays.Count == 0 && !await _repo.HasPlaysAsync(userId, ct))
+        {
+            _logger.LogInformation("City {CityId} not stored: user {UserId} has no plays", city.Id, userId);
+            return city;
+        }
+
         await _repo.SaveCityAsync(city, ct);
 
         _logger.LogInformation(
