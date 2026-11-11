@@ -41,6 +41,14 @@ namespace CityFy.Retrieve.Dump.Spotify.Controllers
                 : Ok(task);
         }
 
+        // POST debug/upload/tasks/{uploadId}/cancel — admin: stop a queued or running import
+        [HttpPost("tasks/{uploadId}/cancel")]
+        public async Task<IActionResult> Cancel([FromRoute] string uploadId, [FromServices] IUploadProcessor processor)
+        {
+            await processor.CancelAsync(uploadId);
+            return Accepted(new { uploadId, status = "CANCELLED" });
+        }
+
         // GET debug/upload/tasks?page=1&pageSize=20
         [HttpGet("tasks")]
         public async Task<IActionResult> GetTasksPaged([FromQuery] int page = 1, [FromQuery] int pageSize = 20) =>

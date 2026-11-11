@@ -65,6 +65,18 @@ namespace CityFy.Retrieve.Dump.Spotify.Services
                 StartedAt = DateTime.UtcNow
             });
 
+        public async Task ReportProgressAsync(string uploadId, double? percent, string? detail)
+        {
+            try
+            {
+                await _repository.UpdateTaskProgressAsync(uploadId, percent, detail);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Progress update failed for {UploadId}", uploadId);
+            }
+        }
+
         public Task UpdateTaskStatusAsync(string uploadId, ProcessingStatus status, string? message = null) =>
             _repository.UpdateTaskStatusAsync(uploadId, status, message);
 

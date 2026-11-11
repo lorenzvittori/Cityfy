@@ -16,5 +16,11 @@ namespace CityFy.Retrieve.Spotify.Services
         Task<int> RunRetrieveAsync(RetrieveJob job, CancellationToken ct);
 
         Task<ProcessingTask?> GetJobAsync(string jobId, CancellationToken ct);
+
+        /// <summary>
+        /// Admin: queued -> CANCELLED (never starts); running -> CANCELLED and it stops at the next step.
+        /// Throws RETRIEVE_JOB_NOT_FOUND (404) or PROCESS_NOT_CANCELLABLE (409).
+        /// </summary>
+        Task CancelAsync(string jobId, CancellationToken ct);
     }
 }

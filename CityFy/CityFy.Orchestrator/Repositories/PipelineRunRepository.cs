@@ -104,6 +104,22 @@ public class PipelineRunRepository
         return result.ModifiedCount > 0;
     }
 
+    /// <summary>
+    /// Pending/Building -> Cancelled. A Pending run never starts; for a Building run the late
+    /// CityBuilt/CityBuildFailed is ignored (CompleteAsync only closes Building runs).
+    /// False when the run is not active anymore.
+    /// </summary>
+    public async Task<bool> CancelAsync(string runId, DateTime now, CancellationToken ct)
+    {
+        var result = await _runs.UpdateOneAsync(
+            r => r.RunId == runId && (r.Status == PipelineStatus.Pending || r.Status == PipelineStatus.Building),
+            Builders<PipelineRun>.Update.Set(r => r.Status, PipelineStatus.Cancelled).Set(r => r.CompletedAt, now)
+                .Set(r => r.Error, "Annullato dall'amministratore")
+                .Set(r => r.ErrorCode, ServiceDefault.Errors.ErrorCodes.ProcessCancelled),
+            cancellationToken: ct);
+        return result.ModifiedCount > 0;
+    }
+
     public async Task<long> FailStuckAsync(DateTime startedBefore, DateTime now, CancellationToken ct)
     {
         var result = await _runs.UpdateManyAsync(r => r.Status == PipelineStatus.Building && r.StartedAt < startedBefore,

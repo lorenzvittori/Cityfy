@@ -28,6 +28,7 @@ builder.Services.AddScoped<IDumpDownloadService, DumpDownloadService>();
 builder.Services.AddTransient<ArchiveExtractor>();
 builder.Services.AddScoped<MusicBrainzImporter>();
 builder.Services.AddScoped<RetrieveService>();
+builder.Services.AddSingleton<ImportProgress>();
 builder.Services.AddSingleton<RetrieveRunner>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<RetrieveRunner>());
 

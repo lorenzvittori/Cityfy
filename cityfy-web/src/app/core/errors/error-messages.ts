@@ -16,6 +16,7 @@ const MESSAGES: Record<string, ErrorMessage> = {
   SERVICE_UNAVAILABLE: { message: 'Il servizio non è raggiungibile in questo momento. Riprova tra qualche minuto.', action: 'retry' },
   VALIDATION_FAILED: { message: 'Alcuni dati non sono validi. Controlla e riprova.', action: 'none' },
   UNAUTHENTICATED: { message: 'Accedi con Spotify per vedere la tua città.', action: 'login' },
+  FORBIDDEN: { message: 'Non hai i permessi per questa pagina.', action: 'home' },
   NOT_FOUND: { message: 'Non abbiamo trovato quello che cercavi.', action: 'home' },
   REQUEST_REJECTED: { message: 'Operazione non consentita.', action: 'none' },
 
@@ -65,11 +66,16 @@ const MESSAGES: Record<string, ErrorMessage> = {
   // --- Pipeline
   PIPELINE_RUN_NOT_FOUND: { message: 'Non troviamo questa elaborazione.', action: 'none' },
   PIPELINE_TIMEOUT: { message: 'La costruzione sta richiedendo troppo tempo. Riprova.', action: 'retry' },
+  PROCESS_CANCELLED: { message: 'L\'operazione è stata annullata. Puoi riprovare.', action: 'retry' },
 
   // --- Administration (never shown to end users, mapped to the generic message)
   MB_RETRIEVE_ALREADY_RUNNING: { message: 'Qualcosa è andato storto. Riprova tra poco.', action: 'retry' },
   MB_TOO_MANY_ITEMS: { message: 'Qualcosa è andato storto. Riprova tra poco.', action: 'retry' },
   MB_GENRE_NOT_FOUND: { message: 'Qualcosa è andato storto. Riprova tra poco.', action: 'retry' },
+
+  // --- Admin panel
+  ADMIN_INVALID_CREDENTIALS: { message: 'Utente o password non corretti.', action: 'none' },
+  PROCESS_NOT_CANCELLABLE: { message: 'Il processo non è in corso o è già terminato.', action: 'none' },
 };
 
 /** Message for a code; unknown codes fall back to INTERNAL_ERROR (never an empty screen). */

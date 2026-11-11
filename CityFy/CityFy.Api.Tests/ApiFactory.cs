@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using CityFy.Api.Clients;
@@ -43,13 +44,23 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
 {
     public FakeServices Fakes { get; } = new();
 
+    /// <summary>Admin panel switch (off by default, as in production). Set before the first client.</summary>
+    public bool AdminEnabled { get; set; }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Production");
         builder.UseSetting("Frontend:BaseUrl", "http://frontend.test");
+        builder.UseSetting("Admin:Enabled", AdminEnabled ? "true" : "false");
+        builder.UseSetting("Admin:Username", "admin");
+        builder.UseSetting("Admin:Password", "test-password");
+
+        // The database clients need a connection string to be registered (never opened by these tests)
+        builder.UseSetting("ConnectionStrings:cityfy", "mongodb://localhost:27017/cityfy");
+        builder.UseSetting("ConnectionStrings:musicbrainz", "Server=localhost;Database=musicbrainz;User Id=sa;Password=x;TrustServerCertificate=true");
 
         // Service discovery resolves the resource names to these addresses
-        foreach (var resource in new[] { "Elaboration", "Orchestrator", "RetrieveSpotify", "RetrieveDumpSpotify" })
+        foreach (var resource in new[] { "Elaboration", "Orchestrator", "RetrieveSpotify", "RetrieveDumpSpotify", "RetrieveMusicBrainz" })
             builder.UseSetting($"services:{resource}:https:0", $"https://{resource.ToLowerInvariant()}.test");
 
         builder.ConfigureTestServices(services =>
@@ -58,7 +69,17 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             services.AddHttpClient<OrchestratorClient>().ConfigurePrimaryHttpMessageHandler(() => Fakes);
             services.AddHttpClient<SpotifyServiceClient>().ConfigurePrimaryHttpMessageHandler(() => Fakes);
             services.AddHttpClient<DumpClient>().ConfigurePrimaryHttpMessageHandler(() => Fakes);
+            services.AddHttpClient<MusicBrainzServiceClient>().ConfigurePrimaryHttpMessageHandler(() => Fakes);
         });
+    }
+
+    /// <summary>Logs in to the admin panel with the mock admin user.</summary>
+    public async Task<HttpClient> AdminLoginAsync()
+    {
+        var client = CreateApiClient();
+        var resp = await client.PostAsJsonAsync("/api/admin/login", new { username = "admin", password = "test-password" }, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        return client;
     }
 
     /// <summary>Client on https (the session cookie is Secure), redirects not followed.</summary>

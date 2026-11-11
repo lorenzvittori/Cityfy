@@ -29,6 +29,19 @@ public class PipelineController : ControllerBase
             : Ok(run);
     }
 
+    // POST api/pipeline/runs/{runId}/cancel — admin: a Pending run never starts, a Building one is closed
+    // (Elaboration finishes the build in progress, its answer is ignored)
+    [HttpPost("{runId}/cancel")]
+    public async Task<IActionResult> Cancel(string runId, CancellationToken ct)
+    {
+        if (await _repo.GetAsync(runId, ct) == null)
+            return this.CityFyProblem(ErrorCodes.PipelineRunNotFound, $"Pipeline run '{runId}' not found", StatusCodes.Status404NotFound);
+
+        return await _repo.CancelAsync(runId, DateTime.UtcNow, ct)
+            ? Accepted(await _repo.GetAsync(runId, ct))
+            : this.CityFyProblem(ErrorCodes.ProcessNotCancellable, $"Pipeline run '{runId}' is not active", StatusCodes.Status409Conflict);
+    }
+
     // GET api/pipeline/runs?userId=...&limit=20 — most recent first
     [HttpGet]
     public async Task<ActionResult<List<PipelineRun>>> List([FromQuery] string? userId, [FromQuery] int limit = 20, CancellationToken ct = default) =>

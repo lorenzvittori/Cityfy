@@ -43,6 +43,7 @@ builder.Services.AddScoped<IStreamingBlPersistenceService, StreamingBlPersistenc
 builder.Services.AddScoped<IStreamingHistoryService, StreamingHistoryService>();
 builder.Services.AddScoped<IZipUploadService, ZipUploadService>();
 builder.Services.AddScoped<IUploadProcessor, UploadProcessor>();
+builder.Services.AddSingleton<ServiceDefault.Hosting.CancellationRegistry>();
 // Mapper
 builder.Services.AddSingleton<IStreamingMapper, StreamingMapper>();
 

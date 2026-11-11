@@ -59,6 +59,13 @@ Il frontend parla solo con **Api** (`https://localhost:7300`, Swagger su `/swagg
 
 **Configurazione del login Spotify.** Registrare sulla dashboard Spotify la redirect URI `http://127.0.0.1:4200/api/v1/auth/callback`. È già il valore di `Spotify:RedirectUri` negli appsettings di Retrieve.Spotify, e ngrok non serve. Spotify accetta `http` solo sull'indirizzo di loopback `127.0.0.1`, non su `localhost`.
 
+**Accesso pubblico con ngrok (opzionale).** Se in `CityFy.AppHost/appsettings.json` è valorizzato `Ngrok:Url` (per esempio `https://<nome>.ngrok-free.dev`), l'AppHost avvia anche la risorsa **Ngrok**. È la CLI `ngrok` locale, con il tuo authtoken, e apre un tunnel verso il **frontend** (porta 4200). In questo caso:
+- la redirect URI di Spotify e l'indirizzo del frontend passano automaticamente all'URL ngrok;
+- sulla dashboard Spotify va registrato anche `<Ngrok:Url>/api/v1/auth/callback`;
+- l'app va aperta dall'URL ngrok: il login da `127.0.0.1` non funziona più, perché Spotify rimanderebbe all'URL ngrok.
+
+Lasciando `Ngrok:Url` vuoto si torna al funzionamento solo locale su `127.0.0.1`.
+
 ### Frontend (cityfy-web)
 L'app Angular (`cityfy-web/`, nella root del repo) parte insieme al resto con l'AppHost (risorsa **Web**). L'indirizzo è **http://127.0.0.1:4200**: va usato proprio `127.0.0.1`, non `localhost`, altrimenti il login Spotify non torna sulla stessa origine.
 
@@ -74,6 +81,19 @@ npm start
 - **Test:** `npm run test:ci` (Vitest).
 - **Angular 21, non 22:** Angular 22 richiede Node ≥ 22.22, qui è installata la 22.17. Si può aggiornare dopo aver aggiornato Node.
 - **`.npmrc`:** contiene `legacy-peer-deps=true` per aggirare un bug di npm 10 nella risoluzione delle dipendenze peer.
+
+### Pannello admin
+**http://127.0.0.1:4200/admin** (o `<URL ngrok>/admin`). Utente di sviluppo definito nella configurazione dell'API, sezione `Admin`: **`admin` / `cityfy-admin`**.
+
+Il pannello è attivo solo in Development (`appsettings.Development.json` dell'API). Fuori da Development gli endpoint `/api/admin/*` rispondono 404.
+
+| Sezione | Cosa permette |
+|---|---|
+| Servizi e log | Stato `/health` di ogni servizio, link a log strutturati e tracce (dashboard Aspire) e a RabbitMQ (code e DLQ) |
+| MusicBrainz | Avvio dell'import del catalogo generi e avanzamento |
+| Pipeline | Esecuzioni dell'orchestratore di tutti gli utenti, ricostruzione manuale della città di un utente |
+| Spotify e upload | Account collegati con sincronizzazione su richiesta, elenco degli upload con stato e codice d'errore |
+| Database | Sola lettura con paginazione: collection Mongo (`cityfy`) e tabelle SQL Server (`musicbrainz`). I campi sensibili (token, secret, password) sono oscurati |
 
 ### Primo giro completo
 1. **Generi:** `POST /api/retrieve` su **RetrieveMusicBrainz**. Scarica e importa il dump MusicBrainz. Dura a lungo; lo stato si legge su `GET /api/retrieve/status`.

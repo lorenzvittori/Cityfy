@@ -54,6 +54,7 @@ La città contiene una lista `warnings`, di solito vuota. Ogni avviso è un codi
 | `SERVICE_UNAVAILABLE` | Un servizio è momentaneamente irraggiungibile | "Il servizio non è raggiungibile in questo momento. Riprova tra qualche minuto." | **Riprova**, eventualmente automatico con attesa crescente |
 | `VALIDATION_FAILED` | Dati della richiesta mancanti o non validi | "Alcuni dati non sono validi. Controlla e riprova." | Evidenziare i campi, se il form li ha |
 | `UNAUTHENTICATED` | L'utente non ha effettuato l'accesso, oppure la sessione è scaduta (dopo 14 giorni di inattività) | "Accedi con Spotify per vedere la tua città." | Pulsante **Accedi con Spotify**; dopo l'accesso si torna alla pagina di partenza |
+| `FORBIDDEN` | Utente autenticato ma senza i permessi necessari (per esempio un utente normale sulle pagine admin) | "Non hai i permessi per questa pagina." | Link alla home |
 | `NOT_FOUND` | Risorsa o pagina inesistente | "Non abbiamo trovato quello che cercavi." | Link alla home |
 | `REQUEST_REJECTED` | Richiesta non accettata (altri casi) | "Operazione non consentita." | Nessuna azione specifica |
 
@@ -114,6 +115,7 @@ Gli aggiornamenti da Spotify partono anche **in automatico** ogni 30 minuti. Se 
 | `MUSICBRAINZ_UNAVAILABLE` | Il catalogo dei generi musicali non è raggiungibile | "Il catalogo dei generi musicali non è disponibile al momento. La città verrà costruita appena torna online." | Nessuna azione: i dati dell'utente sono al sicuro |
 | `PIPELINE_TIMEOUT` | La costruzione non ha risposto in tempo (30 min) | "La costruzione sta richiedendo troppo tempo. Riprova." | **Riprova** |
 | `PIPELINE_RUN_NOT_FOUND` | Costruzione inesistente | "Non troviamo questa elaborazione." | Nessuna azione |
+| `PROCESS_CANCELLED` | Un amministratore ha annullato il caricamento, l'aggiornamento da Spotify o la costruzione della città (stato `CANCELLED` / `Cancelled`) | "L'operazione è stata annullata. Puoi riprovare." | **Riprova** (nel caricamento: ricarica il file) |
 
 ### `CITY_NOT_READY`: in costruzione o senza dati?
 Quando la città non c'è ancora, l'interfaccia guarda lo stato dell'ultima costruzione dell'utente:
@@ -145,6 +147,8 @@ Riguardano strumenti interni e **non vanno mostrati agli utenti finali**. Servon
 | `MB_RETRIEVE_ALREADY_RUNNING` | Si chiede l'aggiornamento del catalogo MusicBrainz mentre ne è già in corso uno |
 | `MB_TOO_MANY_ITEMS` | Richiesta di abbinamento con più di 1000 artisti |
 | `MB_GENRE_NOT_FOUND` | Genere inesistente |
+| `ADMIN_INVALID_CREDENTIALS` | Credenziali errate al login del pannello admin (`/admin/login`) |
+| `PROCESS_NOT_CANCELLABLE` | Annullamento richiesto per un processo già concluso o non in corso |
 
 ---
 

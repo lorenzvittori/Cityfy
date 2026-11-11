@@ -38,12 +38,31 @@ namespace CityFy.Retrieve.Dump.Spotify.Repositories
             if (!string.IsNullOrWhiteSpace(message))
                 updateDef = updateDef.Set(t => t.Message, message);
             // The code is cleared when the task leaves FAILED (e.g. re-processed)
-            updateDef = updateDef.Set(t => t.ErrorCode, status == ProcessingStatus.FAILED ? errorCode ?? ServiceDefault.Errors.ErrorCodes.UploadProcessingFailed : null);
-            if (status is ProcessingStatus.DONE or ProcessingStatus.FAILED)
+            updateDef = updateDef.Set(t => t.ErrorCode, status switch
+                {
+                    ProcessingStatus.FAILED => errorCode ?? ServiceDefault.Errors.ErrorCodes.UploadProcessingFailed,
+                    ProcessingStatus.CANCELLED => ServiceDefault.Errors.ErrorCodes.ProcessCancelled,
+                    _ => null
+                })
+                .Set(t => t.UpdatedAt, DateTime.UtcNow);
+            if (status is ProcessingStatus.DONE or ProcessingStatus.FAILED or ProcessingStatus.CANCELLED)
                 updateDef = updateDef.Set(t => t.CompletedAt, DateTime.UtcNow);
+            if (status == ProcessingStatus.DONE)
+                updateDef = updateDef.Set(t => t.ProgressPercent, 100).Set(t => t.ProgressDetail, null);
 
-            await Tasks.UpdateOneAsync(t => t.UploadId == uploadId, updateDef);
+            // A cancelled task stays cancelled: a late DONE/FAILED from the import must not overwrite it
+            var filter = status == ProcessingStatus.CANCELLED
+                ? Builders<ProcessingTask>.Filter.Eq(t => t.UploadId, uploadId)
+                : Builders<ProcessingTask>.Filter.Where(t => t.UploadId == uploadId && t.Status != ProcessingStatus.CANCELLED);
+            await Tasks.UpdateOneAsync(filter, updateDef);
         }
+
+        public Task UpdateTaskProgressAsync(string uploadId, double? percent, string? detail) =>
+            Tasks.UpdateOneAsync(t => t.UploadId == uploadId,
+                Builders<ProcessingTask>.Update
+                    .Set(t => t.ProgressPercent, percent.HasValue ? Math.Round(percent.Value, 1) : null)
+                    .Set(t => t.ProgressDetail, detail)
+                    .Set(t => t.UpdatedAt, DateTime.UtcNow));
 
         public async Task<IEnumerable<ProcessingTask>> GetTasksByStatusAsync(ProcessingStatus status) =>
             await Tasks.Find(t => t.Status == status).ToListAsync();
@@ -54,7 +73,9 @@ namespace CityFy.Retrieve.Dump.Spotify.Repositories
         public async Task<IEnumerable<ProcessingTask>> GetTasksPagedAsync(int page, int pageSize)
         {
             var skip = (Math.Max(1, page) - 1) * Math.Max(1, pageSize);
-            return await Tasks.Find(Builders<ProcessingTask>.Filter.Empty).Skip(skip).Limit(Math.Max(1, pageSize)).ToListAsync();
+            return await Tasks.Find(Builders<ProcessingTask>.Filter.Empty)
+                .SortByDescending(t => t.StartedAt) // most recent first (admin panel)
+                .Skip(skip).Limit(Math.Max(1, pageSize)).ToListAsync();
         }
 
         public async Task<IEnumerable<string>> GetDocumentsPagedAsync(string collectionName, int page, int pageSize, string? providedUploadId = null)

@@ -78,7 +78,7 @@ public sealed class MusicBrainzImporterReadTests : IDisposable
         File.WriteAllLines(Path.Combine(_dir, table), rows);
 
     private MusicBrainzData Read() =>
-        new MusicBrainzImporter(null!, NullLogger<MusicBrainzImporter>.Instance).Read(_dir, CancellationToken.None);
+        new MusicBrainzImporter(null!, NullLogger<MusicBrainzImporter>.Instance, new ImportProgress()).Read(_dir, CancellationToken.None);
 
     public void Dispose() => Directory.Delete(_dir, recursive: true);
 
@@ -121,6 +121,18 @@ public sealed class MusicBrainzImporterReadTests : IDisposable
         var link = Assert.Single(data.SpotifyLinks);
         Assert.Equal(100, link.ArtistId);
         Assert.Equal("6olE6TJLqED3rqDCT0FyPh", link.SpotifyArtistId);
+    }
+
+    [Fact]
+    public void Read_ReportsProgressTableByTable()
+    {
+        var progress = new ImportProgress();
+
+        new MusicBrainzImporter(null!, NullLogger<MusicBrainzImporter>.Instance, progress).Read(_dir, CancellationToken.None);
+
+        Assert.Equal("Lettura tabelle", progress.Current!.Phase);
+        Assert.StartsWith("url (9/9)", progress.Current.Detail);
+        Assert.InRange(progress.Current.Percent!.Value, 0, 100);
     }
 
     [Fact]

@@ -14,4 +14,8 @@
     <InternalsVisibleTo Include="CityFy.Api.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Aspire.Microsoft.Data.SqlClient" Version="13.6.5" />
+  </ItemGroup>
+
 </Project>

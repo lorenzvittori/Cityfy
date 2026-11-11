@@ -23,6 +23,13 @@ public class RetrieveController : ControllerBase
             ? AcceptedAtAction(nameof(GetStatus), null, _runner.Status)
             : this.CityFyProblem(ErrorCodes.MbRetrieveAlreadyRunning, "A retrieve is already queued or running", StatusCodes.Status409Conflict);
 
+    // POST api/retrieve/cancel — stop the running import (admin); the previous catalog stays in place
+    [HttpPost("cancel")]
+    public IActionResult Cancel() =>
+        _runner.Cancel()
+            ? Accepted(_runner.Status)
+            : this.CityFyProblem(ErrorCodes.ProcessNotCancellable, "No import is running", StatusCodes.Status409Conflict);
+
     // GET api/retrieve/status
     [HttpGet("status")]
     public IActionResult GetStatus() => Ok(_runner.Status);

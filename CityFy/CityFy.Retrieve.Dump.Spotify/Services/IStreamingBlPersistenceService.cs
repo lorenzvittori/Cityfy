@@ -11,6 +11,9 @@ namespace CityFy.Retrieve.Dump.Spotify.Services
         Task<int> PersistBufferAsync(string userId, IReadOnlyList<StreamingBl> buffer, string uploadId, CancellationToken ct = default);
 
         Task CreateTaskAsync(string uploadId, string userId);
+
+        /// <summary>Progress of the import, shown in the admin panel. Never fails the import.</summary>
+        Task ReportProgressAsync(string uploadId, double? percent, string? detail);
         Task UpdateTaskStatusAsync(string uploadId, ServiceDefault.Models.ProcessingStatus status, string? message = null);
         Task<IEnumerable<ServiceDefault.Models.ProcessingTask>> GetTasksByStatusAsync(ServiceDefault.Models.ProcessingStatus status);
 

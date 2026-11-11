@@ -6,6 +6,7 @@ using CityFy.Retrieve.Spotify.Repositories;
 using Microsoft.Extensions.Options;
 using ServiceDefault.Contracts;
 using ServiceDefault.Errors;
+using ServiceDefault.Hosting;
 using ServiceDefault.Listening;
 using ServiceDefault.Messaging;
 using ServiceDefault.Models;
@@ -25,6 +26,7 @@ namespace CityFy.Retrieve.Spotify.Services
         private readonly ISpotifyConverter _converter;
         private readonly IRetrieveJobQueue _queue;
         private readonly IMessagePublisher _publisher;
+        private readonly CancellationRegistry _running;
         private readonly ILogger<SpotifyRetrieveService> _logger;
         private readonly int _pageSize;
 
@@ -37,10 +39,12 @@ namespace CityFy.Retrieve.Spotify.Services
             ISpotifyConverter converter,
             IRetrieveJobQueue queue,
             IMessagePublisher publisher,
+            CancellationRegistry running,
             IOptions<SpotifyOptions> options,
             ILogger<SpotifyRetrieveService> logger)
         {
             _publisher = publisher;
+            _running = running;
             _client = client;
             _accounts = accounts;
             _accountRepo = accountRepo;
@@ -64,8 +68,17 @@ namespace CityFy.Retrieve.Spotify.Services
             return jobId;
         }
 
-        public async Task<int> RunRetrieveAsync(RetrieveJob job, CancellationToken ct)
+        public async Task<int> RunRetrieveAsync(RetrieveJob job, CancellationToken stoppingToken)
         {
+            // Cancelled by the admin while still in the queue
+            if ((await _repo.GetTaskAsync(job.JobId, stoppingToken))?.Status == ProcessingStatus.CANCELLED)
+            {
+                _logger.LogInformation("Spotify retrieve job {JobId} was cancelled before starting", job.JobId);
+                return 0;
+            }
+
+            var cts = _running.Register(job.JobId, stoppingToken);
+            var ct = cts.Token;
             await _repo.UpdateTaskAsync(job.JobId, ProcessingStatus.WORKING_IN_PROGRESS);
 
             try
@@ -91,7 +104,13 @@ namespace CityFy.Retrieve.Spotify.Services
                     job.JobId, job.UserId, inserted);
                 return inserted;
             }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            catch (OperationCanceledException) when (cts.IsCancellationRequested && !stoppingToken.IsCancellationRequested)
+            {
+                // Stopped by the admin (status already CANCELLED); plays stored so far stay
+                _logger.LogInformation("Spotify retrieve job {JobId} cancelled by the admin", job.JobId);
+                return 0;
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 await _repo.UpdateTaskAsync(job.JobId, ProcessingStatus.FAILED, message: "Cancelled (service shutting down)",
                     errorCode: ErrorCodes.SpotifyRetrieveFailed);
@@ -103,6 +122,24 @@ namespace CityFy.Retrieve.Spotify.Services
                 await _repo.UpdateTaskAsync(job.JobId, ProcessingStatus.FAILED, message: ex.Message, errorCode: ToErrorCode(ex));
                 throw;
             }
+            finally
+            {
+                _running.Unregister(job.JobId, cts);
+            }
+        }
+
+        public async Task CancelAsync(string jobId, CancellationToken ct)
+        {
+            var task = await _repo.GetTaskAsync(jobId, ct)
+                ?? throw new CityFyException(ErrorCodes.RetrieveJobNotFound, $"Retrieve job '{jobId}' not found", StatusCodes.Status404NotFound);
+
+            if (task.Status is not (ProcessingStatus.Pending or ProcessingStatus.WORKING_IN_PROGRESS))
+                throw new CityFyException(ErrorCodes.ProcessNotCancellable, $"Retrieve job '{jobId}' is {task.Status}", StatusCodes.Status409Conflict);
+
+            // Status first (a queued job will be skipped), then stop the running one if any
+            await _repo.UpdateTaskAsync(jobId, ProcessingStatus.CANCELLED, message: "Annullato dall'amministratore");
+            _running.Cancel(jobId);
+            _logger.LogInformation("Spotify retrieve job {JobId} cancelled ({Status})", jobId, task.Status);
         }
 
         /// <summary>Error code shown to the user for a failed retrieve.</summary>
@@ -123,6 +160,7 @@ namespace CityFy.Retrieve.Spotify.Services
             RetrieveJob job, string token, DateTime since, CancellationToken ct)
         {
             var after = new DateTimeOffset(DateTime.SpecifyKind(since, DateTimeKind.Utc)).ToUnixTimeMilliseconds();
+            await _repo.UpdateProgressAsync(job.JobId, null, $"Ascolti successivi al {since:dd/MM HH:mm}", 0);
             var page = await _client.GetRecentlyPlayedPageAsync(token, before: null, after: after, _pageSize, ct);
 
             // A full page means plays may have been lost between two runs: Spotify only keeps the
@@ -144,6 +182,8 @@ namespace CityFy.Retrieve.Spotify.Services
 
             for (var i = 0; i < MaxPages; i++)
             {
+                // Number of pages unknown in advance: indeterminate progress, page counter as detail
+                await _repo.UpdateProgressAsync(job.JobId, null, $"Pagina {i + 1} · {inserted} nuovi ascolti", inserted);
                 var page = await _client.GetRecentlyPlayedPageAsync(token, before, after: null, _pageSize, ct);
                 var (pageInserted, pageLast) = await StoreAsync(job, page.Items, ct);
                 inserted += pageInserted;

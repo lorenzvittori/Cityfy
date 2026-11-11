@@ -47,6 +47,12 @@ namespace CityFy.Retrieve.Spotify.Repositories
             return _accounts.UpdateOneAsync(a => a.UserId == userId, update, cancellationToken: ct);
         }
 
+        public async Task<IReadOnlyList<SpotifyAccount>> ListAsync(CancellationToken ct) =>
+            await _accounts.Find(Builders<SpotifyAccount>.Filter.Empty)
+                .Project<SpotifyAccount>(Builders<SpotifyAccount>.Projection.Exclude(a => a.ProtectedRefreshToken))
+                .SortByDescending(a => a.LinkedAt)
+                .ToListAsync(ct);
+
         public async Task<IReadOnlyList<string>> GetAllUserIdsAsync(CancellationToken ct) =>
             await _accounts.Find(Builders<SpotifyAccount>.Filter.Empty)
                 .Project(a => a.UserId)

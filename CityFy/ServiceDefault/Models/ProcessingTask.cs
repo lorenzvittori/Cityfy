@@ -9,7 +9,10 @@ namespace ServiceDefault.Models
         Pending,
         WORKING_IN_PROGRESS,
         DONE,
-        FAILED
+        FAILED,
+
+        /// <summary>Stopped by an administrator (ErrorCode = PROCESS_CANCELLED).</summary>
+        CANCELLED
     }
 
     public class ProcessingTask
@@ -33,5 +36,14 @@ namespace ServiceDefault.Models
 
         /// <summary>Stable ErrorCodes value when Status is FAILED (Message is the technical detail).</summary>
         public string? ErrorCode { get; set; }
+
+        /// <summary>0-100 while WORKING_IN_PROGRESS, when the work can be measured (null = indeterminate).</summary>
+        public double? ProgressPercent { get; set; }
+
+        /// <summary>What is being done right now, e.g. "Streaming_History_Audio_2021.json (3/12)".</summary>
+        public string? ProgressDetail { get; set; }
+
+        /// <summary>Last progress update: a WORKING task not updated for long is probably stuck.</summary>
+        public DateTime? UpdatedAt { get; set; }
     }
 }

@@ -1,0 +1,314 @@
+<header class="admin-bar">
+  <strong>Cityfy · Admin</strong>
+  <nav>
+    @for (t of tabs; track t.id) {
+      <button type="button" [class.active]="tab() === t.id" (click)="show(t.id)">{{ t.label }}</button>
+    }
+  </nav>
+  <button type="button" class="ghost" (click)="logout()">Esci</button>
+</header>
+
+<div class="content">
+  @if (error(); as e) {
+    <app-error-message [code]="e.code" [traceId]="e.traceId" [compact]="true" (retry)="show(tab())" />
+  }
+  @if (notice(); as n) {
+    <p class="notice">{{ n }}</p>
+  }
+
+  @switch (tab()) {
+    <!-- ================================================= ATTIVITÀ (live) -->
+    @case ('activity') {
+      <p class="muted small">
+        Aggiornamento automatico ogni 3 secondi
+        @if (lastRefresh(); as t) { · ultimo alle {{ t | date: 'HH:mm:ss' }} }
+      </p>
+      @if (!anythingRunning()) {
+        <p class="idle">Nessuna attività in corso.</p>
+      }
+
+      <!-- MusicBrainz import -->
+      @if (mb(); as s) {
+        @if (s.state === 'Running' || s.state === 'Failed' || s.state === 'Cancelled') {
+          <section class="activity" [class.failed]="s.state !== 'Running'">
+            <header>
+              <strong>Import catalogo MusicBrainz</strong>
+              <span class="badge" [class]="s.state">{{ s.state }}</span>
+              @if (s.startedAt) { <span class="muted">avviato {{ s.startedAt | date: 'HH:mm' }}</span> }
+              @if (s.state === 'Running') { <button type="button" class="small cancel" (click)="cancel('import')">Annulla</button> }
+            </header>
+            @if (s.progress; as p) {
+              <div class="phase">{{ p.phase }}</div>
+              @if (s.state === 'Running') { <app-progress-bar [percent]="p.percent" /> }
+              <div class="detail">{{ p.detail }}</div>
+              @if (s.state === 'Running' && silentMinutes(p.updatedAt) >= 5) {
+                <div class="stuck">Nessun aggiornamento da {{ silentMinutes(p.updatedAt) }} minuti</div>
+              }
+            }
+            @if (s.error) { <div class="error-text">{{ s.error }}</div> }
+          </section>
+        }
+      }
+
+      <!-- Uploads -->
+      @for (u of activeUploads(); track u.uploadId) {
+        <section class="activity">
+          <header>
+            <strong>Upload export</strong> <code>{{ u.uploadId.slice(0, 8) }}</code>
+            <span class="muted">utente {{ u.userId }}</span>
+            <span class="badge" [class]="u.status">{{ u.status }}</span>
+            <button type="button" class="small cancel" (click)="cancel('upload', u.uploadId)">Annulla</button>
+          </header>
+          <app-progress-bar [percent]="u.status === 'Pending' ? null : u.progressPercent" />
+          <div class="detail">{{ u.status === 'Pending' ? 'In coda' : u.progressDetail }} · {{ u.inserted | number }} nuovi ascolti</div>
+          @if (silentMinutes(u.updatedAt) >= 5) {
+            <div class="stuck">Nessun aggiornamento da {{ silentMinutes(u.updatedAt) }} minuti</div>
+          }
+        </section>
+      }
+
+      <!-- Spotify retrieve jobs -->
+      @for (j of activeJobs(); track j.jobId) {
+        <section class="activity">
+          <header>
+            <strong>Retrieve Spotify</strong> <code>{{ j.jobId.slice(0, 8) }}</code>
+            <span class="muted">utente {{ j.userId }}</span>
+            <span class="badge" [class]="j.status">{{ j.status }}</span>
+            <button type="button" class="small cancel" (click)="cancel('spotify', j.jobId)">Annulla</button>
+          </header>
+          <app-progress-bar [percent]="j.progressPercent" />
+          <div class="detail">{{ j.status === 'Pending' ? 'In coda' : j.progressDetail }}</div>
+        </section>
+      }
+
+      <!-- Pipeline runs -->
+      @for (r of activeRuns(); track r.runId) {
+        <section class="activity">
+          <header>
+            <strong>Costruzione città</strong> <code>{{ r.runId.slice(0, 8) }}</code>
+            <span class="muted">utente {{ r.userId }}</span>
+            <span class="badge" [class]="r.status">{{ r.status }}</span>
+            <button type="button" class="small cancel" (click)="cancel('run', r.runId)">Annulla</button>
+          </header>
+          <app-progress-bar [percent]="null" />
+          <div class="detail">
+            @if (r.status === 'Pending') { In attesa di altri import, parte alle {{ r.dueAt | date: 'HH:mm:ss' }} }
+            @else { Periodi: {{ r.periods.join(', ') }} }
+          </div>
+        </section>
+      }
+
+      <h2>Concluse di recente</h2>
+      <table>
+        <thead><tr><th>Tipo</th><th>Id</th><th>Utente</th><th>Stato</th><th>Nuovi ascolti</th><th>Terminato</th><th>Errore</th></tr></thead>
+        <tbody>
+          @for (u of recentUploads(); track u.uploadId) {
+            <tr><td>Upload</td><td><code>{{ u.uploadId.slice(0, 8) }}</code></td><td>{{ u.userId }}</td>
+              <td><span class="badge" [class]="u.status">{{ u.status }}</span></td><td>{{ u.inserted | number }}</td>
+              <td>{{ u.completedAt | date: 'short' }}</td><td><code>{{ u.errorCode }}</code></td></tr>
+          }
+          @for (j of recentJobs(); track j.jobId) {
+            <tr><td>Spotify</td><td><code>{{ j.jobId.slice(0, 8) }}</code></td><td>{{ j.userId }}</td>
+              <td><span class="badge" [class]="j.status">{{ j.status }}</span></td><td>{{ j.inserted | number }}</td>
+              <td>{{ j.completedAt | date: 'short' }}</td><td><code>{{ j.errorCode }}</code></td></tr>
+          }
+          @for (r of recentRuns(); track r.runId) {
+            <tr><td>Città</td><td><code>{{ r.runId.slice(0, 8) }}</code></td><td>{{ r.userId }}</td>
+              <td><span class="badge" [class]="r.status">{{ r.status }}</span></td><td>{{ newPlays(r) | number }}</td>
+              <td>{{ r.completedAt | date: 'short' }}</td><td><code>{{ r.errorCode }}</code></td></tr>
+          }
+        </tbody>
+      </table>
+    }
+
+    <!-- ================================================= SERVIZI E LOG -->
+    @case ('services') {
+      @if (services(); as s) {
+        <h2>Stato dei servizi</h2>
+        <table>
+          <thead><tr><th>Servizio</th><th>Stato</th><th>Tempo</th><th>Dettaglio</th></tr></thead>
+          <tbody>
+            @for (svc of s.services; track svc.name) {
+              <tr>
+                <td>{{ svc.name }}</td>
+                <td><span class="badge" [class]="svc.status">{{ svc.status }}</span></td>
+                <td>{{ svc.elapsedMs !== null ? svc.elapsedMs + ' ms' : '—' }}</td>
+                <td class="muted">{{ svc.detail }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+
+        <h2>Log e strumenti</h2>
+        <ul class="links">
+          @if (s.links.dashboard) {
+            <li><a [href]="s.links.dashboard + '/structuredlogs'" target="_blank" rel="noopener">Log strutturati (dashboard Aspire)</a></li>
+            <li><a [href]="s.links.dashboard + '/traces'" target="_blank" rel="noopener">Tracce distribuite (dashboard Aspire)</a></li>
+            <li><a [href]="s.links.dashboard" target="_blank" rel="noopener">Dashboard Aspire: risorse, console, metriche</a></li>
+          }
+          @if (s.links.rabbitMq) {
+            <li><a [href]="s.links.rabbitMq" target="_blank" rel="noopener">RabbitMQ: code e messaggi in errore (DLQ)</a></li>
+          }
+        </ul>
+        <button type="button" (click)="show('services')">Aggiorna</button>
+      }
+    }
+
+    <!-- ================================================= MUSICBRAINZ -->
+    @case ('musicbrainz') {
+      <h2>Catalogo generi (MusicBrainz)</h2>
+      @if (mb(); as s) {
+        <dl class="facts">
+          <dt>Stato</dt><dd><span class="badge" [class]="s.state">{{ s.state }}</span></dd>
+          @if (s.startedAt) { <dt>Avviato</dt><dd>{{ s.startedAt | date: 'medium' }}</dd> }
+          @if (s.completedAt) { <dt>Terminato</dt><dd>{{ s.completedAt | date: 'medium' }}</dd> }
+          @if (s.result; as r) {
+            <dt>Export</dt><dd>{{ r.dumpName }}</dd>
+            <dt>Generi</dt><dd>{{ r.genres | number }} ({{ r.genreRelations | number }} relazioni)</dd>
+            <dt>Artisti</dt><dd>{{ r.artists | number }} ({{ r.artistGenres | number }} generi, {{ r.spotifyLinks | number }} link Spotify)</dd>
+            <dt>Durata</dt><dd>{{ r.duration }}</dd>
+          }
+          @if (s.error) { <dt>Errore</dt><dd class="error-text">{{ s.error }}</dd> }
+        </dl>
+        @if (s.progress; as p) {
+          <div class="activity">
+            <div class="phase">{{ p.phase }}</div>
+            @if (s.state === 'Running') { <app-progress-bar [percent]="p.percent" /> }
+            <div class="detail">{{ p.detail }}</div>
+          </div>
+        }
+        @if (s.state === 'Running') {
+          <button type="button" class="cancel" (click)="cancel('import')">Annulla import</button>
+          <p class="muted">Import in corso: lo stato si aggiorna da solo ogni 5 secondi. I dettagli sono anche nei log del servizio RetrieveMusicBrainz.</p>
+        } @else {
+          <button type="button" class="primary" (click)="startMb()">Avvia import</button>
+        }
+        <p class="muted small">Lo stato è tenuto in memoria dal servizio: dopo un riavvio torna "Idle" anche se il catalogo è già importato (vedi la scheda Database, tabelle SQL).</p>
+      }
+    }
+
+    <!-- ================================================= PIPELINE -->
+    @case ('pipeline') {
+      <h2>Ricostruisci la città di un utente</h2>
+      <form class="inline" (ngSubmit)="rebuild(rebuildUserId)">
+        <input name="userId" [(ngModel)]="rebuildUserId" placeholder="Spotify user id" />
+        <button type="submit" class="primary">Ricostruisci</button>
+      </form>
+
+      <h2>Esecuzioni (tutti gli utenti)</h2>
+      <table>
+        <thead><tr><th>Run</th><th>Utente</th><th>Stato</th><th>Origine</th><th>Nuovi ascolti</th><th>Creato</th><th>Terminato</th><th>Errore</th><th></th></tr></thead>
+        <tbody>
+          @for (r of runs(); track r.runId) {
+            <tr>
+              <td><code>{{ r.runId.slice(0, 8) }}</code></td>
+              <td>{{ r.userId }}</td>
+              <td><span class="badge" [class]="r.status">{{ r.status }}</span></td>
+              <td>{{ sources(r) }}</td>
+              <td>{{ newPlays(r) | number }}</td>
+              <td>{{ r.createdAt | date: 'short' }}</td>
+              <td>{{ r.completedAt | date: 'short' }}</td>
+              <td><code>{{ r.errorCode }}</code></td>
+              <td><button type="button" class="small" (click)="rebuild(r.userId)">Ricostruisci</button></td>
+            </tr>
+          } @empty {
+            <tr><td colspan="9" class="muted">Nessuna esecuzione.</td></tr>
+          }
+        </tbody>
+      </table>
+      <button type="button" (click)="show('pipeline')">Aggiorna</button>
+    }
+
+    <!-- ================================================= SPOTIFY E UPLOAD -->
+    @case ('spotify') {
+      <h2>Account Spotify collegati</h2>
+      <table>
+        <thead><tr><th>Utente</th><th>Nome</th><th>Collegato</th><th>Ultima sincronizzazione</th><th>Ultimo ascolto importato</th><th></th></tr></thead>
+        <tbody>
+          @for (a of accounts(); track a.userId) {
+            <tr>
+              <td>{{ a.userId }}</td>
+              <td>{{ a.displayName }}</td>
+              <td>{{ a.linkedAt | date: 'short' }}</td>
+              <td>{{ a.lastRetrieveAt | date: 'short' }}</td>
+              <td>{{ a.lastPlayedAt | date: 'short' }}</td>
+              <td><button type="button" class="small" (click)="sync(a.userId)">Sincronizza ora</button></td>
+            </tr>
+          } @empty {
+            <tr><td colspan="6" class="muted">Nessun account collegato.</td></tr>
+          }
+        </tbody>
+      </table>
+
+      <h2>Upload dell'export</h2>
+      <table>
+        <thead><tr><th>Upload</th><th>Utente</th><th>Stato</th><th>Nuovi ascolti</th><th>Avviato</th><th>Terminato</th><th>Errore</th></tr></thead>
+        <tbody>
+          @for (u of uploads(); track u.uploadId) {
+            <tr>
+              <td><code>{{ u.uploadId.slice(0, 8) }}</code></td>
+              <td>{{ u.userId }}</td>
+              <td><span class="badge" [class]="u.status">{{ u.status }}</span></td>
+              <td>{{ u.inserted | number }}</td>
+              <td>{{ u.startedAt | date: 'short' }}</td>
+              <td>{{ u.completedAt | date: 'short' }}</td>
+              <td><code>{{ u.errorCode }}</code></td>
+            </tr>
+          } @empty {
+            <tr><td colspan="7" class="muted">Nessun upload.</td></tr>
+          }
+        </tbody>
+      </table>
+      <button type="button" (click)="show('spotify')">Aggiorna</button>
+    }
+
+    <!-- ================================================= DATABASE -->
+    @case ('database') {
+      <div class="db">
+        <aside>
+          <h3>Mongo · cityfy</h3>
+          <ul>
+            @for (c of collections(); track c.name) {
+              <li [class.active]="selected()?.source === 'mongo' && selected()?.name === c.name" (click)="open('mongo', c.name)">
+                {{ c.name }} <span class="muted">{{ c.rows | number }}</span>
+              </li>
+            }
+          </ul>
+          <h3>SQL Server · musicbrainz</h3>
+          <ul>
+            @for (t of tables(); track t.name) {
+              <li [class.active]="selected()?.source === 'sql' && selected()?.name === t.name" (click)="open('sql', t.name)">
+                {{ t.name }} <span class="muted">{{ t.rows | number }}</span>
+              </li>
+            }
+          </ul>
+        </aside>
+
+        <section class="viewer">
+          @if (page(); as p) {
+            @if (selected(); as sel) {
+              <div class="pager">
+                <strong>{{ p.name }}</strong>
+                <span class="muted">{{ p.total | number }} righe · pagina {{ p.page }} di {{ pages(p) }}</span>
+                <button type="button" class="small" [disabled]="p.page <= 1" (click)="open(sel.source, sel.name, p.page - 1)">‹</button>
+                <button type="button" class="small" [disabled]="p.page >= pages(p)" (click)="open(sel.source, sel.name, p.page + 1)">›</button>
+              </div>
+              <div class="scroll">
+                <table class="data">
+                  <thead><tr>@for (c of p.columns; track c) { <th>{{ c }}</th> }</tr></thead>
+                  <tbody>
+                    @for (row of p.rows; track $index) {
+                      <tr>@for (c of p.columns; track c) { <td [title]="row[c] | json">{{ cell(row[c]) }}</td> }</tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+          } @else {
+            <p class="muted">Scegli una collection o una tabella. Sola lettura; i campi sensibili (token, secret, password) sono oscurati.</p>
+          }
+        </section>
+      </div>
+    }
+  }
+</div>

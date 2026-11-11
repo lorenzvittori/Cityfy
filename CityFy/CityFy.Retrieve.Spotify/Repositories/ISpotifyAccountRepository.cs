@@ -13,5 +13,8 @@ namespace CityFy.Retrieve.Spotify.Repositories
         Task UpdateRetrieveCursorAsync(string userId, DateTime retrievedAt, DateTime? lastPlayedAt, CancellationToken ct);
 
         Task<IReadOnlyList<string>> GetAllUserIdsAsync(CancellationToken ct);
+
+        /// <summary>All accounts, most recently linked first. ProtectedRefreshToken is NOT loaded.</summary>
+        Task<IReadOnlyList<SpotifyAccount>> ListAsync(CancellationToken ct);
     }
 }

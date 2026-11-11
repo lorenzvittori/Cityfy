@@ -15,6 +15,8 @@ namespace ServiceDefault.Errors
         public const string NotFound = "NOT_FOUND";
         /// <summary>No session (or expired): log in with Spotify.</summary>
         public const string Unauthenticated = "UNAUTHENTICATED";
+        /// <summary>Logged in, but without the required role (e.g. admin pages as a normal user).</summary>
+        public const string Forbidden = "FORBIDDEN";
         /// <summary>Other 4xx without a more specific code (e.g. method not allowed).</summary>
         public const string RequestRejected = "REQUEST_REJECTED";
 
@@ -62,5 +64,14 @@ namespace ServiceDefault.Errors
         public const string MbRetrieveAlreadyRunning = "MB_RETRIEVE_ALREADY_RUNNING";
         public const string MbTooManyItems = "MB_TOO_MANY_ITEMS";
         public const string MbGenreNotFound = "MB_GENRE_NOT_FOUND";
+
+        // --- Cancellation (admin) ------------------------------------------------
+        /// <summary>Status code of an upload / Spotify sync / city build / import stopped by an administrator.</summary>
+        public const string ProcessCancelled = "PROCESS_CANCELLED";
+        /// <summary>Cancel requested for something already finished (or not running).</summary>
+        public const string ProcessNotCancellable = "PROCESS_NOT_CANCELLABLE";
+
+        // --- Admin panel --------------------------------------------------------
+        public const string AdminInvalidCredentials = "ADMIN_INVALID_CREDENTIALS";
     }
 }

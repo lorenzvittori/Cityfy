@@ -92,7 +92,7 @@ export class CityPage {
     this.api.runs(1).subscribe({
       next: ([latest]) => {
         if (!latest) this.state.set({ kind: 'welcome' });
-        else if (latest.status === 'Failed') this.state.set({ kind: 'failed', run: latest });
+        else if (latest.status === 'Failed' || latest.status === 'Cancelled') this.state.set({ kind: 'failed', run: latest });
         else if (latest.status === 'Done') this.load(); // built meanwhile (or for another period: shows CITY_NO_PLAYS)
         else this.waitForRun(latest);
       },

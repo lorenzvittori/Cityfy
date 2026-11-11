@@ -28,14 +28,19 @@ public static class DumpFiles
 /// </summary>
 public static class DumpTableReader
 {
-    public static IEnumerable<string[]> ReadRows(string path, CancellationToken ct = default)
+    /// <param name="onProgress">Called every ~65k lines with the bytes read so far (approximate: buffered).</param>
+    public static IEnumerable<string[]> ReadRows(string path, CancellationToken ct = default, Action<long>? onProgress = null)
     {
         using var reader = new StreamReader(path, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, bufferSize: 1 << 16);
         string? line;
         long n = 0;
         while ((line = reader.ReadLine()) != null)
         {
-            if ((++n & 0xFFFF) == 0) ct.ThrowIfCancellationRequested();
+            if ((++n & 0xFFFF) == 0)
+            {
+                ct.ThrowIfCancellationRequested();
+                onProgress?.Invoke(reader.BaseStream.Position);
+            }
             if (line.Length == 0) continue;
             yield return line.Split('\t');
         }

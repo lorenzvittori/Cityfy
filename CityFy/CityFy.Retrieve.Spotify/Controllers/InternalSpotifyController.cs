@@ -43,6 +43,18 @@ namespace CityFy.Retrieve.Spotify.Controllers
             };
         }
 
+        // GET internal/spotify/accounts — every linked account (admin panel), without tokens
+        [HttpGet("accounts")]
+        public async Task<IActionResult> ListAccounts([FromServices] Repositories.ISpotifyAccountRepository repo, CancellationToken ct) =>
+            Ok((await repo.ListAsync(ct)).Select(a => new
+            {
+                userId = a.UserId,
+                displayName = a.DisplayName,
+                linkedAt = a.LinkedAt,
+                lastRetrieveAt = a.LastRetrieveAt,
+                lastPlayedAt = a.LastPlayedAt
+            }));
+
         // GET internal/spotify/accounts/{userId}
         [HttpGet("accounts/{userId}")]
         public async Task<IActionResult> GetAccount(string userId, CancellationToken ct)
@@ -64,6 +76,31 @@ namespace CityFy.Retrieve.Spotify.Controllers
         {
             var jobId = await _retrieve.EnqueueRetrieveAsync(userId, ct);
             return AcceptedAtAction(nameof(GetJob), new { jobId }, new { jobId });
+        }
+
+        // GET internal/spotify/jobs?limit=30 — most recent retrieve jobs of every user (admin panel)
+        [HttpGet("jobs")]
+        public async Task<IActionResult> ListJobs([FromServices] Repositories.ISpotifyRepository repo, [FromQuery] int limit = 30, CancellationToken ct = default) =>
+            Ok((await repo.ListTasksAsync(Math.Clamp(limit, 1, 200), ct)).Select(t => new
+            {
+                jobId = t.UploadId,
+                userId = t.UserId,
+                status = t.Status.ToString(),
+                inserted = t.Inserted,
+                startedAt = t.StartedAt,
+                completedAt = t.CompletedAt,
+                errorCode = t.ErrorCode,
+                progressPercent = t.ProgressPercent,
+                progressDetail = t.ProgressDetail,
+                updatedAt = t.UpdatedAt
+            }));
+
+        // POST internal/spotify/jobs/{jobId}/cancel — admin
+        [HttpPost("jobs/{jobId}/cancel")]
+        public async Task<IActionResult> CancelJob(string jobId, CancellationToken ct)
+        {
+            await _retrieve.CancelAsync(jobId, ct);
+            return Accepted(new { jobId, status = "CANCELLED" });
         }
 
         // GET internal/spotify/jobs/{jobId}

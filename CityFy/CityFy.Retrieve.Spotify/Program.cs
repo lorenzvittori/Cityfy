@@ -51,6 +51,7 @@ builder.Services.AddScoped<ISpotifyRetrieveService, SpotifyRetrieveService>();
 
 // Background retrieve: controller/scheduler enqueue, hosted service executes
 builder.Services.AddSingleton<IRetrieveJobQueue, RetrieveJobQueue>();
+builder.Services.AddSingleton<ServiceDefault.Hosting.CancellationRegistry>();
 builder.Services.AddHostedService<SpotifyRetrieveHostedService>();
 builder.Services.AddHostedService<SpotifyRetrieveScheduler>();
 

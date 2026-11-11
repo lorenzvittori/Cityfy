@@ -35,8 +35,22 @@ static void AddService<TClient>(IServiceCollection services, string resource, Ti
 AddService<ElaborationClient>(builder.Services, "Elaboration");
 AddService<OrchestratorClient>(builder.Services, "Orchestrator");
 AddService<SpotifyServiceClient>(builder.Services, "RetrieveSpotify");
+AddService<MusicBrainzServiceClient>(builder.Services, "RetrieveMusicBrainz");
 // Uploads: large bodies, no automatic retry, long timeout
 AddService<DumpClient>(builder.Services, "RetrieveDumpSpotify", uploadTimeout: TimeSpan.FromMinutes(10));
+
+// --- Admin panel (mock admin user, Development only: see AdminOptions) ---
+builder.Services.Configure<AdminOptions>(builder.Configuration.GetSection(AdminOptions.SectionName));
+foreach (var service in CityFy.Api.Controllers.AdminController.Services.Where(s => s != "Api"))
+    builder.Services.AddHttpClient($"health-{service}", c =>
+    {
+        c.BaseAddress = new Uri($"https+http://{service}");
+        c.Timeout = TimeSpan.FromSeconds(5);
+    });
+// Read-only database browser: Mongo (cityfy) and SQL Server (musicbrainz)
+builder.AddCityFyMongo();
+builder.AddSqlServerClient("musicbrainz");
+builder.Services.AddScoped<CityFy.Api.Admin.DatabaseBrowser>();
 
 var app = builder.Build();
 

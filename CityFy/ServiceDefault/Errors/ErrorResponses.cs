@@ -57,6 +57,7 @@ namespace ServiceDefault.Errors
         {
             StatusCodes.Status400BadRequest => ErrorCodes.ValidationFailed,
             StatusCodes.Status401Unauthorized => ErrorCodes.Unauthenticated,
+            StatusCodes.Status403Forbidden => ErrorCodes.Forbidden,
             StatusCodes.Status404NotFound => ErrorCodes.NotFound,
             StatusCodes.Status503ServiceUnavailable => ErrorCodes.ServiceUnavailable,
             >= 400 and < 500 => ErrorCodes.RequestRejected,

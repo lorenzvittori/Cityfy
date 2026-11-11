@@ -29,9 +29,20 @@ public static class AuthSetup
                 o.Events.OnRedirectToLogin = ctx => WriteStatus(ctx.Response, StatusCodes.Status401Unauthorized);
                 o.Events.OnRedirectToAccessDenied = ctx => WriteStatus(ctx.Response, StatusCodes.Status403Forbidden);
             });
-        services.AddAuthorization();
+        services.AddAuthorization(o => o.AddPolicy(AdminPolicy, p => p.RequireRole(AdminRole)));
         return services;
     }
+
+    public const string AdminRole = "Admin";
+    public const string AdminPolicy = "Admin";
+
+    public static ClaimsPrincipal CreateAdminPrincipal(string username) =>
+        new(new ClaimsIdentity(
+        [
+            new Claim(ClaimTypes.NameIdentifier, $"admin:{username}"),
+            new Claim(ClaimTypes.Name, username),
+            new Claim(ClaimTypes.Role, AdminRole)
+        ], CookieAuthenticationDefaults.AuthenticationScheme));
 
     // Empty status: UseStatusCodePages turns it into ProblemDetails (401 -> UNAUTHENTICATED)
     private static Task WriteStatus(HttpResponse response, int status)

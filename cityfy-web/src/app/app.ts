@@ -30,7 +30,7 @@ export class App {
       .sync()
       .pipe(
         switchMap(({ jobId }) => timer(1000, 2000).pipe(switchMap(() => this.api.syncStatus(jobId)))),
-        filter((s) => s.status === 'DONE' || s.status === 'FAILED'),
+        filter((s) => s.status === 'DONE' || s.status === 'FAILED' || s.status === 'CANCELLED'),
         take(1),
         takeUntilDestroyed(this.destroyRef),
       )

@@ -46,9 +46,18 @@ namespace CityFy.Retrieve.Dump.Spotify.Services
             var totalInserted = 0;
             var failedFiles = 0;
 
-            foreach (var file in jsonFiles)
+            // Progress by bytes: files of different years have very different sizes
+            var totalBytes = Math.Max(1, jsonFiles.Sum(f => new FileInfo(f).Length));
+            long doneBytes = 0;
+
+            for (var index = 0; index < jsonFiles.Length; index++)
             {
                 ct.ThrowIfCancellationRequested();
+                var file = jsonFiles[index];
+
+                await _persistence.ReportProgressAsync(uploadId, 100.0 * doneBytes / totalBytes,
+                    $"{Path.GetFileName(file)} ({index + 1}/{jsonFiles.Length}) · {totalInserted} nuovi ascolti");
+                doneBytes += new FileInfo(file).Length;
 
                 List<StreamingDto>? dtos;
                 try

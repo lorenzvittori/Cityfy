@@ -72,7 +72,7 @@ export class UploadPage {
       .pipe(
         switchMap(() => this.api.uploadStatus(uploadId)),
         filter((s) => {
-          if (s.status === 'DONE' || s.status === 'FAILED') return true;
+          if (s.status === 'DONE' || s.status === 'FAILED' || s.status === 'CANCELLED') return true;
           this.step.set({ kind: 'processing', status: s });
           return false;
         }),
@@ -93,7 +93,7 @@ export class UploadPage {
     this.polling = timer(POLL_MS, POLL_MS * 2)
       .pipe(
         switchMap(() => this.api.runs(1)),
-        filter(([run]) => !!run && (run.status === 'Done' || run.status === 'Failed')),
+        filter(([run]) => !!run && (run.status === 'Done' || run.status === 'Failed' || run.status === 'Cancelled')),
         take(1),
         takeUntilDestroyed(this.destroyRef),
       )

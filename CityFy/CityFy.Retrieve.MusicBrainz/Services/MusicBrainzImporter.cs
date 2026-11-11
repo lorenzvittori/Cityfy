@@ -25,13 +25,19 @@ public sealed class MusicBrainzData
 /// </summary>
 public partial class MusicBrainzImporter
 {
+    /// <summary>Tables in reading order (the progress of the reading phase is by bytes over all of them).</summary>
+    private static readonly string[] ReadOrder =
+        ["genre", "link_type", "link", "l_genre_genre", "tag", "artist_tag", "artist", "l_artist_url", "url"];
+
     private readonly MusicBrainzContext _db;
     private readonly ILogger<MusicBrainzImporter> _logger;
+    private readonly ImportProgress _progress;
 
-    public MusicBrainzImporter(MusicBrainzContext db, ILogger<MusicBrainzImporter> logger)
+    public MusicBrainzImporter(MusicBrainzContext db, ILogger<MusicBrainzImporter> logger, ImportProgress progress)
     {
         _db = db;
         _logger = logger;
+        _progress = progress;
     }
 
     [GeneratedRegex(@"^https?://open\.spotify\.com/artist/([A-Za-z0-9]{22})/?$", RegexOptions.IgnoreCase)]
@@ -63,11 +69,26 @@ public partial class MusicBrainzImporter
             return path;
         }
 
+        // Sizes up front: also fails fast if a table is missing, before reading GBs of the others
+        var sizes = ReadOrder.ToDictionary(t => t, t => new FileInfo(Table(t)).Length);
+        var totalBytes = Math.Max(1, sizes.Values.Sum());
+
+        IEnumerable<string[]> Rows(string name)
+        {
+            var index = Array.IndexOf(ReadOrder, name) + 1;
+            var before = ReadOrder.TakeWhile(t => t != name).Sum(t => sizes[t]);
+            var label = $"{name} ({index}/{ReadOrder.Length})";
+            _progress.Report("Lettura tabelle", 100.0 * before / totalBytes, label);
+            return DumpTableReader.ReadRows(Table(name), ct, position =>
+                _progress.Report("Lettura tabelle", 100.0 * (before + position) / totalBytes,
+                    $"{label} · {100.0 * position / Math.Max(1, sizes[name]):0}%"));
+        }
+
         var data = new MusicBrainzData();
 
         // genre: id | gid | name | comment | edits_pending | last_updated
         var genreIdByName = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        foreach (var r in DumpTableReader.ReadRows(Table("genre"), ct))
+        foreach (var r in Rows("genre"))
         {
             var genre = new Genre { Id = int.Parse(r[0]), Gid = r[1], Name = DumpTableReader.Unescape(r[2]) };
             data.Genres.Add(genre);
@@ -78,7 +99,7 @@ public partial class MusicBrainzImporter
         // link_type: id | parent | child_order | gid | entity_type0 | entity_type1 | name | ...
         var genreLinkTypes = new Dictionary<int, string>();
         var artistUrlLinkTypes = new HashSet<int>();
-        foreach (var r in DumpTableReader.ReadRows(Table("link_type"), ct))
+        foreach (var r in Rows("link_type"))
         {
             var (e0, e1, name) = (r[4], r[5], r[6]);
             if (e0 == "genre" && e1 == "genre") genreLinkTypes[int.Parse(r[0])] = name;
@@ -88,7 +109,7 @@ public partial class MusicBrainzImporter
         // link: id | link_type | ...  (only the link types we care about)
         var genreLinks = new Dictionary<int, string>();
         var artistUrlLinks = new HashSet<int>();
-        foreach (var r in DumpTableReader.ReadRows(Table("link"), ct))
+        foreach (var r in Rows("link"))
         {
             var linkType = int.Parse(r[1]);
             if (genreLinkTypes.TryGetValue(linkType, out var relType)) genreLinks[int.Parse(r[0])] = relType;
@@ -98,7 +119,7 @@ public partial class MusicBrainzImporter
         // l_genre_genre: id | link | entity0 | entity1 | ...  ("entity0 {type} entity1")
         var genreIds = data.Genres.Select(g => g.Id).ToHashSet();
         var seenRelations = new HashSet<(int, int, string)>();
-        foreach (var r in DumpTableReader.ReadRows(Table("l_genre_genre"), ct))
+        foreach (var r in Rows("l_genre_genre"))
         {
             if (!genreLinks.TryGetValue(int.Parse(r[1]), out var relType)) continue;
             int from = int.Parse(r[2]), to = int.Parse(r[3]);
@@ -110,7 +131,7 @@ public partial class MusicBrainzImporter
 
         // tag (derived): id | name | ref_count  -> only tags that are official genres
         var genreByTag = new Dictionary<int, int>();
-        foreach (var r in DumpTableReader.ReadRows(Table("tag"), ct))
+        foreach (var r in Rows("tag"))
         {
             if (genreIdByName.TryGetValue(DumpTableReader.Unescape(r[1]), out var genreId))
                 genreByTag[int.Parse(r[0])] = genreId;
@@ -118,7 +139,7 @@ public partial class MusicBrainzImporter
 
         // artist_tag (derived): artist | tag | count | last_updated
         var votes = new Dictionary<(int Artist, int Genre), int>();
-        foreach (var r in DumpTableReader.ReadRows(Table("artist_tag"), ct))
+        foreach (var r in Rows("artist_tag"))
         {
             if (!genreByTag.TryGetValue(int.Parse(r[1]), out var genreId)) continue;
             var count = int.Parse(r[2]);
@@ -133,7 +154,7 @@ public partial class MusicBrainzImporter
         _logger.LogInformation("Artist genres: {Count} for {Artists} artists", data.ArtistGenres.Count, votesByArtist.Count);
 
         // artist: id | gid | name | sort_name | ...  (only artists with at least one genre)
-        foreach (var r in DumpTableReader.ReadRows(Table("artist"), ct))
+        foreach (var r in Rows("artist"))
         {
             var id = int.Parse(r[0]);
             if (!votesByArtist.TryGetValue(id, out var total)) continue;
@@ -147,7 +168,7 @@ public partial class MusicBrainzImporter
 
         // l_artist_url: id | link | entity0 (artist) | entity1 (url) | ...
         var artistsByUrl = new Dictionary<int, List<int>>();
-        foreach (var r in DumpTableReader.ReadRows(Table("l_artist_url"), ct))
+        foreach (var r in Rows("l_artist_url"))
         {
             if (!artistUrlLinks.Contains(int.Parse(r[1]))) continue;
             var artistId = int.Parse(r[2]);
@@ -159,7 +180,7 @@ public partial class MusicBrainzImporter
 
         // url: id | gid | url | edits_pending | last_updated  (several GB: streamed, filtered by id)
         var seenLinks = new HashSet<(int, string)>();
-        foreach (var r in DumpTableReader.ReadRows(Table("url"), ct))
+        foreach (var r in Rows("url"))
         {
             if (!artistsByUrl.TryGetValue(int.Parse(r[0]), out var artists)) continue;
             var m = SpotifyArtistUrl().Match(r[2]);
@@ -181,6 +202,12 @@ public partial class MusicBrainzImporter
         {
             await using var tx = await _db.Database.BeginTransactionAsync(ct);
 
+            // Progress by rows over the five tables (a retry of the strategy starts again from 0)
+            _writtenRows = 0;
+            _totalRows = Math.Max(1, data.Genres.Count + data.GenreRelations.Count + data.Artists.Count
+                + data.ArtistGenres.Count + data.SpotifyLinks.Count);
+            _progress.Report("Scrittura database", 0, "Svuotamento delle tabelle precedenti");
+
             // Children first (FKs)
             await _db.ArtistSpotifyLinks.ExecuteDeleteAsync(ct);
             await _db.ArtistGenres.ExecuteDeleteAsync(ct);
@@ -191,24 +218,24 @@ public partial class MusicBrainzImporter
             var conn = (SqlConnection)_db.Database.GetDbConnection();
             var sqlTx = (SqlTransaction)tx.GetDbTransaction();
 
-            await BulkCopyAsync(conn, sqlTx, "Genres", data.Genres,
+            await BulkCopyAsync(ct, conn, sqlTx, "Genres", data.Genres,
                 ("Id", typeof(int), g => g.Id), ("Gid", typeof(string), g => g.Gid), ("Name", typeof(string), g => g.Name));
-            await BulkCopyAsync(conn, sqlTx, "GenreRelations", data.GenreRelations,
+            await BulkCopyAsync(ct, conn, sqlTx, "GenreRelations", data.GenreRelations,
                 ("FromGenreId", typeof(int), r => r.FromGenreId), ("ToGenreId", typeof(int), r => r.ToGenreId),
                 ("RelationType", typeof(string), r => r.RelationType));
-            await BulkCopyAsync(conn, sqlTx, "Artists", data.Artists,
+            await BulkCopyAsync(ct, conn, sqlTx, "Artists", data.Artists,
                 ("Id", typeof(int), a => a.Id), ("Gid", typeof(string), a => a.Gid), ("Name", typeof(string), a => a.Name),
                 ("TotalGenreVotes", typeof(int), a => a.TotalGenreVotes));
-            await BulkCopyAsync(conn, sqlTx, "ArtistGenres", data.ArtistGenres,
+            await BulkCopyAsync(ct, conn, sqlTx, "ArtistGenres", data.ArtistGenres,
                 ("ArtistId", typeof(int), ag => ag.ArtistId), ("GenreId", typeof(int), ag => ag.GenreId), ("Votes", typeof(int), ag => ag.Votes));
-            await BulkCopyAsync(conn, sqlTx, "ArtistSpotifyLinks", data.SpotifyLinks,
+            await BulkCopyAsync(ct, conn, sqlTx, "ArtistSpotifyLinks", data.SpotifyLinks,
                 ("ArtistId", typeof(int), l => l.ArtistId), ("SpotifyArtistId", typeof(string), l => l.SpotifyArtistId));
 
             await tx.CommitAsync(ct);
         });
     }
 
-    private async Task BulkCopyAsync<T>(SqlConnection conn, SqlTransaction tx, string table, IReadOnlyCollection<T> rows,
+    private async Task BulkCopyAsync<T>(CancellationToken ct, SqlConnection conn, SqlTransaction tx, string table, IReadOnlyCollection<T> rows,
         params (string Column, Type Type, Func<T, object> Value)[] columns)
     {
         using var dt = new DataTable();
@@ -224,11 +251,23 @@ public partial class MusicBrainzImporter
         {
             DestinationTableName = $"[dbo].[{table}]",
             BulkCopyTimeout = 0,
-            BatchSize = 50_000
+            BatchSize = 50_000,
+            NotifyAfter = 10_000
         };
         foreach (var c in columns) bulk.ColumnMappings.Add(c.Column, c.Column);
 
-        await bulk.WriteToServerAsync(dt);
+        var before = _writtenRows;
+        void Report(long copied) => _progress.Report("Scrittura database", 100.0 * (before + copied) / _totalRows,
+            $"{table} · {copied:N0} / {rows.Count:N0} righe");
+        bulk.SqlRowsCopied += (_, e) => Report(e.RowsCopied);
+        Report(0);
+
+        // Cancellable: the transaction is rolled back and the previous catalog stays in place
+        await bulk.WriteToServerAsync(dt, ct);
+        _writtenRows += rows.Count;
         _logger.LogInformation("Bulk copied {Count} rows into {Table}", rows.Count, table);
     }
+
+    private long _writtenRows;
+    private long _totalRows = 1;
 }

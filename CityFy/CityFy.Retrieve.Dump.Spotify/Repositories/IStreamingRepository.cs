@@ -8,6 +8,7 @@ namespace CityFy.Retrieve.Dump.Spotify.Repositories
         Task CreateTaskAsync(ServiceDefault.Models.ProcessingTask task);
         Task IncrementTaskInsertedAsync(string uploadId, int delta);
         Task UpdateTaskStatusAsync(string uploadId, ServiceDefault.Models.ProcessingStatus status, string? message = null, string? errorCode = null);
+        Task UpdateTaskProgressAsync(string uploadId, double? percent, string? detail);
         Task<IEnumerable<ServiceDefault.Models.ProcessingTask>> GetTasksByStatusAsync(ServiceDefault.Models.ProcessingStatus status);
 
         // Read operations

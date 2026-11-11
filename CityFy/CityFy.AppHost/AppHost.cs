@@ -13,8 +13,10 @@ var mongo = builder.AddMongoDB("mongo")
 var cityfyDb = mongo.AddDatabase("cityfy");
 
 // SQL Server: MusicBrainz genres/artists
+// Explicit volume name: the default one (cityfy.apphost-<hash>-sql-data) was left half-initialized
+// by a first start that crashed, and SQL Server crashes on every start from that state.
 var sql = builder.AddSqlServer("sql")
-    .WithDataVolume()
+    .WithDataVolume("cityfy-sql-data")
     .WithLifetime(ContainerLifetime.Persistent);
 var musicBrainzDb = sql.AddDatabase("musicbrainz");
 
@@ -77,15 +79,40 @@ var api = builder.AddProject<Projects.CityFy_Api>("Api")
     .WithReference(elaboration).WaitFor(elaboration)
     .WithReference(orchestrator).WaitFor(orchestrator)
     .WithReference(retrieveSpotify).WaitFor(retrieveSpotify)
-    .WithReference(retrieveDumpSpotify).WaitFor(retrieveDumpSpotify);
+    .WithReference(retrieveDumpSpotify).WaitFor(retrieveDumpSpotify)
+    // Admin panel: MusicBrainz import, read-only database browser, links to the log tools
+    .WithReference(retrieveMusicBrainz)
+    .WithReference(cityfyDb)
+    .WithReference(musicBrainzDb)
+    .WithEnvironment("Admin__RabbitMqManagementUrl", broker.GetEndpoint("management"))
+    .WithEnvironment("Admin__DashboardUrl", builder.Configuration["ASPNETCORE_URLS"]?.Split(';')[0] ?? "");
 
 // Frontend (Angular, cityfy-web): ng serve on http://127.0.0.1:4200 with a proxy /api -> Api.
 // Browser, Spotify callback and session cookie all live on this single origin; the fixed
 // loopback address is what the Spotify dashboard accepts as an http redirect URI.
-builder.AddJavaScriptApp("Web", "../../cityfy-web", "start")
+var web = builder.AddJavaScriptApp("Web", "../../cityfy-web", "start")
     .WithHttpEndpoint(port: 4200, isProxied: false)
     .WithExternalHttpEndpoints()
     .WithReference(api)
     .WaitFor(api);
+
+// ---------------------------------------------------------------------------
+// Optional public tunnel (ngrok): set "Ngrok:Url" (e.g. https://<name>.ngrok-free.dev) to enable.
+// The tunnel targets the FRONTEND (not the Api): the public origin then serves both the app and
+// /api through the dev-server proxy, so the session cookie stays on one origin.
+// Uses the local ngrok CLI and its own authtoken (ngrok config add-authtoken ...).
+// Register <Ngrok:Url>/api/v1/auth/callback as a redirect URI on the Spotify dashboard.
+// ---------------------------------------------------------------------------
+var publicUrl = builder.Configuration["Ngrok:Url"]?.TrimEnd('/');
+if (!string.IsNullOrWhiteSpace(publicUrl))
+{
+    builder.AddExecutable("Ngrok", "ngrok", "../../cityfy-web",
+            "http", $"--url={publicUrl}", "--log=stdout", "--log-format=logfmt", "http://127.0.0.1:4200")
+        .WaitFor(web);
+
+    // Login and redirects must use the public origin when the app is opened through the tunnel
+    retrieveSpotify.WithEnvironment("Spotify__RedirectUri", $"{publicUrl}/api/v1/auth/callback");
+    api.WithEnvironment("Frontend__BaseUrl", publicUrl);
+}
 
 builder.Build().Run();

@@ -12,7 +12,10 @@ public enum PipelineStatus
     Building,
 
     Done,
-    Failed
+    Failed,
+
+    /// <summary>Stopped by an administrator (ErrorCode = PROCESS_CANCELLED).</summary>
+    Cancelled
 }
 
 /// <summary>

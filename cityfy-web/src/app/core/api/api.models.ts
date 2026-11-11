@@ -61,7 +61,8 @@ export interface Building {
   genres: string[];
 }
 
-export type ImportState = 'Pending' | 'WORKING_IN_PROGRESS' | 'DONE' | 'FAILED';
+/** CANCELLED: stopped by an administrator (errorCode PROCESS_CANCELLED). */
+export type ImportState = 'Pending' | 'WORKING_IN_PROGRESS' | 'DONE' | 'FAILED' | 'CANCELLED';
 
 export interface ImportStatus {
   id: string;
@@ -72,7 +73,7 @@ export interface ImportStatus {
   errorCode: string | null;
 }
 
-export type RunState = 'Pending' | 'Building' | 'Done' | 'Failed';
+export type RunState = 'Pending' | 'Building' | 'Done' | 'Failed' | 'Cancelled';
 
 export interface PipelineRun {
   runId: string;

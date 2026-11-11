@@ -9,13 +9,16 @@ public class RetrieveService
     private readonly ArchiveExtractor _extractor;
     private readonly MusicBrainzImporter _importer;
     private readonly ILogger<RetrieveService> _logger;
+    private readonly ImportProgress _progress;
 
-    public RetrieveService(IDumpDownloadService downloader, ArchiveExtractor extractor, MusicBrainzImporter importer, ILogger<RetrieveService> logger)
+    public RetrieveService(IDumpDownloadService downloader, ArchiveExtractor extractor, MusicBrainzImporter importer,
+        ILogger<RetrieveService> logger, ImportProgress progress)
     {
         _downloader = downloader;
         _extractor = extractor;
         _importer = importer;
         _logger = logger;
+        _progress = progress;
     }
 
     public async Task<RetrieveResult> RunRetrieveAsync(CancellationToken cancellationToken = default)
@@ -32,6 +35,8 @@ public class RetrieveService
             if (missing.Count == 0) continue;
 
             _logger.LogInformation("Extracting {Count} tables from {Archive}", missing.Count, archive);
+            // tar gives no progress: indeterminate (the core archive takes several minutes)
+            _progress.Report("Estrazione", null, $"{archive}: {string.Join(", ", missing.Select(Path.GetFileName))}");
             await _extractor.ExtractAsync(Path.Combine(localDir, archive), extractDir, missing, cancellationToken);
         }
 
