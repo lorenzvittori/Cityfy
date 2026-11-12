@@ -1,17 +1,14 @@
-using CityFy.Retrieve.Dump.Spotify.Repositories;
+using CityFy.Retrieve.Dump.Spotify.SubServices;
 using ServiceDefault.Models;
 
 namespace CityFy.Retrieve.Dump.Spotify.Services;
 
-public sealed class UploadTaskService(IStreamingRepository repo) : IUploadTaskService
+public sealed class UploadTaskService(IUploadTaskSubService tasks, IUploadDocumentsSubService documents) : IUploadTaskService
 {
-    public const int MaxPageSize = 200;
+    public Task<ProcessingTask?> GetAsync(string uploadId, CancellationToken ct) => tasks.GetAsync(uploadId);
 
-    public Task<ProcessingTask?> GetAsync(string uploadId, CancellationToken ct) => repo.GetTaskByUploadIdAsync(uploadId);
+    public Task<IReadOnlyList<ProcessingTask>> ListAsync(int page, int pageSize, CancellationToken ct) => tasks.ListAsync(page, pageSize);
 
-    public async Task<IReadOnlyList<ProcessingTask>> ListAsync(int page, int pageSize, CancellationToken ct) =>
-        (await repo.GetTasksPagedAsync(Math.Max(1, page), Math.Clamp(pageSize, 1, MaxPageSize))).ToList();
-
-    public async Task<IReadOnlyList<string>> GetDocumentsAsync(string collectionName, int page, int pageSize, string? uploadId, CancellationToken ct) =>
-        (await repo.GetDocumentsPagedAsync(collectionName, Math.Max(1, page), Math.Clamp(pageSize, 1, MaxPageSize), uploadId)).ToList();
+    public Task<IReadOnlyList<string>> GetDocumentsAsync(string collectionName, int page, int pageSize, string? uploadId, CancellationToken ct) =>
+        documents.GetAsync(collectionName, page, pageSize, uploadId);
 }

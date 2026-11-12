@@ -17,4 +17,13 @@ public interface IUploadProcessor
     /// Throws UPLOAD_NOT_FOUND (404) or PROCESS_NOT_CANCELLABLE (409) when already finished.
     /// </summary>
     Task CancelAsync(string uploadId);
+
+    /// <summary>
+    /// Startup: publishes UploadReceived again for the uploads left Pending or interrupted. Duplicates
+    /// are harmless (finished uploads are skipped, the import is idempotent). Returns how many.
+    /// </summary>
+    Task<int> RequeueUnfinishedAsync(CancellationToken ct);
+
+    /// <summary>Copies a legacy per-upload collection into 'listening_events'. Returns the new plays.</summary>
+    Task<int> MigrateLegacyUploadAsync(string uploadId, string userId, CancellationToken ct);
 }

@@ -2,7 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using CityFy.Api.Services;
+using CityFy.Api.SubServices;
 using ServiceDefault.Errors;
 
 namespace CityFy.Api.Tests;
@@ -118,7 +118,7 @@ public sealed class AdminTests : IDisposable
     {
         var doc = JsonNode.Parse("""{ "UserId": "u1", "ProtectedRefreshToken": "abc", "nested": [{ "password": "p", "ok": 1 }] }""");
 
-        var redacted = DatabaseBrowser.Redact(doc)!.ToJsonString();
+        var redacted = new RedactionSubService().Redact(doc)!.ToJsonString();
 
         Assert.DoesNotContain("abc", redacted);
         Assert.DoesNotContain("\"p\"", redacted);

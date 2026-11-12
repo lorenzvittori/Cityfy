@@ -4,6 +4,7 @@ using CityFy.Retrieve.Spotify.Mappers;
 using CityFy.Retrieve.Spotify.Options;
 using CityFy.Retrieve.Spotify.Repositories;
 using CityFy.Retrieve.Spotify.Services;
+using CityFy.Retrieve.Spotify.SubServices;
 using Microsoft.AspNetCore.DataProtection;
 using ServiceDefault.Hosting;
 
@@ -45,10 +46,23 @@ builder.Services.AddHttpClient<ISpotifyAuthClient, SpotifyAuthClient>(c => c.Tim
 builder.Services.AddSingleton<ISpotifyConverter, SpotifyConverter>();
 builder.Services.AddSingleton<ISpotifyRepository, MongoSpotifyRepository>();
 builder.Services.AddSingleton<ISpotifyAccountRepository, MongoSpotifyAccountRepository>();
+// Services: the flow of each use case
 builder.Services.AddScoped<ISpotifyAccountService, SpotifyAccountService>();
 builder.Services.AddScoped<ISpotifyAuthService, SpotifyAuthService>();
 builder.Services.AddScoped<ISpotifyRetrieveService, SpotifyRetrieveService>();
 builder.Services.AddScoped<IUserDataService, UserDataService>();
+
+// SubServices: the logic (scoped when they use the transient typed HttpClients)
+builder.Services.AddSingleton<ISpotifyLoginStateSubService, SpotifyLoginStateSubService>();
+builder.Services.AddSingleton<ISpotifyAuthorizeUrlSubService, SpotifyAuthorizeUrlSubService>();
+builder.Services.AddSingleton<ISpotifyAccountStoreSubService, SpotifyAccountStoreSubService>();
+builder.Services.AddSingleton<IRetrieveJobSubService, RetrieveJobSubService>();
+builder.Services.AddSingleton<IListeningImportedEventSubService, ListeningImportedEventSubService>();
+builder.Services.AddSingleton<IRetrieveErrorSubService, RetrieveErrorSubService>();
+builder.Services.AddScoped<ISpotifyTokenExchangeSubService, SpotifyTokenExchangeSubService>();
+builder.Services.AddScoped<ISpotifyAccountLinkSubService, SpotifyAccountLinkSubService>();
+builder.Services.AddScoped<ISpotifyAccessTokenSubService, SpotifyAccessTokenSubService>();
+builder.Services.AddScoped<ISpotifyPlaysRetrieveSubService, SpotifyPlaysRetrieveSubService>();
 
 // Background retrieve: controller/scheduler enqueue, hosted service executes
 builder.Services.AddSingleton<IRetrieveJobQueue, RetrieveJobQueue>();

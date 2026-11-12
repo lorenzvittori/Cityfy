@@ -1,5 +1,4 @@
 using CityFy.Orchestrator.Models;
-using CityFy.Orchestrator.Services;
 using MongoDB.Driver;
 
 namespace CityFy.Orchestrator.Repositories;
@@ -19,42 +18,23 @@ public sealed class MongoPipelineRunRepository : IPipelineRunRepository
         ]));
     }
 
-    /// <summary>
-    /// Joins the user's Pending run (pushing its start by the debounce) or opens a new one.
-    /// Called by a single consumer (prefetch 1), so two Pending runs for a user cannot appear.
-    /// </summary>
-    public async Task<PipelineRun> AddTriggerAsync(string userId, PipelineTrigger trigger, IReadOnlyList<string> periods,
-        TimeSpan debounce, TimeSpan maxWait, CancellationToken ct)
+    public async Task<PipelineRun?> FindPendingAsync(string userId, CancellationToken ct)
     {
         await _indexes.Value;
-        var now = trigger.At;
+        return await _runs.Find(r => r.UserId == userId && r.Status == PipelineStatus.Pending).FirstOrDefaultAsync(ct);
+    }
 
-        var pending = await _runs.Find(r => r.UserId == userId && r.Status == PipelineStatus.Pending).FirstOrDefaultAsync(ct);
-        if (pending != null)
-        {
-            var dueAt = PipelinePolicy.ComputeDueAt(pending.CreatedAt, now, debounce, maxWait);
-            var updated = await _runs.FindOneAndUpdateAsync<PipelineRun>(
-                r => r.RunId == pending.RunId && r.Status == PipelineStatus.Pending,
-                Builders<PipelineRun>.Update.Push(r => r.Triggers, trigger).Set(r => r.DueAt, dueAt),
-                new FindOneAndUpdateOptions<PipelineRun> { ReturnDocument = ReturnDocument.After },
-                ct);
-            if (updated != null)
-                return updated;
-            // started in the meantime: open a new run
-        }
+    public async Task<PipelineRun?> TryAppendTriggerAsync(string runId, PipelineTrigger trigger, DateTime dueAt, CancellationToken ct) =>
+        await _runs.FindOneAndUpdateAsync<PipelineRun>(
+            r => r.RunId == runId && r.Status == PipelineStatus.Pending,
+            Builders<PipelineRun>.Update.Push(r => r.Triggers, trigger).Set(r => r.DueAt, dueAt),
+            new FindOneAndUpdateOptions<PipelineRun> { ReturnDocument = ReturnDocument.After },
+            ct);
 
-        var run = new PipelineRun
-        {
-            RunId = Guid.NewGuid().ToString("N"),
-            UserId = userId,
-            Status = PipelineStatus.Pending,
-            Triggers = [trigger],
-            Periods = periods.ToList(),
-            CreatedAt = now,
-            DueAt = PipelinePolicy.ComputeDueAt(now, now, debounce, maxWait)
-        };
+    public async Task InsertAsync(PipelineRun run, CancellationToken ct)
+    {
+        await _indexes.Value;
         await _runs.InsertOneAsync(run, cancellationToken: ct);
-        return run;
     }
 
     /// <summary>

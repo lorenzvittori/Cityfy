@@ -1,14 +1,10 @@
 using CityFy.Retrieve.Dump.Spotify.Services;
-using ServiceDefault.Contracts;
-using ServiceDefault.Messaging;
-using ServiceDefault.Models;
 
 namespace CityFy.Retrieve.Dump.Spotify.HostedServices;
 
 /// <summary>
-/// At startup, re-publishes UploadReceived for the uploads left Pending or interrupted
-/// (e.g. the broker was down at upload time, or the service stopped mid-import).
-/// Duplicates are harmless: the processor skips finished uploads and the import is idempotent.
+/// At startup, queues again the uploads left Pending or interrupted (e.g. the broker was down at
+/// upload time, or the service stopped mid-import).
 /// </summary>
 public sealed class UploadRecoveryService(IServiceScopeFactory scopes, ILogger<UploadRecoveryService> logger) : BackgroundService
 {
@@ -17,19 +13,7 @@ public sealed class UploadRecoveryService(IServiceScopeFactory scopes, ILogger<U
         try
         {
             await using var scope = scopes.CreateAsyncScope();
-            var persistence = scope.ServiceProvider.GetRequiredService<IStreamingBlPersistenceService>();
-            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
-
-            var unfinished = (await persistence.GetTasksByStatusAsync(ProcessingStatus.Pending))
-                .Concat(await persistence.GetTasksByStatusAsync(ProcessingStatus.InProgress))
-                .Where(t => !string.IsNullOrWhiteSpace(t.UserId))
-                .ToList();
-
-            foreach (var task in unfinished)
-                await publisher.PublishAsync(new UploadReceived(task.UploadId, task.UserId!), task.UploadId, stoppingToken);
-
-            if (unfinished.Count > 0)
-                logger.LogInformation("Re-queued {Count} unfinished uploads", unfinished.Count);
+            await scope.ServiceProvider.GetRequiredService<IUploadProcessor>().RequeueUnfinishedAsync(stoppingToken);
         }
         catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
         {

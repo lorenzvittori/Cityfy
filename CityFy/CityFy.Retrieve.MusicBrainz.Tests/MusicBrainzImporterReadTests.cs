@@ -1,3 +1,4 @@
+using CityFy.Retrieve.MusicBrainz.SubServices;
 using CityFy.Retrieve.MusicBrainz.Models;
 using CityFy.Retrieve.MusicBrainz.Services;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -80,7 +81,7 @@ public sealed class MusicBrainzImporterReadTests : IDisposable
         File.WriteAllLines(Path.Combine(_dir, table), rows);
 
     private MusicBrainzData Read() =>
-        new MusicBrainzImporter(null!, NullLogger<MusicBrainzImporter>.Instance, new ImportProgress()).Read(_dir, CancellationToken.None);
+        new MusicBrainzImportSubService(null!, NullLogger<MusicBrainzImportSubService>.Instance, new ImportProgress()).Read(_dir, CancellationToken.None);
 
     public void Dispose() => Directory.Delete(_dir, recursive: true);
 
@@ -133,7 +134,7 @@ public sealed class MusicBrainzImporterReadTests : IDisposable
     {
         var progress = new ImportProgress();
 
-        new MusicBrainzImporter(null!, NullLogger<MusicBrainzImporter>.Instance, progress).Read(_dir, CancellationToken.None);
+        new MusicBrainzImportSubService(null!, NullLogger<MusicBrainzImportSubService>.Instance, progress).Read(_dir, CancellationToken.None);
 
         Assert.Equal("Reading tables", progress.Current!.Phase);
         Assert.StartsWith("url (9/9)", progress.Current.Detail);

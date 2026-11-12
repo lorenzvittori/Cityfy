@@ -1,28 +1,21 @@
-using CityFy.Retrieve.Dump.Spotify.FileClients;
-using CityFy.Retrieve.Dump.Spotify.Repositories;
-using ServiceDefault.Contracts;
+using CityFy.Retrieve.Dump.Spotify.SubServices;
 using ServiceDefault.Errors;
-using ServiceDefault.Hosting;
-using ServiceDefault.Listening;
-using ServiceDefault.Messaging;
-using ServiceDefault.Models;
 
 namespace CityFy.Retrieve.Dump.Spotify.Services;
 
 public sealed class UploadProcessor(
-    IStreamingRepository repo,
-    IStreamingHistoryService history,
-    IFileClient files,
-    IMessagePublisher publisher,
-    CancellationRegistry running,
+    IUploadTaskSubService tasks,
+    IUploadStorageSubService storage,
+    IStreamingHistoryImportSubService history,
+    ILegacyUploadMigrationSubService legacy,
+    IUploadEventsSubService events,
+    IUploadErrorSubService errors,
+    IUploadValidationSubService validation,
     ILogger<UploadProcessor> logger) : IUploadProcessor
 {
-    private readonly IFileClient _files = files;
-    private readonly CancellationRegistry _running = running;
-
     public async Task ProcessAsync(string uploadId, CancellationToken ct)
     {
-        var task = await repo.GetTaskByUploadIdAsync(uploadId);
+        var task = await tasks.GetAsync(uploadId);
         if (task == null)
         {
             logger.LogWarning("Upload {UploadId}: no task, nothing to do", uploadId);
@@ -30,7 +23,7 @@ public sealed class UploadProcessor(
         }
 
         // Duplicate message (e.g. startup recovery + queued message) or cancelled while queued
-        if (task.Status is ProcessingStatus.Done or ProcessingStatus.Failed or ProcessingStatus.Cancelled)
+        if (tasks.IsFinished(task))
         {
             logger.LogInformation("Upload {UploadId} already {Status}, skipped", uploadId, task.Status);
             return;
@@ -38,37 +31,27 @@ public sealed class UploadProcessor(
 
         if (string.IsNullOrWhiteSpace(task.UserId))
         {
-            await repo.UpdateTaskStatusAsync(uploadId, ProcessingStatus.Failed,
-                "Upload without userId: re-upload with the userId form field", ErrorCodes.UploadUserMissing);
+            await tasks.FailAsync(uploadId, "Upload without userId: re-upload with the userId form field", ErrorCodes.UploadUserMissing);
             return;
         }
 
-        var extracted = Path.Combine(_files.GetFullPath("uploads", uploadId), "extracted");
-        if (!Directory.Exists(extracted))
+        if (storage.GetExtractedDirectory(uploadId) is not { } extracted)
         {
-            await repo.UpdateTaskStatusAsync(uploadId, ProcessingStatus.Failed,
-                "Extracted files not found", ErrorCodes.UploadProcessingFailed);
+            await tasks.FailAsync(uploadId, "Extracted files not found", ErrorCodes.UploadProcessingFailed);
             return;
         }
 
-        var cts = _running.Register(uploadId, ct);
+        if (await tasks.TryStartAsync(uploadId, ct) is not { } cts)
+            return;
+
         try
         {
-            // Cancelled between the first read and the registration?
-            if ((await repo.GetTaskByUploadIdAsync(uploadId))?.Status == ProcessingStatus.Cancelled)
-                return;
-
             logger.LogInformation("Processing upload {UploadId} for user {UserId}", uploadId, task.UserId);
-            await repo.UpdateTaskStatusAsync(uploadId, ProcessingStatus.InProgress);
 
             // Idempotent (upsert): a retry after a partial import does not duplicate plays
-            var inserted = await history.ProcessExtractedFilesAsync(uploadId, task.UserId, extracted, cts.Token);
-
-            await publisher.PublishAsync(
-                new ListeningImported(task.UserId, ListeningSources.Dump, uploadId, inserted, DateTime.UtcNow),
-                correlationId: uploadId, cts.Token);
-
-            await repo.UpdateTaskStatusAsync(uploadId, ProcessingStatus.Done);
+            var inserted = await history.ImportAsync(uploadId, task.UserId, extracted, cts.Token);
+            await events.PublishImportedAsync(uploadId, task.UserId, inserted, cts.Token);
+            await tasks.CompleteAsync(uploadId);
         }
         catch (OperationCanceledException) when (cts.IsCancellationRequested && !ct.IsCancellationRequested)
         {
@@ -77,25 +60,35 @@ public sealed class UploadProcessor(
         }
         finally
         {
-            _running.Unregister(uploadId, cts);
+            tasks.End(uploadId, cts);
         }
     }
 
     public Task MarkFailedAsync(string uploadId, Exception error) =>
-        repo.UpdateTaskStatusAsync(uploadId, ProcessingStatus.Failed, error.Message,
-            error is CityFyException cf ? cf.Code : ErrorCodes.UploadProcessingFailed);
+        tasks.FailAsync(uploadId, error.Message, errors.ToErrorCode(error));
 
     public async Task CancelAsync(string uploadId)
     {
-        var task = await repo.GetTaskByUploadIdAsync(uploadId)
-            ?? throw new CityFyException(ErrorCodes.UploadNotFound, $"Upload '{uploadId}' not found", StatusCodes.Status404NotFound);
+        var previous = await tasks.CancelAsync(uploadId);
+        logger.LogInformation("Upload {UploadId} cancelled ({Status})", uploadId, previous);
+    }
 
-        if (task.Status is not (ProcessingStatus.Pending or ProcessingStatus.InProgress))
-            throw new CityFyException(ErrorCodes.ProcessNotCancellable, $"Upload '{uploadId}' is {task.Status}", StatusCodes.Status409Conflict);
+    public async Task<int> RequeueUnfinishedAsync(CancellationToken ct)
+    {
+        var unfinished = await tasks.ListUnfinishedAsync();
+        foreach (var task in unfinished)
+            await events.PublishReceivedAsync(task.UploadId, task.UserId!, ct);
 
-        // Status first (a queued upload will be skipped), then stop the running import if any
-        await repo.UpdateTaskStatusAsync(uploadId, ProcessingStatus.Cancelled, "Cancelled by an administrator");
-        _running.Cancel(uploadId);
-        logger.LogInformation("Upload {UploadId} cancelled ({Status})", uploadId, task.Status);
+        if (unfinished.Count > 0)
+            logger.LogInformation("Re-queued {Count} unfinished uploads", unfinished.Count);
+        return unfinished.Count;
+    }
+
+    public async Task<int> MigrateLegacyUploadAsync(string uploadId, string userId, CancellationToken ct)
+    {
+        var owner = validation.ValidateOwner(userId);
+        var inserted = await legacy.MigrateAsync(uploadId, owner, ct);
+        logger.LogInformation("Legacy upload {UploadId} migrated for user {UserId}: {Inserted} new plays", uploadId, owner, inserted);
+        return inserted;
     }
 }

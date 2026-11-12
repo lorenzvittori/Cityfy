@@ -8,7 +8,7 @@ namespace CityFy.Retrieve.Dump.Spotify.Controllers;
 // Upload, status and cancel are in InternalUploadsController (used by CityFy.Api); these are inspection tools.
 [ApiController]
 [Route("debug/upload")]
-public sealed class DebugZipController(IZipUploadService uploads, IUploadTaskService tasks, IStreamingBlPersistenceService persistence) : ControllerBase
+public sealed class DebugZipController(IZipUploadService uploads, IUploadTaskService tasks, IUploadProcessor processor) : ControllerBase
 {
     // GET debug/upload/collection/{collectionName}?page=1&pageSize=20&uploadId=...
     [HttpGet("collection/{collectionName}")]
@@ -18,15 +18,12 @@ public sealed class DebugZipController(IZipUploadService uploads, IUploadTaskSer
 
     // POST debug/upload/migrate/{uploadId}?userId=...
     // Copies a legacy 'streaming_history_{uploadId}' collection (pre listening_events)
-    // into 'listening_events' for the given user. Idempotent.
+    // into 'listening_events' for the given user. Idempotent. 400 UPLOAD_USER_MISSING without userId.
     [HttpPost("migrate/{uploadId}")]
     public async Task<ActionResult<LegacyMigrationResponse>> MigrateLegacyUpload(string uploadId, [FromQuery] string? userId, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(userId))
-            return this.CityFyProblem(ErrorCodes.UploadUserMissing, "userId is required", StatusCodes.Status400BadRequest);
-
-        var inserted = await persistence.MigrateLegacyUploadAsync(uploadId, userId.Trim(), ct);
-        return Ok(new LegacyMigrationResponse(uploadId, userId, inserted));
+        var inserted = await processor.MigrateLegacyUploadAsync(uploadId, userId ?? "", ct);
+        return Ok(new LegacyMigrationResponse(uploadId, userId!.Trim(), inserted));
     }
 
     // GET debug/upload/zip/files/{id}

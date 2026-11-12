@@ -1,6 +1,7 @@
 using CityFy.Retrieve.MusicBrainz.Clients;
 using CityFy.Retrieve.MusicBrainz.Data;
 using CityFy.Retrieve.MusicBrainz.Services;
+using CityFy.Retrieve.MusicBrainz.SubServices;
 using Microsoft.EntityFrameworkCore;
 using ServiceDefault.Hosting;
 
@@ -25,18 +26,22 @@ builder.Services.AddHttpClient<IMbDumpClient, MbDumpClient>(c =>
 });
 
 // Retrieve pipeline: download -> extract -> import (background, one at a time)
-builder.Services.AddScoped<IDumpDownloadService, DumpDownloadService>();
 builder.Services.AddSingleton<IArchiveExtractor, ArchiveExtractor>();
-builder.Services.AddScoped<IMusicBrainzImporter, MusicBrainzImporter>();
-builder.Services.AddScoped<IRetrieveService, RetrieveService>();
 builder.Services.AddSingleton<ImportProgress>();
+builder.Services.AddScoped<IRetrieveService, RetrieveService>();
+builder.Services.AddScoped<IDumpDownloadSubService, DumpDownloadSubService>();
+builder.Services.AddSingleton<IDumpExtractSubService, DumpExtractSubService>();
+builder.Services.AddScoped<IMusicBrainzImportSubService, MusicBrainzImportSubService>();
+builder.Services.AddSingleton<ICatalogEventsSubService, CatalogEventsSubService>();
 // RabbitMQ: CatalogUpdated after an import, so the orchestrator rebuilds every city
 builder.AddCityFyMessaging();
 builder.Services.AddSingleton<RetrieveRunner>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<RetrieveRunner>());
 
-// Read API
+// Read API (the DbContext is scoped, so are its SubServices)
 builder.Services.AddScoped<IMusicBrainzQueryService, MusicBrainzQueryService>();
+builder.Services.AddScoped<IArtistResolveSubService, ArtistResolveSubService>();
+builder.Services.AddScoped<IGenreGraphSubService, GenreGraphSubService>();
 
 var app = builder.Build();
 

@@ -5,7 +5,7 @@ namespace CityFy.Retrieve.MusicBrainz.Services;
 /// <summary>
 /// Archives and tables of the MusicBrainz full export used by the import.
 /// Column layouts follow the MusicBrainz schema (CreateTables.sql), see the readers in
-/// <see cref="MusicBrainzImporter"/>.
+/// <see cref="SubServices.MusicBrainzImportSubService"/>.
 /// </summary>
 public static class DumpFiles
 {

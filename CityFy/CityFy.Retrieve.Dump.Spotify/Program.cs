@@ -5,6 +5,7 @@ using CityFy.Retrieve.Dump.Spotify.Mappers;
 using CityFy.Retrieve.Dump.Spotify.Options;
 using CityFy.Retrieve.Dump.Spotify.Repositories;
 using CityFy.Retrieve.Dump.Spotify.Services;
+using CityFy.Retrieve.Dump.Spotify.SubServices;
 using ServiceDefault.Hosting;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -31,12 +32,21 @@ builder.Services.AddSingleton<IFileClient, LocalFileClient>();
 builder.Services.AddSingleton<IStreamingRepository, MongoStreamingRepository>();
 builder.Services.AddSingleton<IStreamingMapper, StreamingMapper>();
 
-builder.Services.AddScoped<IStreamingBlPersistenceService, StreamingBlPersistenceService>();
-builder.Services.AddScoped<IStreamingHistoryService, StreamingHistoryService>();
+// Services: the flow of each use case
 builder.Services.AddScoped<IZipUploadService, ZipUploadService>();
 builder.Services.AddScoped<IUploadTaskService, UploadTaskService>();
 builder.Services.AddScoped<IUploadProcessor, UploadProcessor>();
 builder.Services.AddScoped<IUserDataService, UserDataService>();
+
+// SubServices: the logic
+builder.Services.AddSingleton<IUploadValidationSubService, UploadValidationSubService>();
+builder.Services.AddSingleton<IUploadStorageSubService, UploadStorageSubService>();
+builder.Services.AddSingleton<IUploadTaskSubService, UploadTaskSubService>();
+builder.Services.AddSingleton<IStreamingHistoryImportSubService, StreamingHistoryImportSubService>();
+builder.Services.AddSingleton<ILegacyUploadMigrationSubService, LegacyUploadMigrationSubService>();
+builder.Services.AddSingleton<IUploadDocumentsSubService, UploadDocumentsSubService>();
+builder.Services.AddSingleton<IUploadEventsSubService, UploadEventsSubService>();
+builder.Services.AddSingleton<IUploadErrorSubService, UploadErrorSubService>();
 
 // Running imports, so the admin can stop them
 builder.Services.AddSingleton<CancellationRegistry>();

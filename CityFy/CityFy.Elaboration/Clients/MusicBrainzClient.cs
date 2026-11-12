@@ -5,7 +5,7 @@ namespace CityFy.Elaboration.Clients;
 
 public sealed class MusicBrainzClient(HttpClient http) : IMusicBrainzClient
 {
-    // Same limit as MusicBrainzQueryService.MaxItemsPerRequest
+    // Same limit as ArtistResolveSubService.MaxItemsPerRequest in Retrieve.MusicBrainz
     private const int BatchSize = 1000;
 
     public async Task<ResolveArtistsResponse> ResolveArtistsAsync(ResolveArtistsRequest request, CancellationToken ct)

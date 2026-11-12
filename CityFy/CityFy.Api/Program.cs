@@ -2,6 +2,7 @@ using CityFy.Api.Auth;
 using CityFy.Api.Clients;
 using CityFy.Api.Options;
 using CityFy.Api.Services;
+using CityFy.Api.SubServices;
 using Microsoft.AspNetCore.DataProtection;
 using ServiceDefault.Hosting;
 
@@ -51,20 +52,25 @@ AddService<IDumpClient, DumpClient>(builder.Services, "RetrieveDumpSpotify", upl
 
 // Data deletion (user "delete my data" and admin)
 builder.Services.AddScoped<IUserDataEraser, UserDataEraser>();
+builder.Services.AddScoped<IUserDataDeletionSubService, UserDataDeletionSubService>();
 
 // --- Admin panel (mock admin user, Development only: see AdminOptions) ---
 builder.Services.Configure<AdminOptions>(builder.Configuration.GetSection(AdminOptions.SectionName));
-foreach (var service in ServiceHealthService.Services.Where(s => s != ServiceHealthService.Self))
-    builder.Services.AddHttpClient(ServiceHealthService.ClientName(service), c =>
+foreach (var service in ServiceHealthCheckSubService.Services.Where(s => s != ServiceHealthCheckSubService.Self))
+    builder.Services.AddHttpClient(ServiceHealthCheckSubService.ClientName(service), c =>
     {
         c.BaseAddress = new Uri($"https+http://{service}");
         c.Timeout = TimeSpan.FromSeconds(5);
     });
 builder.Services.AddScoped<IServiceHealthService, ServiceHealthService>();
+builder.Services.AddSingleton<IServiceHealthCheckSubService, ServiceHealthCheckSubService>();
 // Read-only database browser: Mongo (cityfy) and SQL Server (musicbrainz)
 builder.AddCityFyMongo();
 builder.AddSqlServerClient("musicbrainz");
 builder.Services.AddScoped<IDatabaseBrowser, DatabaseBrowser>();
+builder.Services.AddSingleton<IMongoBrowseSubService, MongoBrowseSubService>();
+builder.Services.AddScoped<ISqlBrowseSubService, SqlBrowseSubService>();
+builder.Services.AddSingleton<IRedactionSubService, RedactionSubService>();
 
 var app = builder.Build();
 

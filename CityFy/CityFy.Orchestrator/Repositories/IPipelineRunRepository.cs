@@ -5,12 +5,13 @@ namespace CityFy.Orchestrator.Repositories;
 /// <summary>'pipeline_runs' collection.</summary>
 public interface IPipelineRunRepository
 {
-    /// <summary>
-    /// Joins the user's Pending run (pushing its start by the debounce) or opens a new one.
-    /// Called by a single consumer (prefetch 1), so two Pending runs for a user cannot appear.
-    /// </summary>
-    Task<PipelineRun> AddTriggerAsync(string userId, PipelineTrigger trigger, IReadOnlyList<string> periods,
-        TimeSpan debounce, TimeSpan maxWait, CancellationToken ct);
+    /// <summary>The user's Pending run, if any.</summary>
+    Task<PipelineRun?> FindPendingAsync(string userId, CancellationToken ct);
+
+    /// <summary>Adds a trigger and moves the start of a still-Pending run. Null when it started meanwhile.</summary>
+    Task<PipelineRun?> TryAppendTriggerAsync(string runId, PipelineTrigger trigger, DateTime dueAt, CancellationToken ct);
+
+    Task InsertAsync(PipelineRun run, CancellationToken ct);
 
     /// <summary>
     /// Pending runs whose debounce is over, switched to Building. A user's run waits while

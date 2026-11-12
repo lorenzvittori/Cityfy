@@ -1,5 +1,6 @@
 using System.Net;
 using CityFy.Retrieve.Spotify.Services;
+using CityFy.Retrieve.Spotify.SubServices;
 using ServiceDefault.Errors;
 
 namespace CityFy.Retrieve.Spotify.Tests;
@@ -24,7 +25,7 @@ public sealed class ErrorCodeMappingTests
     [MemberData(nameof(Cases))]
     public void FailedRetrieve_IsMappedToAUiCode(Exception error, string expected)
     {
-        Assert.Equal(expected, SpotifyRetrieveService.ToErrorCode(error));
+        Assert.Equal(expected, new RetrieveErrorSubService().ToErrorCode(error));
     }
 
     [Fact]

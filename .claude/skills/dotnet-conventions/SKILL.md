@@ -22,14 +22,15 @@ Regole generali. Per l'architettura carica anche `onion-architecture` (singola a
 
 - Nuove classi `sealed` salvo ereditarietà prevista (basi astratte esplicite: `<X>Base`, `MessageConsumer<T>`, `DownstreamClient`).
 - Dipendenze tramite **primary constructor**; campi `private readonly` solo se servono trasformazioni (es. `options.Value`, `CreateProtector(...)`).
-- Ogni Service, Repository e Client ha un'interfaccia ed è registrato tramite essa. Fanno eccezione le classi di **logica pura**.
+- Ogni Service, SubService, Repository e Client ha un'interfaccia ed è registrato tramite essa.
 - Costanti con nome per numeri e stringhe significative (`private const int MaxPages = 20;`), mai magic number nel codice.
 
 ## Naming
 
 | Cosa | Interfaccia / classe | Cartella |
 |---|---|---|
-| Caso d'uso / orchestrazione | `I<Feature>Service` / `<Feature>Service` | `Services` |
+| Caso d'uso / flusso | `I<Feature>Service` / `<Feature>Service` | `Services` |
+| Logica (con o senza I/O) | `I<Feature><Action>SubService` / `<Feature><Action>SubService` | `SubServices` |
 | Accesso a dati | `I<Entity>Repository` / `<Tecnologia><Entity>Repository` (es. `MongoSpotifyRepository`) | `Repositories` |
 | Sistema esterno (HTTP, file, broker) | `I<Name>Client` / `<Name>Client`, base comune `<Name>ClientBase` | `Clients` |
 | Conversione tra modelli | `I<Name>Mapper` / `<Name>Mapper` (metodi `To<Target>` / `MapTo<Target>`) | `Mappers` |
@@ -70,10 +71,25 @@ builder.Services.AddOptions<XOptions>()
 - Dove un'eccezione tecnica va tradotta in codice (job, consumer), usa un metodo `internal static string ToErrorCode(Exception ex)` con `switch` sui tipi, e testalo.
 - Dati corrotti in input a un parser → `InvalidDataException`.
 
-## Logica pura
+## Service e SubService
 
-- Algoritmi e regole senza I/O (calcoli, trasformazioni, policy, parsing) vanno in classi dedicate, deterministiche, che ricevono tutto come parametri (incluso `now`), senza interfaccia: `static` se non hanno stato, altrimenti `sealed` con le sole Options nel costruttore.
-- Il Service raccoglie i dati via repository/client, chiama la logica pura e salva il risultato.
+- **Service**: dà il flusso. Ogni metodo è una lista di chiamate a SubService, con al più `if`/`foreach`/`try` sul flusso, log e costruzione del risultato. Non usa mai direttamente repository, client, cache, publisher o librerie di I/O, nemmeno per una lettura banale.
+- **SubService**: contiene la logica operativa effettiva di un blocco coeso (algoritmi, validazioni, mapping, policy, paginazione, retry applicativi) e l'I/O che gli serve tramite repository/client. Non chiama altri SubService: se deve farlo, quel flusso va nel Service.
+- Anche la logica pura (calcoli, regole, mapping di errori) è un SubService con interfaccia, registrato in DI; riceve `now` come parametro per restare deterministico.
+- Controller, consumer e hosted service chiamano solo Service.
+
+```csharp
+// Service: il flusso si legge dall'alto in basso
+public async Task<CityModel> BuildAsync(string userId, string period, CancellationToken ct)
+{
+    var p = periods.Normalize(period);
+    var plays = await listening.AggregateAsync(userId, periods.GetStart(p, now), ct);
+    var artists = await artistResolve.ResolveAsync(plays, ct);
+    var city = cityBuild.Build(userId, p, plays, artists, await genres.GetHierarchyAsync(ct), now);
+    await cityStore.SaveAsync(city, ct);
+    return city;
+}
+```
 
 ## Commenti
 

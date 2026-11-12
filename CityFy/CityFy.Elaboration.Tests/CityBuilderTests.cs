@@ -1,7 +1,7 @@
 using ServiceDefault.City;
 using CityFy.Elaboration.Models;
 using CityFy.Elaboration.Options;
-using CityFy.Elaboration.Services;
+using CityFy.Elaboration.SubServices;
 
 namespace CityFy.Elaboration.Tests;
 
@@ -17,7 +17,7 @@ public sealed class CityBuilderTests
         new() { ArtistName = name, Plays = qualified, QualifiedPlays = qualified, MsPlayed = ms, ArtistUri = uri };
 
     private static CityModel Build(IReadOnlyList<ArtistPlays> plays, Dictionary<string, ResolvedArtist> resolved) =>
-        new CityBuilder(Options).Build("user1", "all", null, Now, plays, resolved,
+        new CityBuildSubService(Microsoft.Extensions.Options.Options.Create(Options)).Build("user1", "all", null, Now, plays, resolved,
             new GenreHierarchy(GenreHierarchyTests.SampleGraph()));
 
     [Fact]
@@ -156,7 +156,7 @@ public sealed class CityBuilderTests
     public void BeyondMaxDistricts_TheLeastListenedAreMergedIntoOtherGenres()
     {
         var options = new CityOptions { MaxDistricts = 2 };
-        var city = new CityBuilder(options).Build("user1", "all", null, Now,
+        var city = new CityBuildSubService(Microsoft.Extensions.Options.Options.Create(options)).Build("user1", "all", null, Now,
             [Plays("R", 30), Plays("E", 20), Plays("J", 10)],
             new Dictionary<string, ResolvedArtist>
             {
@@ -167,7 +167,7 @@ public sealed class CityBuilderTests
             new GenreHierarchy(GenreHierarchyTests.SampleGraph()));
 
         // 3 districts, max 2: rock (30) stays, electronic (20) and jazz (10) are merged
-        Assert.Equal(["rock", CityBuilder.OtherDistrictId], city.Districts.Select(d => d.DistrictId));
+        Assert.Equal(["rock", CityBuildSubService.OtherDistrictId], city.Districts.Select(d => d.DistrictId));
         var other = city.Districts[1];
         Assert.Equal("Other genres", other.Name);
         Assert.Equal(2, other.Blocks.Count);

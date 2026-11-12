@@ -36,11 +36,13 @@ Cartelle: `Controllers/`, `Services/`, `Repositories/`, `Clients/`, `Mappers/`, 
 
 ## Livelli dentro un servizio
 
-`Controller / Consumer / HostedService → Service → Repository | Client | logica pura`
+`Controller / Consumer / HostedService → Service → SubService → Repository | Client`
 
-- Controller e consumer **non** usano repository, `IMongoDatabase`, `DbContext` o client direttamente: passano sempre da un Service (anche per una sola lettura).
-- Eccezione: nel **gateway** i client verso i servizi interni (`I<Servizio>Client`) fanno da layer di servizio per le chiamate passanti; i controller li ricevono tramite interfaccia. Serve un Service solo quando c'è logica che coinvolge più chiamate (es. `IUserDataEraser`).
-- Il Service orchestra; la logica senza I/O sta in classi pure (vedi `dotnet-conventions`).
+- **Service = flusso.** Un metodo di un Service è una lista di chiamate a SubService (più eventuali `if`/`foreach`/`try` sul flusso, log e mapping del risultato). Non usa mai repository, client, `IMongoDatabase`, `DbContext`, cache o publisher direttamente, nemmeno per una lettura semplice.
+- **SubService = logica effettiva.** Un blocco operativo coeso: algoritmi, validazioni, mapping, e l'I/O che gli serve tramite repository/client. Non chiama altri SubService (se deve farlo, è un Service). Nome `I<Feature><Action>SubService`, cartella `SubServices/`.
+- Anche la logica pura (calcoli, policy, mapping di errori) è un SubService con interfaccia, registrato in DI.
+- Controller, consumer e hosted service parlano solo con i Service; un consumer fa una chiamata al Service per messaggio.
+- Eccezione: nel **gateway** i client verso i servizi interni (`I<Servizio>Client`) fanno da layer di servizio per le chiamate passanti; i controller li ricevono tramite interfaccia. Serve un Service solo quando c'è un flusso su più chiamate (es. `IUserDataEraser`).
 - I controller mappano verso DTO tipizzati (`record`), non oggetti anonimi.
 
 ## Endpoint

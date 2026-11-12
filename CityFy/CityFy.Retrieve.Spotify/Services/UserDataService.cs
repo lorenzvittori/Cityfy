@@ -1,5 +1,4 @@
-using CityFy.Retrieve.Spotify.Repositories;
-using ServiceDefault.Errors;
+using CityFy.Retrieve.Spotify.SubServices;
 using ServiceDefault.Models;
 
 namespace CityFy.Retrieve.Spotify.Services;
@@ -10,39 +9,27 @@ namespace CityFy.Retrieve.Spotify.Services;
 /// skips the user from then on (no account). Plays are deleted by Elaboration.
 /// </summary>
 public sealed class UserDataService(
-    ISpotifyRetrieveService retrieve,
-    ISpotifyRepository jobs,
-    ISpotifyAccountRepository accounts,
-    ISpotifyAccountService accountService,
+    IRetrieveJobSubService jobs,
+    ISpotifyAccountStoreSubService accounts,
+    ISpotifyAccessTokenSubService accessTokens,
     ILogger<UserDataService> logger) : IUserDataService
 {
+    public const string ServiceName = "RetrieveSpotify";
+
     public async Task<UserDataDeletion> DeleteAsync(string userId, CancellationToken ct)
     {
-        var cancelled = 0;
-        foreach (var job in await jobs.ListActiveTasksAsync(userId, ct))
-        {
-            try
-            {
-                await retrieve.CancelAsync(job.UploadId, ct);
-                cancelled++;
-            }
-            catch (CityFyException e) when (e.Code is ErrorCodes.ProcessNotCancellable or ErrorCodes.RetrieveJobNotFound)
-            {
-                // finished meanwhile: nothing to stop
-            }
-        }
-
-        var deletedJobs = await jobs.DeleteTasksAsync(userId, ct);
+        var stopped = await jobs.CancelAllActiveAsync(userId, ct);
+        var deletedJobs = await jobs.DeleteAllAsync(userId, ct);
         var deletedAccounts = await accounts.DeleteAsync(userId, ct);
-        accountService.Forget(userId);
+        accessTokens.Forget(userId);
 
-        logger.LogInformation("Data of user {UserId} deleted: {Jobs} retrieve jobs ({Cancelled} stopped), {Accounts} Spotify account",
-            userId, deletedJobs, cancelled, deletedAccounts);
-        return new UserDataDeletion("RetrieveSpotify", new Dictionary<string, long>
+        logger.LogInformation("Data of user {UserId} deleted: {Jobs} retrieve jobs ({Stopped} stopped), {Accounts} Spotify account",
+            userId, deletedJobs, stopped, deletedAccounts);
+        return new UserDataDeletion(ServiceName, new Dictionary<string, long>
         {
             ["spotifyAccounts"] = deletedAccounts,
             ["retrieveJobs"] = deletedJobs,
-            ["retrieveJobsStopped"] = cancelled,
+            ["retrieveJobsStopped"] = stopped,
         });
     }
 }
