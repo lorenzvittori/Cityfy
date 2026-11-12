@@ -48,7 +48,6 @@ export interface AdminRun {
   userId: string;
   status: string;
   triggers: { source: string; sourceRef: string; newPlays: number; at: string }[];
-  periods: string[];
   createdAt: string;
   dueAt: string;
   startedAt: string | null;

@@ -43,7 +43,8 @@ static void AddService<TClient, TImplementation>(IServiceCollection services, st
         http.AddStandardResilienceHandler();
 }
 
-AddService<IElaborationClient, ElaborationClient>(builder.Services, "Elaboration");
+AddService<ICatalogClient, CatalogClient>(builder.Services, "Catalog");
+AddService<ICityGeneratorClient, CityGeneratorClient>(builder.Services, "CityGenerator");
 AddService<IOrchestratorClient, OrchestratorClient>(builder.Services, "Orchestrator");
 AddService<ISpotifyServiceClient, SpotifyServiceClient>(builder.Services, "RetrieveSpotify");
 AddService<IMusicBrainzServiceClient, MusicBrainzServiceClient>(builder.Services, "RetrieveMusicBrainz");

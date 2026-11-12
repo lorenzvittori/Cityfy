@@ -6,7 +6,7 @@ public sealed class SafeReturnUrlTests
 {
     [Theory]
     [InlineData("/city", "/city")]
-    [InlineData("/city?period=30d", "/city?period=30d")]
+    [InlineData("/cities?page=2", "/cities?page=2")]
     [InlineData(null, "/")]
     [InlineData("", "/")]
     [InlineData("https://evil.example/phish", "/")]   // absolute URL

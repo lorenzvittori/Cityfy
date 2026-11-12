@@ -10,7 +10,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\CityFy.Elaboration\CityFy.Elaboration.csproj" />
+    <ProjectReference Include="..\CityFy.Catalog\CityFy.Catalog.csproj" />
+    <ProjectReference Include="..\CityFy.CityGenerator\CityFy.CityGenerator.csproj" />
     <ProjectReference Include="..\CityFy.Retrieve.Dump.Spotify\CityFy.Retrieve.Dump.Spotify.csproj" />
     <ProjectReference Include="..\CityFy.Retrieve.MusicBrainz\CityFy.Retrieve.MusicBrainz.csproj" />
     <ProjectReference Include="..\CityFy.Retrieve.Spotify\CityFy.Retrieve.Spotify.csproj" />

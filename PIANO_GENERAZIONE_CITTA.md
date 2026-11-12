@@ -20,7 +20,7 @@
 | D5 | Le città generate sono salvate per utente: lista paginata, dettaglio, cancellazione singola. |
 | D6 | **Nessun Redis**: solo Mongo. Una richiesta con parametri identici a una città già pronta, sullo stesso catalogo, la riusa. |
 | D7 | Massimo **10 città salvate** per utente. All'undicesima si risponde `CITY_LIMIT_REACHED` (409): l'utente deve cancellarne una. |
-| D8 | **Nome**: lo sceglie l'utente; se lo lascia vuoto viene generato, per esempio "Rock e Jazz · 2024 · Griglia". |
+| D8 | **Nome**: lo sceglie l'utente; se lo lascia vuoto viene generato, per esempio "Rock e Jazz · 2024 · Griglia". Il backend salva `name: null` e restituisce `topGenres`, date e layout; il titolo in italiano lo compone il frontend, perché i testi per l'utente non si costruiscono lato server. |
 | D9 | **Custom = stringa di parametri** scritta al volo (§3.1). Non ci sono preset salvati: la stringa si usa per generare e resta solo nel documento della città, per mostrarla e per "duplica e modifica". |
 | D10 | Due servizi: **CityFy.Catalog** (Elaboration rinominato) per i dati, **CityFy.CityGenerator** (nuovo) per generazione, layout e città salvate (§0). |
 
@@ -70,7 +70,7 @@ La pipeline di oggi (import → run → `BuildCityRequested`) non costruisce pi�
 Il catalogo va in una nuova collection `user_artist_placements`, con una `CatalogVersion` per utente che cambia a ogni aggiornamento.
 
 - La risoluzione su MusicBrainz, la parte lenta, avviene solo qui.
-- `BuildCityRequested` perde `Periods` e diventa "aggiorna il catalogo". `CityBuilt` diventa `UserCatalogUpdated`. L'Orchestrator continua a mostrare le run nel pannello admin.
+- `BuildCityRequested` perde `Periods` e diventa "aggiorna il catalogo". Il nuovo evento `UserCatalogUpdated` si aggiunge a `CityBuilt`. `CityBuilt` resta finché esistono le città per periodo (fase 6), perché è l'evento che chiude la run nell'Orchestrator. L'Orchestrator continua a mostrare le run nel pannello admin.
 - Il frontend usa le run per dire "stiamo ancora importando i tuoi dati": il pulsante Genera resta disattivato finché non esiste un catalogo.
 
 ### 2. Generazione (CityFy.CityGenerator, job avviato dall'utente)
@@ -164,17 +164,18 @@ Con `layout = "custom"` l'utente scrive al volo una stringa nel formato `chiave=
 
 | Chiave | Valori | `organic` | `grid` | Effetto |
 |---|---|---|---|---|
-| `shape` | `circle`, `square`, `elongated` | `circle` | `square` | Contorno della città |
-| `regularity` | 0 – 1 | 0 | 1 | 0 = quartieri irregolari (Voronoi), 1 = quartieri rettangolari a griglia |
-| `blocks` | 0.5 – 2 | 1 | 1 | Dimensione degli isolati (più alto = isolati più grandi, meno strade interne) |
+| `base` | `organic`, `grid` | — | — | Da quale preset vengono le chiavi assenti (default `organic`) |
+| `shape` | `circle`, `rectangle`, `square`, `elongated` | `circle` | `rectangle` | Contorno: rotondo irregolare, rettangolo 1,3:1, quadrato, rettangolo 2:1 |
+| `regularity` | 0 – 1 | 0 | 1 | Sotto 0,5 quartieri irregolari (Voronoi), da 0,5 quartieri rettangolari a griglia |
+| `blocks` | 0.5 – 2 | 1 | 1 | Dimensione degli isolati: più alto = isolati più grandi, meno strade interne |
 | `streets` | 2 – 6 | 3 | 3 | Larghezza delle strade tra gli isolati |
 | `avenues` | 4 – 10 | 6 | 6 | Larghezza delle strade principali tra i quartieri |
-| `plazas` | `on`, `off` | `on` | `off` | Piazza con rotonda al centro di ogni quartiere |
-| `order` | `center`, `affinity`, `alpha` | `center` | `center` | Il quartiere più ascoltato al centro / generi affini vicini / alfabetico |
-| `heights` | `log`, `linear` | `log` | `log` | Come l'altezza cresce con gli ascolti |
+| `plazas` | `on`, `off` | `on` | `off` | Piazza con rotonda al centro dei quartieri irregolari |
+| `heights` | `log`, `linear` | `log` | `log` | Altezze logaritmiche (come le calcola Catalog) o proporzionali agli ascolti |
 | `lamps` | 0 – 2 | 1 | 1 | Densità dei lampioni (0 = nessuno) |
-| `seed` | intero | hash dei quartieri | hash dei quartieri | Stessi parametri + altro seed = stessa città con una disposizione diversa |
+| `seed` | intero 0 – 999999, facoltativo | — | — | Stessi parametri + altro seed = altra disposizione |
 
+Nota di implementazione (fase 5): la chiave `order` prevista all'inizio non c'è. I quartieri più grandi stanno già al centro, e l'ordine per affinità richiederebbe le relazioni tra generi, che CityGenerator non ha.
 **Esempi**
 
 ```text
@@ -256,6 +257,12 @@ Scegliendo *Custom* compaiono due modalità, **Form** e **Testo**, sincronizzate
 2. I test C# della pipeline con le ricette predefinite devono riprodurli, con tolleranza 1e-6.
 3. Solo dopo si cancella il TS.
 
+**Note sul porting (fase 3, fatta).**
+- Anche la segnaletica orizzontale (`roadMarkings`) è nel backend: `streets.markings`.
+- Il template raggiera non è stato portato.
+- I pareggi numerici (lotti alla stessa distanza dal centro, lati uguali di un lotto) ora si rompono con una tolleranza, uguale in TS e in C#. Seno e coseno di .NET e del browser differiscono all'ultima cifra, quindi senza tolleranza l'ordine degli edifici cambiava.
+- Arrotondamento a 2 decimali e compressione della risposta non sono ancora fatti: si valutano con il frontend (fase 4).
+
 **`CityLayoutDto`** (unità di scena, arrotondato a 2 decimali, risposta compressa) contiene:
 - quartieri: contorni, etichetta, colore;
 - isolati: cella, sotto-isolati, marciapiede;
@@ -284,14 +291,14 @@ Viene salvato nel documento della città, perché la mappa si calcola una volta 
 
 | Fase | Contenuto | Come si verifica |
 |---|---|---|
-| 0 | Aggiornamento delle skill per le scelte approvate: modello con metodi + delegate per la logica algoritmica, ricette come parametri | — |
-| 1a | Rinomina Elaboration → **CityFy.Catalog** (progetti, namespace, risorsa AppHost, rotte `api/catalog`, client del gateway, admin, documentazione), senza cambiare comportamento | Build, tutti i test verdi, nessun riferimento residuo a "Elaboration" |
-| 1b | Catalogo artisti in Catalog (`user_artist_placements`, `CatalogVersion`, `UserCatalogUpdated`), endpoint `city-model` e `genres` con date e filtro generi/sottogeneri, cancellazione dati estesa | Test unit sui SubService; il flusso della pipeline resta verde |
-| 2 | Nuovo servizio **CityFy.CityGenerator** (progetto, test, AppHost, health, admin), `generated_cities`, job di generazione via `ICatalogClient`, endpoint (CRUD, paginazione, annullamento, limite 10, riuso per hash), inoltro nel gateway. Il layout resta temporaneamente nel frontend, calcolato sul `CityModel` salvato | Test sul flusso del job, sulla paginazione, sul riuso per hash e sui nuovi errori; test Api sull'inoltro |
-| 3 | In CityGenerator: porting della geometria (`Polygon`, `PowerDiagram`), della pipeline di layout e delle ricette Organic/Grid, con golden test; `CityLayoutDto` salvato nella città | Golden test uguali al TS |
-| 4 | Frontend: lista, generazione e dettaglio; rimozione di `layout/*.ts` e del template radial | Test vitest, build, prova manuale |
-| 5 | Custom: parser della stringa con forma canonica ed errori per chiave, endpoint `recipe/schema`, form e testo sincronizzati nel frontend | Test del parser (round-trip stringa → ricetta → stringa canonica), limiti, determinismo (stessa ricetta + seed = stesso layout), test vitest della sincronizzazione form ↔ testo |
-| 6 | Pulizia: `Pipeline:Periods`, `city_models`, `PeriodSubService`, endpoint `city?period`, README e `ERRORI_UI.md` | Ricerca di riferimenti residui |
+| 0 ✅ | Aggiornamento delle skill per le scelte approvate: modello con metodi + delegate per la logica algoritmica, ricette come parametri | — |
+| 1a ✅ | Rinomina Elaboration → **CityFy.Catalog** (progetti, namespace, risorsa AppHost, rotte `api/catalog`, client del gateway, admin, documentazione), senza cambiare comportamento | Build, tutti i test verdi, nessun riferimento residuo a "Elaboration" |
+| 1b ✅ | Catalogo artisti in Catalog (`user_artist_placements`, `CatalogVersion`, `UserCatalogUpdated`), endpoint `city-model` e `genres` con date e filtro generi/sottogeneri, cancellazione dati estesa | Test unit sui SubService; il flusso della pipeline resta verde |
+| 2 ✅ | Nuovo servizio **CityFy.CityGenerator** (progetto, test, AppHost, health, admin), `generated_cities`, job di generazione via `ICatalogClient`, endpoint (CRUD, paginazione, annullamento, limite 10, riuso per hash), inoltro nel gateway. Il layout resta temporaneamente nel frontend, calcolato sul `CityModel` salvato | Test sul flusso del job, sulla paginazione, sul riuso per hash e sui nuovi errori; test Api sull'inoltro |
+| 3 ✅ | In CityGenerator: porting della geometria (`Polygon`, `PowerDiagram`), della pipeline di layout e delle ricette Organic/Grid, con golden test; `CityLayoutDto` salvato nella città | Golden test uguali al TS |
+| 4 ✅ | Frontend: lista, generazione e dettaglio; rimozione di `layout/*.ts` e del template radial | Test vitest, build, prova manuale |
+| 5 ✅ | Custom: parser della stringa con forma canonica ed errori per chiave, endpoint `recipe/schema`, form e testo sincronizzati nel frontend | Test del parser (round-trip stringa → ricetta → stringa canonica), limiti, determinismo (stessa ricetta + seed = stesso layout), test vitest della sincronizzazione form ↔ testo |
+| 6 ✅ | Pulizia: `Pipeline:Periods`, `city_models`, `PeriodSubService`, endpoint `city?period`, README e `ERRORI_UI.md` | Ricerca di riferimenti residui |
 
 Alla fine di ogni fase la solution compila senza warning e i test passano.
 

@@ -27,7 +27,6 @@ public sealed class PipelineRunStoreSubService(IPipelineRunRepository runs, IOpt
             UserId = userId,
             Status = PipelineStatus.Pending,
             Triggers = [trigger],
-            Periods = _options.Periods.ToList(),
             CreatedAt = trigger.At,
             DueAt = dueAt
         };

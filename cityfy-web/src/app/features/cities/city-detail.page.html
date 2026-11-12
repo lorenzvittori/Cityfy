@@ -1,0 +1,151 @@
+<div class="toolbar">
+  <a routerLink="/cities">‹ Le tue città</a>
+  @if (detail(); as d) {
+    <div class="heading">
+      <strong>{{ title() }}</strong>
+      <span class="muted small">{{ subtitle() }}</span>
+    </div>
+    <span class="spacer"></span>
+    @if (active(d.info.status)) {
+      <button type="button" [disabled]="busy()" (click)="cancel()">Annulla la generazione</button>
+    }
+    <a class="button" routerLink="/cities/new" [queryParams]="duplicateParams(d.info)" title="Nuova città con gli stessi parametri, da modificare">Duplica e modifica</a>
+    <button type="button" class="danger" [disabled]="busy()" (click)="remove()">Cancella</button>
+  }
+</div>
+
+@if (error(); as e) {
+  <div class="center state">
+    <app-error-message [code]="e.code" [traceId]="e.traceId" (retry)="load()" />
+  </div>
+} @else if (detail(); as d) {
+  @switch (d.info.status) {
+    @case ('Done') {
+      @if (d.map && d.city) {
+        <div class="layout">
+          <div class="scene">
+            @for (w of d.city.warnings; track w) {
+              <div class="warning" [class.blocking]="w !== 'CITY_LOW_COVERAGE'">
+                {{ message(w).message }}
+                @if (w === 'CITY_LOW_COVERAGE') { <span class="muted">({{ d.city.summary.coveragePercent }}% degli ascolti)</span> }
+              </div>
+            }
+            <app-city-scene [map]="d.map" [selected]="selectedArtistId()" (artistSelected)="select($event)" />
+          </div>
+
+          <aside class="panel">
+            @if (selected(); as sel) {
+              <section class="artist">
+                <button type="button" class="close" aria-label="Chiudi" (click)="selectedArtistId.set(null)">×</button>
+                <span class="swatch" [style.background]="sel.color"></span>
+                <h2>{{ sel.building.name }}</h2>
+                <p class="muted">{{ sel.genre }} · quartiere {{ sel.district }}</p>
+                <dl>
+                  <dt>Ascolti</dt><dd>{{ sel.building.qualifiedPlays }}</dd>
+                  <dt>Tempo</dt><dd>{{ minutes(sel.building) }}</dd>
+                </dl>
+                @if (sel.building.genres.length) {
+                  <p class="tags">@for (g of sel.building.genres.slice(0, 5); track g) { <span>{{ g }}</span> }</p>
+                }
+                @if (sel.building.spotifyArtistUri) {
+                  <a class="spotify" [href]="spotifyUrl(sel.building.spotifyArtistUri)" target="_blank" rel="noopener">
+                    <span class="logo" aria-hidden="true"></span> Apri su Spotify
+                  </a>
+                } @else {
+                  <!-- artist id unknown (e.g. plays from the export and no MusicBrainz link): search by name -->
+                  <a class="spotify outline" [href]="spotifySearchUrl(sel.building.name)" target="_blank" rel="noopener">
+                    <span class="logo" aria-hidden="true"></span> Cerca su Spotify
+                  </a>
+                }
+              </section>
+            }
+
+            <section>
+              <h3>La città</h3>
+              <p class="muted">{{ d.city.summary.placedArtists }} artisti · {{ d.city.summary.listeningHours }} ore di ascolto</p>
+            </section>
+
+            <section>
+              <h3>Quartieri</h3>
+              <ul class="legend">
+                @for (district of d.city.districts; track district.districtId) {
+                  <li [class.open]="openDistrictId() === district.districtId">
+                    <button type="button" class="row" (click)="openDistrict(district)" [attr.aria-expanded]="openDistrictId() === district.districtId">
+                      <span class="caret">{{ openDistrictId() === district.districtId ? '▾' : '▸' }}</span>
+                      <span class="swatch" [style.background]="district.color"></span>
+                      <span class="name">{{ district.name }}</span>
+                      <span class="value">{{ district.listeningIntensity }}%</span>
+                    </button>
+
+                    @if (openDistrictId() === district.districtId) {
+                      <ul class="genres">
+                        @for (block of district.blocks; track block.blockId) {
+                          <li>
+                            <button type="button" class="row" (click)="openBlock(block)" [attr.aria-expanded]="openBlockId() === block.blockId">
+                              <span class="caret">{{ openBlockId() === block.blockId ? '▾' : '▸' }}</span>
+                              <span class="name">{{ block.name }}</span>
+                              <span class="value">{{ block.buildings.length }}</span>
+                            </button>
+
+                            @if (openBlockId() === block.blockId) {
+                              <ul class="artists">
+                                @for (artist of visibleArtists(block); track artist.artistId) {
+                                  <li>
+                                    <button
+                                      type="button"
+                                      class="row"
+                                      [class.selected]="selectedArtistId() === artist.artistId"
+                                      (click)="openArtist(artist)"
+                                    >
+                                      <span class="name">{{ artist.name }}</span>
+                                      <span class="value">{{ artist.qualifiedPlays }}</span>
+                                    </button>
+                                  </li>
+                                }
+                                @if (block.buildings.length > artistsShown && allArtistsOf() !== block.blockId) {
+                                  <li>
+                                    <button type="button" class="more" (click)="allArtistsOf.set(block.blockId)">
+                                      Mostra tutti ({{ block.buildings.length }})
+                                    </button>
+                                  </li>
+                                }
+                              </ul>
+                            }
+                          </li>
+                        }
+                      </ul>
+                    }
+                  </li>
+                }
+              </ul>
+              <p class="muted small">Clicca un quartiere, un genere o un artista per andarci sulla mappa.</p>
+            </section>          </aside>
+        </div>
+      }
+    }
+
+    @case ('Failed') {
+      <div class="center state">
+        <app-error-message [code]="d.info.errorCode ?? 'CITY_BUILD_FAILED'" (retry)="router.navigate(['/cities/new'], { queryParams: duplicateParams(d.info) })" />
+      </div>
+    }
+
+    @case ('Cancelled') {
+      <div class="center state">
+        <h2>Generazione annullata</h2>
+        <p class="muted">Puoi crearla di nuovo con gli stessi parametri.</p>
+        <a class="button primary" routerLink="/cities/new" [queryParams]="duplicateParams(d.info)">Crea di nuovo</a>
+      </div>
+    }
+
+    @default {
+      <div class="center state">
+        <div class="crane" aria-hidden="true">🏗️</div>
+        <h2>{{ d.info.status === 'Pending' ? 'La tua città è in coda…' : 'Stiamo costruendo la tua città…' }}</h2>
+        <p class="muted">{{ status(d.info.status) }}: di solito bastano pochi secondi.</p>
+      </div>
+    }
+  }
+} @else {
+  <div class="center"><div class="spinner" aria-label="Caricamento"></div></div>
+}

@@ -3,14 +3,29 @@ import { adminGuard } from './core/auth/admin.guard';
 import { authGuard } from './core/auth/auth.guard';
 
 export const routes: Routes = [
-  { path: '', pathMatch: 'full', redirectTo: 'city' },
+  { path: '', pathMatch: 'full', redirectTo: 'cities' },
+
   { path: 'login', loadComponent: () => import('./features/login/login.page').then((m) => m.LoginPage), title: 'Cityfy · Accedi' },
   {
-    path: 'city',
+    path: 'cities',
     canActivate: [authGuard],
-    loadComponent: () => import('./features/city/city.page').then((m) => m.CityPage),
+    loadComponent: () => import('./features/cities/cities.page').then((m) => m.CitiesPage),
+    title: 'Cityfy · Le tue città',
+  },
+  {
+    path: 'cities/new',
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/cities/new-city.page').then((m) => m.NewCityPage),
+    title: 'Cityfy · Nuova città',
+  },
+  {
+    path: 'cities/:cityId',
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/cities/city-detail.page').then((m) => m.CityDetailPage),
     title: 'Cityfy · La tua città',
   },
+  // old address of the (single) city
+  { path: 'city', redirectTo: 'cities' },
   {
     path: 'upload',
     canActivate: [authGuard],
@@ -34,5 +49,5 @@ export const routes: Routes = [
     loadComponent: () => import('./features/admin/admin.page').then((m) => m.AdminPage),
     title: 'Cityfy · Admin',
   },
-  { path: '**', redirectTo: 'city' },
+  { path: '**', redirectTo: 'cities' },
 ];

@@ -1,11 +1,18 @@
 import { HttpErrorResponse } from '@angular/common/http';
 
-/** Error of an API call, normalized from the ProblemDetails body (code + traceId). */
+/** A problem of one field (ProblemDetails "problems"), e.g. a key of the map parameters of CITY_INVALID_RECIPE. */
+export interface FieldProblem {
+  key: string;
+  code: string;
+}
+
+/** Error of an API call, normalized from the ProblemDetails body (code + traceId + problems). */
 export class ApiError extends Error {
   constructor(
     readonly code: string,
     readonly status: number,
     readonly traceId: string | null,
+    readonly problems: FieldProblem[] = [],
   ) {
     super(code);
   }
@@ -19,7 +26,10 @@ export class ApiError extends Error {
 
       const body = typeof error.error === 'object' && error.error !== null ? error.error : {};
       const code = typeof body.code === 'string' ? body.code : fallbackCode(error.status);
-      return new ApiError(code, error.status, typeof body.traceId === 'string' ? body.traceId : null);
+      const problems = Array.isArray(body.problems)
+        ? body.problems.filter((p: unknown): p is FieldProblem => typeof (p as FieldProblem)?.key === 'string' && typeof (p as FieldProblem)?.code === 'string')
+        : [];
+      return new ApiError(code, error.status, typeof body.traceId === 'string' ? body.traceId : null, problems);
     }
 
     return new ApiError('INTERNAL_ERROR', 0, null);

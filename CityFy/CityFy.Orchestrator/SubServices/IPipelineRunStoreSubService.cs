@@ -11,7 +11,7 @@ public interface IPipelineRunStoreSubService
     /// <summary>Adds the trigger to a still-Pending run and moves its start. Null when it started meanwhile.</summary>
     Task<PipelineRun?> TryAppendTriggerAsync(string runId, PipelineTrigger trigger, DateTime dueAt, CancellationToken ct);
 
-    /// <summary>New Pending run for the configured periods.</summary>
+    /// <summary>New Pending run.</summary>
     Task<PipelineRun> CreateAsync(string userId, PipelineTrigger trigger, DateTime dueAt, CancellationToken ct);
 
     /// <summary>Due Pending runs switched to Building (a user's builds never overlap).</summary>

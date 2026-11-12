@@ -7,7 +7,7 @@ public sealed class PipelineOptions
 {
     public const string SectionName = "Pipeline";
 
-    /// <summary>Quiet time after the last import before the city is rebuilt.</summary>
+    /// <summary>Quiet time after the last import before the catalog is refreshed.</summary>
     [Range(0, 3600)]
     public int DebounceSeconds { get; set; } = 30;
 
@@ -22,7 +22,4 @@ public sealed class PipelineOptions
     [Range(1, 300)]
     public int PollSeconds { get; set; } = 5;
 
-    /// <summary>Periods rebuilt on every run.</summary>
-    [MinLength(1)]
-    public string[] Periods { get; set; } = ["all", "1y", "6m", "30d"];
 }

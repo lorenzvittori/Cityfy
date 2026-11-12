@@ -3,7 +3,7 @@
 Cityfy gira su **una macchina virtuale gratuita di Oracle Cloud** (ARM, 4 core, 24 GB di RAM) con Docker. Il catalogo MusicBrainz sta su **Azure SQL Database** con l'offerta gratuita. **GitHub Actions** compila, esegue i test, crea le immagini e aggiorna la macchina a ogni push su `main`.
 
 ```
-Browser ──https──► Caddy (web) ──/api──► Api ──► Elaboration, Orchestrator, RetrieveSpotify,
+Browser ──https──► Caddy (web) ──/api──► Api ──► Catalog, CityGenerator, Orchestrator, RetrieveSpotify,
                      │                          RetrieveDumpSpotify, RetrieveMusicBrainz
                      └── app Angular            MongoDB, RabbitMQ (rete interna)      ──► Azure SQL
 ```
@@ -103,7 +103,7 @@ cd ~/cityfy
 docker compose run --rm tools -X POST http://retrieve-musicbrainz:8080/api/retrieve
 docker compose run --rm tools http://retrieve-musicbrainz:8080/api/retrieve/status   # avanzamento
 ```
-Alla fine dell'import le città di tutti gli utenti si ricostruiscono da sole (`CatalogUpdated`).
+Alla fine dell'import il catalogo artisti di tutti gli utenti si aggiorna da solo (`CatalogUpdated`): le nuove città useranno i generi aggiornati.
 
 ---
 
@@ -112,7 +112,7 @@ Alla fine dell'import le città di tutti gli utenti si ricostruiscono da sole (`
 ```bash
 cd ~/cityfy
 docker compose ps                         # stato
-docker compose logs -f api elaboration    # log
+docker compose logs -f api catalog    # log
 docker compose restart retrieve-spotify   # riavvio di un servizio
 ```
 

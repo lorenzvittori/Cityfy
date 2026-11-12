@@ -5,9 +5,9 @@ import { errorMessage } from './error-messages';
 describe('ApiError.from', () => {
   it('reads code and traceId from the ProblemDetails body', () => {
     const e = ApiError.from(
-      new HttpErrorResponse({ status: 404, error: { code: 'CITY_NOT_READY', traceId: 'abc' } }),
+      new HttpErrorResponse({ status: 404, error: { code: 'CITY_NOT_FOUND', traceId: 'abc' } }),
     );
-    expect(e.code).toBe('CITY_NOT_READY');
+    expect(e.code).toBe('CITY_NOT_FOUND');
     expect(e.traceId).toBe('abc');
   });
 

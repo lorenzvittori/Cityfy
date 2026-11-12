@@ -39,7 +39,7 @@ public sealed class MongoPipelineRunRepository : IPipelineRunRepository
 
     /// <summary>
     /// Pending runs whose debounce is over, switched to Building. A user's run waits while
-    /// another run of the same user is still Building (builds of a user never overlap).
+    /// another run of the same user is still Building (refreshes of a user never overlap).
     /// </summary>
     public async Task<IReadOnlyList<PipelineRun>> ClaimDueRunsAsync(DateTime now, CancellationToken ct)
     {
@@ -86,7 +86,7 @@ public sealed class MongoPipelineRunRepository : IPipelineRunRepository
 
     /// <summary>
     /// Pending/Building -> Cancelled. A Pending run never starts; for a Building run the late
-    /// CityBuilt/CityBuildFailed is ignored (CompleteAsync only closes Building runs).
+    /// UserCatalogUpdated/CatalogRefreshFailed is ignored (CompleteAsync only closes Building runs).
     /// False when the run is not active anymore.
     /// </summary>
     public async Task<bool> CancelAsync(string runId, DateTime now, CancellationToken ct)
@@ -104,7 +104,7 @@ public sealed class MongoPipelineRunRepository : IPipelineRunRepository
     {
         var result = await _runs.UpdateManyAsync(r => r.Status == PipelineStatus.Building && r.StartedAt < startedBefore,
             Builders<PipelineRun>.Update.Set(r => r.Status, PipelineStatus.Failed).Set(r => r.CompletedAt, now)
-                .Set(r => r.Error, "Timeout: no answer from Elaboration")
+                .Set(r => r.Error, "Timeout: no answer from Catalog")
                 .Set(r => r.ErrorCode, ServiceDefault.Errors.ErrorCodes.PipelineTimeout),
             cancellationToken: ct);
         return result.ModifiedCount;
@@ -112,7 +112,7 @@ public sealed class MongoPipelineRunRepository : IPipelineRunRepository
 
     /// <summary>
     /// Every run of a user (data deletion): Pending runs never start, a Building one is forgotten
-    /// (its late CityBuilt/CityBuildFailed finds nothing to close). Returns how many.
+    /// (its late UserCatalogUpdated/CatalogRefreshFailed finds nothing to close). Returns how many.
     /// </summary>
     public async Task<long> DeleteUserAsync(string userId, CancellationToken ct) =>
         (await _runs.DeleteManyAsync(r => r.UserId == userId, ct)).DeletedCount;

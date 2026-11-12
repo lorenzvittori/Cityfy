@@ -49,13 +49,15 @@ Il frontend parla solo con **Api** (`https://localhost:7300`, Swagger su `/swagg
 | `GET /api/v1/auth/callback` | Redirect URI di Spotify: apre la sessione (cookie `cityfy.auth`) |
 | `POST /api/v1/auth/logout` | Chiude la sessione |
 | `GET /api/v1/me` | Utente corrente e ultimo aggiornamento da Spotify |
-| `GET /api/v1/city?period=all\|1y\|6m\|30d` | Città completa |
-| `GET /api/v1/districts`, `/districts/{id}` | Quartieri |
-| `GET /api/v1/genres`, `/genres/{genreId}` | Generi (blocchi) |
-| `GET /api/v1/artists/{artistId}` | Artista (edificio) |
+| `GET /api/v1/cities?page=&pageSize=` | Città salvate (paginate) |
+| `POST /api/v1/cities` | Genera una città (date, mappa, generi; 202) |
+| `GET /api/v1/cities/{id}`, `DELETE`, `POST .../cancel` | Città (dati + mappa), cancellazione, annullamento |
+| `GET /api/v1/cities/recipe/schema` | Parametri della mappa personalizzata |
+| `GET /api/v1/city/genres?from=&to=` | Generi e sottogeneri ascoltati, per il form |
+| `POST /api/v1/city/rebuild` | Aggiorna subito il catalogo artisti |
 | `POST /api/v1/uploads`, `GET /api/v1/uploads/{id}` | Caricamento dell'export e suo stato |
 | `POST /api/v1/spotify/sync`, `GET /api/v1/spotify/sync/{id}` | Aggiornamento immediato da Spotify |
-| `GET /api/v1/pipeline/runs` | Stato delle costruzioni della città |
+| `GET /api/v1/pipeline/runs` | Stato degli aggiornamenti del catalogo artisti |
 
 **Configurazione del login Spotify.** Registrare sulla dashboard Spotify la redirect URI `http://127.0.0.1:4200/api/v1/auth/callback`. È già il valore di `Spotify:RedirectUri` negli appsettings di Retrieve.Spotify, e ngrok non serve. Spotify accetta `http` solo sull'indirizzo di loopback `127.0.0.1`, non su `localhost`.
 
@@ -91,7 +93,7 @@ Il pannello è attivo solo in Development (`appsettings.Development.json` dell'A
 |---|---|
 | Servizi e log | Stato `/health` di ogni servizio, link a log strutturati e tracce (dashboard Aspire) e a RabbitMQ (code e DLQ) |
 | MusicBrainz | Avvio dell'import del catalogo generi e avanzamento |
-| Pipeline | Esecuzioni dell'orchestratore di tutti gli utenti, ricostruzione manuale della città di un utente |
+| Pipeline | Esecuzioni dell'orchestratore di tutti gli utenti, aggiornamento manuale del catalogo artisti di un utente |
 | Spotify e upload | Account collegati con sincronizzazione su richiesta, elenco degli upload con stato e codice d'errore, **cancellazione di tutti i dati di un utente** (anche indicando lo userId a mano) |
 | Database | Sola lettura con paginazione: collection Mongo (`cityfy`) e tabelle SQL Server (`musicbrainz`). I campi sensibili (token, secret, password) sono oscurati |
 
@@ -100,39 +102,45 @@ Il pannello è attivo solo in Development (`appsettings.Development.json` dell'A
 2. **Ascolti:** si possono caricare in due modi:
    - `POST /internal/uploads` su **RetrieveDumpSpotify**, con il file dell'export e lo `userId`;
    - login su `/debug/spotify/login` di **RetrieveSpotify**, poi `POST /debug/spotify/start/{userId}`.
-3. **Città:** si costruisce da sola. Circa 30 secondi dopo l'ultimo import con nuovi ascolti, l'**Orchestrator** fa ricostruire a **Elaboration** la città per i periodi `all`, `1y`, `6m` e `30d`.
+3. **Catalogo artisti:** si aggiorna da solo. Circa 30 secondi dopo l'ultimo import con nuovi ascolti, l'**Orchestrator** chiede a **Catalog** di ricalcolarlo (`RefreshCatalogRequested`); la run si chiude con `UserCatalogUpdated` o `CatalogRefreshFailed`.
    - Avanzamento: `GET /api/pipeline/runs?userId=...` su **Orchestrator**.
-   - Risultato: `GET /api/elaboration/city/{userId}?period=all` su **Elaboration**.
-   - Ricostruzione senza nuovi import: dal pulsante **Ricostruisci la città** nella pagina della città (`POST /api/v1/city/rebuild`, usa tutti gli ascolti importati da qualunque fonte), oppure `POST /internal/pipeline/trigger/{userId}` su **Orchestrator**.
-   - Quando un import di MusicBrainz finisce, **RetrieveMusicBrainz** pubblica `CatalogUpdated` e l'Orchestrator ricostruisce le città di tutti gli utenti che hanno ascolti: una città costruita con il catalogo ancora vuoto si sistema da sola.
+   - Aggiornamento senza nuovi import: dal pulsante **Aggiorna i dati** nella lista delle città (`POST /api/v1/city/rebuild`, usa tutti gli ascolti importati da qualunque fonte), oppure `POST /internal/pipeline/trigger/{userId}` su **Orchestrator**; in debug `POST /debug/catalog/refresh/{userId}` su **Catalog**.
+   - Quando un import di MusicBrainz finisce, **RetrieveMusicBrainz** pubblica `CatalogUpdated` e l'Orchestrator aggiorna il catalogo di tutti gli utenti che hanno ascolti. Le città già salvate restano com'erano; quelle nuove usano i generi aggiornati.
    - Una città ha al massimo `City:MaxDistricts` quartieri (default 12); i macro-generi meno ascoltati finiscono nel quartiere "Altri generi".
+   - **Catalogo artisti:** a ogni run Catalog ricalcola, su tutti gli ascolti, genere e sottogenere di ogni artista (`user_artist_placements`, versione corrente in `user_catalogs`) e pubblica `UserCatalogUpdated`. Le città di qualunque intervallo e genere si calcolano da qui senza richiamare MusicBrainz: `POST /api/catalog/city-model/{userId}`, `GET /api/catalog/genres/{userId}?from&to`.
 
-   **La città nel browser:** l'utente sceglie lo stile dal menu **Stile** (la scelta resta salvata nel browser):
+4. **Città salvate (CityGenerator):** l'utente genera una città scegliendo date, tipo di mappa (`organic`, `grid`) e generi o sottogeneri (`POST /api/v1/cities`). La generazione è un job in background (`GenerateCityRequested`) che chiede i dati a Catalog e salva il risultato in `generated_cities`.
+   - Lista paginata `GET /api/v1/cities`, dettaglio `GET /api/v1/cities/{cityId}`, cancellazione `DELETE /api/v1/cities/{cityId}`, annullamento `POST /api/v1/cities/{cityId}/cancel`; generi disponibili `GET /api/v1/city/genres?from&to`.
+   - Al massimo `CityGenerator:MaxCitiesPerUser` città per utente (default 10, poi `CITY_LIMIT_REACHED`). Una richiesta identica sullo stesso catalogo riusa la città esistente.
+   - Dopo il primo import, un utente senza città ne riceve una "tutto il periodo, organica, tutti i generi".
+
+   **La mappa:** la calcola CityGenerator (`CityLayoutSubService`) quando genera la città, e il browser la disegna così com'è (three.js). Due tipi di mappa:
    - **Organica:** quartieri irregolari che coprono tutta la città (Voronoi pesato, aree proporzionali agli edifici). Al centro di ogni quartiere c'è una piazza con rotonda, i blocchi dei generi stanno attorno a spicchi;
-   - **Griglia:** isolati rettangolari e strade dritte, come Manhattan;
-   - **Raggiera:** quartieri a spicchi attorno a una grande rotonda centrale, collegati da viali.
+   - **Griglia:** isolati rettangolari e strade dritte, come Manhattan.
 
-   In tutti gli stili:
+   In tutti i tipi:
    - i generi con più di 16 artisti sono divisi in isolati da strade interne;
    - ogni isolato ha un marciapiede rialzato;
    - le strade hanno la segnaletica orizzontale: mezzeria tratteggiata, doppia linea continua sulle strade principali, strisce pedonali agli incroci;
    - c'è anche la segnaletica verticale: lampioni, semafori sulle strade principali, cartelli di stop, dare precedenza e attraversamento pedonale.
 
-   Le strade sono ricavate dalla geometria: il bordo condiviso tra due celle è l'asse di una strada (`layout/streets.ts`).
+   Le strade sono ricavate dalla geometria: il bordo condiviso tra due celle è l'asse di una strada (`Models/Layout/StreetPlan.cs`). I golden test (`CityFy.CityGenerator.Tests/Golden`) fissano le mappe di alcune città di esempio.
 
+   **Nel browser:** `/cities` è la lista delle città salvate, `/cities/new` il form (nome facoltativo, date con scorciatoie, tipo di mappa, generi e sottogeneri), `/cities/{id}` la città con legenda e dettaglio dell'artista.
    **Cancellazione dei dati:** cliccando il proprio nome nella barra si apre "Il tuo account" con **Cancella i miei dati** (`DELETE /api/v1/me/data`); l'admin fa lo stesso dal pannello (`DELETE /api/admin/users/{userId}/data`). L'Api chiama `DELETE .../users/{userId}/data` su ogni servizio che possiede dati dell'utente, in quest'ordine:
    1. **RetrieveSpotify:** ferma i retrieve, cancella i job e l'account collegato con il refresh token;
    2. **RetrieveDumpSpotify:** ferma gli import, cancella gli upload, gli zip e i file estratti su disco;
    3. **Orchestrator:** cancella le esecuzioni della pipeline;
-   4. **Elaboration:** cancella ascolti e città.
+   4. **CityGenerator:** ferma le generazioni e cancella le città salvate;
+   5. **Catalog:** cancella ascolti e catalogo artisti.
 
-   Ogni passo si può ripetere senza problemi: se un servizio non risponde gli altri completano comunque la loro parte, e la risposta è `USER_DATA_DELETION_INCOMPLETE` (basta riprovare). Una build già in corso non salva la città di un utente rimasto senza ascolti.
+   Ogni passo si può ripetere senza problemi: se un servizio non risponde gli altri completano comunque la loro parte, e la risposta è `USER_DATA_DELETION_INCOMPLETE` (basta riprovare). Un aggiornamento del catalogo già in corso non salva nulla per un utente rimasto senza ascolti.
 
    **Tema chiaro/scuro:** il pulsante ◐/☀/☾ nella barra passa tra automatico (come il sistema), chiaro e scuro; la scelta resta salvata nel browser. In tema scuro la città è di notte: lampioni accesi, edifici illuminati.
 
    **Link a Spotify:** nel dettaglio dell'artista. L'export di Spotify non contiene gli id degli artisti: in quel caso si usa il link Spotify che MusicBrainz conosce per l'artista; se manca anche quello, il pulsante diventa "Cerca su Spotify".
 
-   Il layout è calcolato nel browser (`cityfy-web/src/app/features/city/layout/`), i dati della città non cambiano. Navigazione da mappa: trascinare per spostarsi, tasto destro per ruotare, rotella per lo zoom verso il cursore, WASD/frecce e Q/E, doppio clic per avvicinarsi, minimappa cliccabile in basso a sinistra.
+   Navigazione da mappa: trascinare per spostarsi, tasto destro per ruotare, rotella per lo zoom verso il cursore, WASD/frecce e Q/E, doppio clic per avvicinarsi, minimappa cliccabile in basso a sinistra.
 
    Il retrieve Spotify parte da solo ogni 30 minuti per tutti gli account collegati (`Spotify:ScheduledRetrieveMinutes`).
 
@@ -140,10 +148,12 @@ Il pannello è attivo solo in Development (`appsettings.Development.json` dell'A
 ```
 Dump.Spotify   upload ──► UploadReceived ──► import ──► ListeningImported ─┐
 Spotify        retrieve (manuale o programmato) ───────► ListeningImported ─┤
-MusicBrainz    import finito ──► CatalogUpdated (ricostruisce tutte le città)│
-Orchestrator   ListeningImported ──► debounce ──► BuildCityRequested ──────►│
-Elaboration    BuildCityRequested ──► CityBuilt | CityBuildFailed ─────────►│
+MusicBrainz    import finito ──► CatalogUpdated (aggiorna tutti i cataloghi)│
+Orchestrator   ListeningImported ──► debounce ──► RefreshCatalogRequested ─►│
+Catalog        RefreshCatalogRequested ──► UserCatalogUpdated | CatalogRefreshFailed
 Orchestrator   pipeline run ──► DONE | FAILED ◄─────────────────────────────┘
+CityGenerator  UserCatalogUpdated ──► prima città di un utente nuovo
+CityGenerator  POST /api/v1/cities ──► GenerateCityRequested ──► dati da Catalog ──► Done | Failed
 ```
 
 **Struttura delle code:**

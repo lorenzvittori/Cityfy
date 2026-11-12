@@ -1,8 +1,8 @@
 @if (auth.me(); as me) {
   <header class="topbar">
-    <a class="brand" routerLink="/city">Cityfy</a>
+    <a class="brand" routerLink="/cities">Cityfy</a>
     <nav>
-      <a routerLink="/city" routerLinkActive="active">Città</a>
+      <a routerLink="/cities" routerLinkActive="active">Città</a>
       <a routerLink="/upload" routerLinkActive="active">Carica export</a>
     </nav>
     <div class="spacer"></div>
@@ -12,7 +12,7 @@
       @case ('done') {
         @if (sync(); as s) {
           @if (s.kind === 'done') {
-            <span class="sync muted">{{ s.newPlays > 0 ? s.newPlays + ' nuovi ascolti: la città si aggiornerà a breve' : 'Nessun ascolto nuovo' }}</span>
+            <span class="sync muted">{{ s.newPlays > 0 ? s.newPlays + ' nuovi ascolti: tra poco potrai usarli nelle tue città' : 'Nessun ascolto nuovo' }}</span>
           }
         }
       }

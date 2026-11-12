@@ -109,36 +109,44 @@ Gli aggiornamenti da Spotify partono anche **in automatico** ogni 30 minuti. Se 
 
 | Codice | Quando succede | Messaggio suggerito | Cosa mostrare / azione |
 |---|---|---|---|
-| `CITY_NOT_READY` | La città per quel periodo non è ancora stata costruita | Vedi sotto: dipende dallo stato della costruzione | — |
-| `CITY_INVALID_PERIOD` | Periodo non valido (non dovrebbe succedere dall'interfaccia) | "Periodo non valido." | Torna al periodo "Tutto" |
-| `CITY_BUILD_FAILED` | La costruzione della città è fallita | "Non siamo riusciti a costruire la tua città. Riprova più tardi." | **Riprova**; `traceId` |
+| `CITY_INVALID_RANGE` | Intervallo di date non valido: inizio dopo la fine, o nel futuro | "Controlla le date: l'inizio deve venire prima della fine e non può essere nel futuro." | Evidenzia i campi data del form |
+| `CITY_CATALOG_MISSING` | I dati dell'utente sono ancora in importazione: non si può ancora creare una città | "Stiamo ancora importando i tuoi ascolti. Potrai creare la tua città tra poco." | Disattiva **Genera**; mostra lo stato dell'import |
+| `CITY_NOT_FOUND` | La città salvata non esiste (cancellata, o di un altro utente) | "Questa città non esiste più." | Torna alla lista delle città |
+| `CITY_LIMIT_REACHED` | L'utente ha già il numero massimo di città salvate (10) | "Hai già 10 città salvate: cancellane una per crearne una nuova." | Porta alla lista delle città |
+| `CITY_INVALID_LAYOUT` | Tipo di mappa sconosciuto (non dovrebbe succedere dall'interfaccia) | "Tipo di mappa non disponibile." | Torna a "Organica" |
+| `CITY_INVALID_RECIPE` | Parametri della mappa personalizzata non validi. La risposta ha `problems: [{ key, code }]` con `code` tra `MISSING`, `TOO_LONG`, `SYNTAX`, `UNKNOWN_KEY`, `DUPLICATE_KEY`, `INVALID_VALUE`, `OUT_OF_RANGE` (`key` vuota = tutta la stringa) | "Controlla i parametri della mappa." | Evidenzia la chiave nel testo e il campo corrispondente del form, con il motivo |
+| `CITY_INVALID_NAME` | Nome della città troppo lungo (oltre 80 caratteri) | "Il nome della città è troppo lungo." | Evidenzia il campo nome |
+| `CITY_INVALID_GENRES` | Troppi generi e sottogeneri nella richiesta | "Hai selezionato troppi generi." | Suggerisci di scegliere i generi principali |
+| `CITY_BUILD_FAILED` | La generazione della città (o l'aggiornamento del catalogo artisti) è fallita | "Non siamo riusciti a costruire la tua città. Riprova più tardi." | **Crea di nuovo** con gli stessi parametri; `traceId` |
 | `MUSICBRAINZ_UNAVAILABLE` | Il catalogo dei generi musicali non è raggiungibile | "Il catalogo dei generi musicali non è disponibile al momento. La città verrà costruita appena torna online." | Nessuna azione: i dati dell'utente sono al sicuro |
-| `PIPELINE_TIMEOUT` | La costruzione non ha risposto in tempo (30 min) | "La costruzione sta richiedendo troppo tempo. Riprova." | **Riprova** |
-| `PIPELINE_RUN_NOT_FOUND` | Costruzione inesistente | "Non troviamo questa elaborazione." | Nessuna azione |
-| `PROCESS_CANCELLED` | Un amministratore ha annullato il caricamento, l'aggiornamento da Spotify o la costruzione della città (stato `CANCELLED` / `Cancelled`) | "L'operazione è stata annullata. Puoi riprovare." | **Riprova** (nel caricamento: ricarica il file) |
+| `PIPELINE_TIMEOUT` | L'aggiornamento del catalogo artisti non ha risposto in tempo (30 min) | "L'aggiornamento sta richiedendo troppo tempo. Riprova." | **Riprova** |
+| `PIPELINE_RUN_NOT_FOUND` | Aggiornamento inesistente | "Non troviamo questa elaborazione." | Nessuna azione |
+| `PROCESS_CANCELLED` | Un amministratore ha annullato il caricamento, l'aggiornamento da Spotify l'aggiornamento del catalogo o la generazione di una città (stato `CANCELLED` / `Cancelled`) | "L'operazione è stata annullata. Puoi riprovare." | **Riprova** (nel caricamento: ricarica il file) |
 
-### `CITY_NOT_READY`: in costruzione o senza dati?
-Quando la città non c'è ancora, l'interfaccia guarda lo stato dell'ultima costruzione dell'utente:
+### Stato di una città salvata
+Una città appena chiesta viene generata in background; il dettaglio (`GET /api/v1/cities/{id}`) si aggiorna da solo finché non è pronta:
 
-| Ultima costruzione | Cosa mostrare |
+| `status` | Cosa mostrare |
 |---|---|
-| `Pending` | "Stiamo raccogliendo i tuoi ascolti, la città partirà tra pochi secondi…" |
-| `Building` | "Stiamo costruendo la tua città…" (animazione di cantiere) |
-| `Failed` | Il messaggio del suo `errorCode` (tabella sopra) |
-| Nessuna | Stato vuoto di benvenuto: "Ancora nessuna città. Collega Spotify o carica il tuo export per iniziare." con i due pulsanti |
+| `Pending` | "La tua città è in coda…" |
+| `InProgress` | "Stiamo costruendo la tua città…" (animazione di cantiere) |
+| `Done` | La città |
+| `Failed` | Il messaggio del suo `errorCode` (tabella sopra), con **Crea di nuovo** |
+| `Cancelled` | "Generazione annullata", con **Crea di nuovo** |
 
+Nessuna città salvata: stato vuoto "Ancora nessuna città" con **Crea una città** e **Carica l'export**. Dopo il primo import la prima città si crea da sola.
 ### Avvisi sulla città (`warnings`)
 La città si mostra, con un messaggio sopra o accanto.
 
 | Codice | Quando succede | Messaggio suggerito | Cosa mostrare |
 |---|---|---|---|
-| `CITY_NO_PLAYS` | Nessun ascolto nel periodo scelto | "Nessun ascolto in questo periodo." | Città vuota o terreno, con il suggerimento di scegliere un periodo più lungo |
+| `CITY_NO_PLAYS` | Nessun ascolto nel periodo e nei generi scelti | "Nessun ascolto in questo periodo per i generi scelti." | Città vuota, con il suggerimento di allargare il periodo o i generi |
 | `CITY_GENRES_UNAVAILABLE` | Ci sono ascolti, ma nessun artista è stato associato a un genere | "Non riusciamo ancora a riconoscere i generi dei tuoi artisti." | Stato vuoto dedicato; nessuna azione per l'utente |
 | `CITY_LOW_COVERAGE` | Meno della metà degli ascolti è stata collocata nella città | "La città mostra solo una parte dei tuoi ascolti: alcuni artisti non sono nel nostro catalogo." | Avviso discreto; nel dettaglio la percentuale (`summary.coveragePercent`) |
 
 ### Cancellazione dei dati
 
-Dal menu dell'utente, **Cancella i miei dati** elimina ascolti, città, caricamenti (anche i file), costruzioni e collegamento con Spotify, poi esce dall'app. L'amministratore può fare lo stesso per un utente dal pannello.
+Dal menu dell'utente, **Cancella i miei dati** elimina ascolti, catalogo artisti, città salvate, caricamenti (anche i file), aggiornamenti e collegamento con Spotify, poi esce dall'app. L'amministratore può fare lo stesso per un utente dal pannello.
 
 | Codice | Quando succede | Messaggio suggerito | Cosa mostrare / azione |
 |---|---|---|---|
@@ -167,9 +175,9 @@ In sintesi, per la grafica:
 1. **Messaggio di errore generico** con "Riprova" e "Dettagli" (`traceId`), riutilizzabile ovunque.
 2. **Guida all'export Spotify corretto.** Serve per `UPLOAD_NO_STREAMING_FILES` ed è probabilmente l'errore più comune.
 3. **Banner "Ricollega Spotify"**, persistente, per `SPOTIFY_REAUTH_REQUIRED`.
-4. **Avanzamento del caricamento** (in coda → lettura → costruzione città).
-5. **Città in costruzione**, per `Pending` e `Building`.
-6. **Stato vuoto di benvenuto**, quando non c'è ancora nessuna città.
-7. **Città vuota per il periodo** (`CITY_NO_PLAYS`) e **generi non riconosciuti** (`CITY_GENRES_UNAVAILABLE`).
+4. **Avanzamento del caricamento** (in coda → lettura → aggiornamento del catalogo).
+5. **Città in costruzione**, per `Pending` e `InProgress`.
+6. **Stato vuoto di benvenuto**, quando non c'è ancora nessuna città salvata.
+7. **Città vuota per periodo e generi** (`CITY_NO_PLAYS`) e **generi non riconosciuti** (`CITY_GENRES_UNAVAILABLE`).
 8. **Avviso discreto di copertura parziale** (`CITY_LOW_COVERAGE`).
 9. **Indicatore "ultimo aggiornamento non riuscito"** per gli aggiornamenti automatici da Spotify.

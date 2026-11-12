@@ -55,7 +55,8 @@ jobs:
           set -e
           for pair in \
             api:CityFy.Api \
-            elaboration:CityFy.Elaboration \
+            catalog:CityFy.Catalog \
+            city-generator:CityFy.CityGenerator \
             orchestrator:CityFy.Orchestrator \
             retrieve-spotify:CityFy.Retrieve.Spotify \
             retrieve-dump-spotify:CityFy.Retrieve.Dump.Spotify

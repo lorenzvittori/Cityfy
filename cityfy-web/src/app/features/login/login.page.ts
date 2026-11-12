@@ -44,6 +44,6 @@ export class LoginPage {
   protected readonly deleted = computed(() => this.params()?.deleted ?? false);
 
   protected login(): void {
-    this.auth.login(this.params()?.returnUrl ?? '/city');
+    this.auth.login(this.params()?.returnUrl ?? '/cities');
   }
 }

@@ -1,7 +1,7 @@
 // Contract of CityFy.Api v1 (CityFy/CityFy.Api/Models/V1Dtos.cs).
 // Hand-written for now: to be replaced by a client generated from the API OpenAPI document.
 
-export type Period = 'all' | '1y' | '6m' | '30d';
+import { CityMap } from './city-map.models';
 
 export interface Me {
   userId: string;
@@ -10,10 +10,11 @@ export interface Me {
   lastSyncAt: string | null;
 }
 
+/** Data of a generated city (districts > blocks > buildings); to is exclusive. */
 export interface City {
-  period: string;
   generatedAt: string;
   from: string | null;
+  to: string | null;
   summary: CitySummary;
   /** ErrorCodes "CITY_*" warnings (ERRORI_UI.md §5). */
   warnings: string[];
@@ -61,6 +62,76 @@ export interface Building {
   genres: string[];
 }
 
+// --- Generated cities ---------------------------------------------------------
+
+export type CityLayoutType = 'organic' | 'grid' | 'custom';
+
+/** Cancelled: stopped by the user or an administrator (errorCode PROCESS_CANCELLED). */
+export type GenerationState = 'Pending' | 'InProgress' | 'Done' | 'Failed' | 'Cancelled';
+
+/** A saved city without its content. name null: the UI composes a title (cityTitle). */
+export interface GeneratedCity {
+  cityId: string;
+  name: string | null;
+  from: string | null;
+  /** Exclusive. */
+  to: string | null;
+  layout: string;
+  recipe: string | null;
+  genres: number[];
+  subgenres: number[];
+  status: GenerationState;
+  errorCode: string | null;
+  createdAt: string;
+  completedAt: string | null;
+  districtCount: number;
+  artistCount: number;
+  topGenres: string[];
+}
+
+/** city and map: null until status is Done. */
+export interface GeneratedCityDetail {
+  info: GeneratedCity;
+  city: City | null;
+  map: CityMap | null;
+}
+
+export interface GeneratedCityPage {
+  items: GeneratedCity[];
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
+/** from/to: ISO dates, to exclusive. genres = district ids, subgenres = block ids; both empty = every genre. */
+export interface CreateCityRequest {
+  name: string | null;
+  from: string | null;
+  to: string | null;
+  layout: CityLayoutType;
+  /** Parameter string, only with layout "custom". */
+  recipe: string | null;
+  genres: number[];
+  subgenres: number[];
+}
+
+/** A district (top-level genre) that can be chosen, with its subgenres. */
+export interface GenreOption {
+  genreId: number;
+  name: string;
+  color: string;
+  qualifiedPlays: number;
+  artistCount: number;
+  subgenres: SubgenreOption[];
+}
+
+export interface SubgenreOption {
+  genreId: number;
+  name: string;
+  qualifiedPlays: number;
+  artistCount: number;
+}
+
 /** CANCELLED: stopped by an administrator (errorCode PROCESS_CANCELLED). */
 export type ImportState = 'Pending' | 'InProgress' | 'Done' | 'Failed' | 'Cancelled';
 
@@ -73,7 +144,7 @@ export interface ImportStatus {
   errorCode: string | null;
 }
 
-/** What each service deleted (name -> count), e.g. Elaboration { plays: 1234, cities: 4 }. */
+/** What each service deleted (name -> count), e.g. Catalog { plays: 1234, cities: 4 }. */
 export interface UserDataDeletionResult {
   userId: string;
   deleted: { service: string; deleted: Record<string, number> }[];

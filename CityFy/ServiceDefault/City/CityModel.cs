@@ -3,32 +3,32 @@ using MongoDB.Bson.Serialization.Attributes;
 namespace ServiceDefault.City;
 
 /// <summary>
-/// City generated for a user and a period ('city_models' collection), read by the City API.
-/// District = macro-genre, block = genre, building = artist. Holds metrics, not geometry:
-/// the layout is computed by the frontend, as in the city_generator prototype.
+/// Data of a city, computed by Catalog for a date range and genres (api/catalog/city-model) and
+/// stored by CityGenerator inside the generated city, next to its map. District = macro-genre,
+/// block = genre, building = artist. Holds metrics, not geometry (the map is a CityLayout).
 /// </summary>
+// Cities saved before the period cities were removed still have _id and Period: ignored
+[BsonIgnoreExtraElements]
 public sealed class CityModel
 {
-    [BsonId]
-    public string Id { get; set; } = null!;
-
     public string UserId { get; set; } = null!;
-
-    /// <summary>"30d", "6m", "1y" or "all".</summary>
-    public string Period { get; set; } = null!;
 
     [BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
     public DateTime GeneratedAt { get; set; }
 
-    /// <summary>Start of the period (null for "all").</summary>
+    /// <summary>Start of the range (null = from the first play).</summary>
     [BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
     public DateTime? From { get; set; }
+
+    /// <summary>End of the range, exclusive (null = up to <see cref="GeneratedAt"/>).</summary>
+    [BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
+    public DateTime? To { get; set; }
 
     public CitySummary Summary { get; set; } = new();
 
     /// <summary>
     /// ErrorCodes "CITY_*" warnings: the city exists but the UI should explain something
-    /// (no plays in the period, genres not available, low coverage).
+    /// (no plays in the range, genres not available, low coverage).
     /// </summary>
     public List<string> Warnings { get; set; } = new();
 
@@ -36,8 +36,6 @@ public sealed class CityModel
 
     /// <summary>Most played artists that could not be matched to a genre (diagnostics).</summary>
     public List<UnresolvedArtist> Unresolved { get; set; } = new();
-
-    public static string BuildId(string userId, string period) => $"{userId}:{period}";
 }
 
 public sealed class CitySummary

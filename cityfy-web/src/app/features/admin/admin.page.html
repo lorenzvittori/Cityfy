@@ -93,7 +93,7 @@
           <app-progress-bar [percent]="null" />
           <div class="detail">
             @if (r.status === 'Pending') { In attesa di altri import, parte alle {{ r.dueAt | date: 'HH:mm:ss' }} }
-            @else { Periodi: {{ r.periods.join(', ') }} }
+            @else { Aggiornamento del catalogo artisti in corso }
           </div>
         </section>
       }
@@ -189,10 +189,10 @@
 
     <!-- ================================================= PIPELINE -->
     @case ('pipeline') {
-      <h2>Ricostruisci la città di un utente</h2>
+      <h2>Aggiorna il catalogo artisti di un utente</h2>
       <form class="inline" (ngSubmit)="rebuild(rebuildUserId)">
         <input name="userId" [(ngModel)]="rebuildUserId" placeholder="Spotify user id" />
-        <button type="submit" class="primary">Ricostruisci</button>
+        <button type="submit" class="primary">Aggiorna</button>
       </form>
 
       <h2>Esecuzioni (tutti gli utenti)</h2>
@@ -209,7 +209,7 @@
               <td>{{ r.createdAt | date: 'short' }}</td>
               <td>{{ r.completedAt | date: 'short' }}</td>
               <td><code>{{ r.errorCode }}</code></td>
-              <td><button type="button" class="small" (click)="rebuild(r.userId)">Ricostruisci</button></td>
+              <td><button type="button" class="small" (click)="rebuild(r.userId)">Aggiorna</button></td>
             </tr>
           } @empty {
             <tr><td colspan="9" class="muted">Nessuna esecuzione.</td></tr>

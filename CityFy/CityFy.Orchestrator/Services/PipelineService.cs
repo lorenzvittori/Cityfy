@@ -10,7 +10,7 @@ public sealed class PipelineService(
     IPipelineDebounceSubService debounce,
     IPipelineRunStoreSubService runs,
     IListeningUsersSubService listeningUsers,
-    IBuildRequestSubService buildRequests,
+    ICatalogRefreshRequestSubService refreshRequests,
     ILogger<PipelineService> logger) : IPipelineService
 {
     public async Task<PipelineRun?> AddImportAsync(ListeningImported message, CancellationToken ct)
@@ -30,7 +30,7 @@ public sealed class PipelineService(
         foreach (var userId in users)
             await AddTriggerAsync(userId, triggers.FromCatalog(message), immediate: false, ct);
 
-        logger.LogInformation("Genre catalog {Dump} updated: rebuild queued for {Count} users", message.DumpName, users.Count);
+        logger.LogInformation("Genre catalog {Dump} updated: catalog refresh queued for {Count} users", message.DumpName, users.Count);
         return users.Count;
     }
 
@@ -47,12 +47,12 @@ public sealed class PipelineService(
         {
             try
             {
-                await buildRequests.PublishAsync(run, ct);
-                logger.LogInformation("Run {RunId}: city build requested for {UserId} ({Triggers} imports)", run.RunId, run.UserId, run.Triggers.Count);
+                await refreshRequests.PublishAsync(run, ct);
+                logger.LogInformation("Run {RunId}: catalog refresh requested for {UserId} ({Triggers} imports)", run.RunId, run.UserId, run.Triggers.Count);
             }
             catch (Exception ex) when (!ct.IsCancellationRequested)
             {
-                logger.LogError(ex, "Run {RunId}: cannot publish BuildCityRequested, retrying later", run.RunId);
+                logger.LogError(ex, "Run {RunId}: cannot publish RefreshCatalogRequested, retrying later", run.RunId);
                 await runs.ReleaseAsync(run.RunId, debounce.RetryAt(now), ex.Message, ct);
             }
         }

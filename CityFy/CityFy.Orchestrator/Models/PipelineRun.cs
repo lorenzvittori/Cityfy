@@ -8,7 +8,7 @@ public enum PipelineStatus
     /// <summary>Waiting for the debounce window to close (more imports may join).</summary>
     Pending,
 
-    /// <summary>BuildCityRequested sent, waiting for CityBuilt / CityBuildFailed.</summary>
+    /// <summary>RefreshCatalogRequested sent, waiting for UserCatalogUpdated / CatalogRefreshFailed.</summary>
     Building,
 
     Done,
@@ -20,8 +20,9 @@ public enum PipelineStatus
 
 /// <summary>
 /// One execution of the pipeline for a user ('pipeline_runs'): the imports that triggered it
-/// and the city build they caused. At most one Pending run per user at a time.
+/// and the refresh of the user's artist catalog they caused. At most one Pending run per user at a time.
 /// </summary>
+[BsonIgnoreExtraElements] // runs of the first versions also have "Periods"
 public sealed class PipelineRun
 {
     [BsonId]
@@ -33,8 +34,6 @@ public sealed class PipelineRun
     public PipelineStatus Status { get; set; }
 
     public List<PipelineTrigger> Triggers { get; set; } = new();
-
-    public List<string> Periods { get; set; } = new();
 
     [BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
     public DateTime CreatedAt { get; set; }

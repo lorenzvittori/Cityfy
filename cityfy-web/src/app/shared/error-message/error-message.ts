@@ -20,7 +20,7 @@ import { errorMessage } from '../../core/errors/error-messages';
           @case ('relink') { <button type="button" (click)="auth.login()">Ricollega Spotify</button> }
           @case ('export-guide') { <a routerLink="/upload" fragment="guida">Come scaricare l'export giusto</a> }
           @case ('upload') { <a routerLink="/upload">Carica l'export</a> }
-          @case ('home') { <a routerLink="/city">Torna alla città</a> }
+          @case ('home') { <a routerLink="/cities">Torna alle tue città</a> }
         }
       </div>
       @if (traceId()) {

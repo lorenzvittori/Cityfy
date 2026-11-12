@@ -1,0 +1,98 @@
+<div class="page">
+  <header>
+    <div>
+      <h1>Le tue città</h1>
+      <p class="muted">Ogni città è una fotografia dei tuoi ascolti: scegli periodo, mappa e generi. Puoi salvarne fino a {{ maxCities }}.</p>
+    </div>
+    <div class="actions">
+      <button
+        type="button"
+        class="button"
+        [disabled]="rebuilding()"
+        title="Ricalcola generi e sottogeneri dei tuoi artisti da tutti gli ascolti importati (Spotify ed export)"
+        (click)="rebuild()"
+      >
+        ⟳ Aggiorna i dati
+      </button>
+      @if (limitReached()) {
+        <span class="button primary disabled" title="Cancella una città per crearne una nuova">+ Nuova città</span>
+      } @else {
+        <a class="button primary" routerLink="/cities/new">+ Nuova città</a>
+      }
+    </div>
+  </header>
+
+  @if (rebuilt()) {
+    <p class="notice">Stiamo ricalcolando i tuoi dati: le prossime città useranno i generi aggiornati.</p>
+  }
+  @if (limitReached()) {
+    <p class="notice">Hai {{ maxCities }} città salvate: cancellane una per crearne una nuova.</p>
+  }
+  @if (error(); as e) {
+    <app-error-message [code]="e.code" [traceId]="e.traceId" [compact]="true" (retry)="load()" />
+  }
+
+  @if (data(); as d) {
+    @if (d.total === 0) {
+      <div class="empty">
+        <h2>Ancora nessuna città</h2>
+        <p class="muted">Dopo il primo import di ascolti la tua prima città si crea da sola. Puoi anche crearne una tu.</p>
+        <div class="buttons">
+          <a class="button primary" routerLink="/cities/new">Crea una città</a>
+          <a class="button" routerLink="/upload">Carica l'export</a>
+        </div>
+      </div>
+    } @else {
+      <table>
+        <thead>
+          <tr>
+            <th>Città</th>
+            <th>Periodo</th>
+            <th>Mappa</th>
+            <th class="num">Artisti</th>
+            <th>Stato</th>
+            <th>Creata</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (c of d.items; track c.cityId) {
+            <tr>
+              <td>
+                @if (c.status === 'Done') {
+                  <a [routerLink]="['/cities', c.cityId]">{{ title(c) }}</a>
+                } @else {
+                  {{ title(c) }}
+                }
+              </td>
+              <td>{{ period(c.from, c.to) }}</td>
+              <td>{{ layout(c.layout) }}</td>
+              <td class="num">{{ c.status === 'Done' ? c.artistCount : '—' }}</td>
+              <td>
+                <span class="status" [attr.data-status]="c.status">{{ status(c.status) }}</span>
+              </td>
+              <td>{{ c.createdAt | date: 'dd/MM/y HH:mm' }}</td>
+              <td class="row-actions">
+                <a [routerLink]="['/cities', c.cityId]">Apri</a>
+                @if (active(c.status)) {
+                  <button type="button" [disabled]="busy() === c.cityId" (click)="cancel(c)">Annulla</button>
+                }
+                <button type="button" class="danger" [disabled]="busy() === c.cityId" (click)="remove(c)">Cancella</button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+
+      @if (pages() > 1) {
+        <nav class="pager" aria-label="Pagine">
+          <button type="button" [disabled]="page() === 1" (click)="goTo(page() - 1)">‹</button>
+          <span>Pagina {{ page() }} di {{ pages() }}</span>
+          <button type="button" [disabled]="page() === pages()" (click)="goTo(page() + 1)">›</button>
+        </nav>
+      }
+    }
+  } @else if (!error()) {
+    <div class="empty"><div class="spinner" aria-label="Caricamento"></div></div>
+  }
+</div>

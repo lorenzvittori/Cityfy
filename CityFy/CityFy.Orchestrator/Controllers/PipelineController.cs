@@ -21,7 +21,7 @@ public sealed class PipelineController(IPipelineService pipeline) : ControllerBa
     }
 
     // POST api/pipeline/runs/{runId}/cancel — admin: a Pending run never starts, a Building one is closed
-    // (Elaboration finishes the build in progress, its answer is ignored)
+    // (Catalog finishes the build in progress, its answer is ignored)
     [HttpPost("{runId}/cancel")]
     public async Task<ActionResult<PipelineRun>> Cancel(string runId, CancellationToken ct) =>
         Accepted(await pipeline.CancelAsync(runId, ct));

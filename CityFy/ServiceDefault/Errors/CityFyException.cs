@@ -19,4 +19,10 @@ public class CityFyException : Exception
     public string Code { get; }
 
     public int StatusCode { get; }
+
+    /// <summary>
+    /// Extra ProblemDetails members for the client, e.g. "problems" (per-field error codes of
+    /// CITY_INVALID_RECIPE). Forwarded unchanged by the gateway.
+    /// </summary>
+    public IReadOnlyDictionary<string, object?> Extensions { get; init; } = new Dictionary<string, object?>();
 }

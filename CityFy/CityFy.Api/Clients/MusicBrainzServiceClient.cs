@@ -1,3 +1,4 @@
+using ServiceDefault.Clients;
 using System.Text.Json;
 
 namespace CityFy.Api.Clients;

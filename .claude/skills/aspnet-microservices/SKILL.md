@@ -64,6 +64,7 @@ Cartelle: `Controllers/`, `Services/`, `Repositories/`, `Clients/`, `Mappers/`, 
 
 - Gli endpoint `debug/` non vengono chiamati dal flusso di produzione: se il gateway ne ha bisogno, l'endpoint diventa `internal/`.
 - I DTO pubblici sono separati dai modelli interni e mappati in un mapper dedicato del gateway (`V1Mapper`).
+  - Eccezione: un contratto di **output puro e stabile** (es. il risultato geometrico di un calcolo, senza id interni, stati o dettagli tecnici) definito nella libreria condivisa può essere esposto dal v1 così com'è, invece di duplicarne i record.
 - I job asincroni rispondono `202 Accepted` con l'id e la location dello stato (`AcceptedAtAction`).
 - Paginazione e filtri via query string (`?limit=`, `?page=&pageSize=`), con `Math.Clamp` sui limiti.
 - **Risorse create e salvate dall'utente** (es. risultati generati):

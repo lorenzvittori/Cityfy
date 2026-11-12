@@ -3,86 +3,28 @@ using CityFy.Api.Clients;
 using CityFy.Api.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using ServiceDefault.City;
-using ServiceDefault.Errors;
 
 namespace CityFy.Api.Controllers;
 
 /// <summary>
-/// City of the logged-in user. period: "all" (default), "1y", "6m", "30d" (any &lt;n&gt;d|m|y).
-/// Never built -> 404 CITY_NOT_READY: check GET api/v1/pipeline/runs to tell "in progress" from "no data".
+/// Data of the logged-in user behind the cities: genres available for a new city and the refresh of
+/// the artist catalog. The cities themselves are in <see cref="CitiesController"/>.
 /// </summary>
 [ApiController]
 [Authorize]
 [ApiExplorerSettings(GroupName = "v1")]
-[Route("api/v1")]
-public sealed class CityController(IElaborationClient elaboration, IOrchestratorClient orchestrator) : ControllerBase
+[Route("api/v1/city")]
+public sealed class CityController(ICatalogClient catalog, IOrchestratorClient orchestrator) : ControllerBase
 {
-    private const string DefaultPeriod = "all";
-
-    private Task<CityModel> CityAsync(string? period, CancellationToken ct) =>
-        elaboration.GetCityAsync(User.UserId(), string.IsNullOrWhiteSpace(period) ? DefaultPeriod : period, ct);
-
-    // GET api/v1/city?period=30d — the whole city (districts > blocks > buildings)
-    [HttpGet("city")]
-    public async Task<ActionResult<CityDto>> GetCity([FromQuery] string? period, CancellationToken ct) =>
-        Ok((await CityAsync(period, ct)).ToDto());
-
-    // POST api/v1/city/rebuild — rebuild the user's city now (all periods) from the plays already
-    // imported: useful when the genre catalog changed or after combining sources. Follow it with
-    // GET api/v1/pipeline/runs.
-    [HttpPost("city/rebuild")]
+    // POST api/v1/city/rebuild — refresh the user's artist catalog now from the plays already imported:
+    // useful when the genre catalog changed or after combining sources. Follow it with GET api/v1/pipeline/runs.
+    [HttpPost("rebuild")]
     public async Task<ActionResult<PipelineRunDto>> Rebuild(CancellationToken ct) =>
         Accepted((await orchestrator.TriggerAsync(User.UserId(), ct)).ToDto());
 
-    // GET api/v1/districts?period=30d
-    [HttpGet("districts")]
-    public async Task<ActionResult<IReadOnlyList<DistrictSummaryDto>>> GetDistricts([FromQuery] string? period, CancellationToken ct) =>
-        Ok((await CityAsync(period, ct)).Districts.Select(d => d.ToSummaryDto()).ToList());
-
-    // GET api/v1/districts/{districtId}?period=30d
-    [HttpGet("districts/{districtId}")]
-    public async Task<ActionResult<DistrictDto>> GetDistrict(string districtId, [FromQuery] string? period, CancellationToken ct)
-    {
-        var district = (await CityAsync(period, ct)).Districts.FirstOrDefault(d => d.DistrictId == districtId);
-        return district == null ? NotFoundProblem($"District '{districtId}'") : Ok(district.ToDto());
-    }
-
-    // GET api/v1/genres?period=30d — every genre (block) of the city, most listened first
+    // GET api/v1/city/genres?from=&to= — genres and subgenres listened in the range, to choose those of a
+    // new city (404 CITY_CATALOG_MISSING while the first import is running)
     [HttpGet("genres")]
-    public async Task<ActionResult<IReadOnlyList<GenreDto>>> GetGenres([FromQuery] string? period, CancellationToken ct) =>
-        Ok((await CityAsync(period, ct)).Districts
-            .SelectMany(d => d.Blocks.Select(b => b.ToGenreDto(d)))
-            .OrderByDescending(g => g.Score)
-            .ToList());
-
-    // GET api/v1/genres/{genreId}?period=30d
-    [HttpGet("genres/{genreId:int}")]
-    public async Task<ActionResult<GenreDetailDto>> GetGenre(int genreId, [FromQuery] string? period, CancellationToken ct)
-    {
-        var city = await CityAsync(period, ct);
-        var match = city.Districts.SelectMany(d => d.Blocks.Select(b => (District: d, Block: b)))
-            .FirstOrDefault(x => x.Block.GenreId == genreId);
-
-        return match.Block == null
-            ? NotFoundProblem($"Genre {genreId}")
-            : Ok(new GenreDetailDto(match.Block.ToGenreDto(match.District), match.Block.Buildings.Select(b => b.ToDto()).ToList()));
-    }
-
-    // GET api/v1/artists/{artistId}?period=30d — artistId = MusicBrainz MBID (BuildingDto.ArtistId)
-    [HttpGet("artists/{artistId}")]
-    public async Task<ActionResult<ArtistDetailDto>> GetArtist(string artistId, [FromQuery] string? period, CancellationToken ct)
-    {
-        var city = await CityAsync(period, ct);
-        var match = city.Districts
-            .SelectMany(d => d.Blocks.SelectMany(b => b.Buildings.Select(x => (District: d, Block: b, Building: x))))
-            .FirstOrDefault(x => x.Building.BuildingId == artistId);
-
-        return match.Building == null
-            ? NotFoundProblem($"Artist '{artistId}'")
-            : Ok(new ArtistDetailDto(match.Building.ToDto(), match.District.DistrictId, match.District.Name, match.Block.GenreId, match.Block.Name));
-    }
-
-    private ObjectResult NotFoundProblem(string what) =>
-        this.CityFyProblem(ErrorCodes.NotFound, $"{what} is not in this city", StatusCodes.Status404NotFound);
+    public async Task<ActionResult<IReadOnlyList<GenreOptionDto>>> GetGenreOptions([FromQuery] DateTime? from, [FromQuery] DateTime? to, CancellationToken ct) =>
+        Ok((await catalog.GetGenresAsync(User.UserId(), from, to, ct)).Select(g => g.ToDto()).ToList());
 }

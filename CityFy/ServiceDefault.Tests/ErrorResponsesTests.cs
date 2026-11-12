@@ -22,7 +22,7 @@ public sealed class ErrorTestController : ControllerBase
     public IActionResult Crash() => throw new InvalidOperationException("secret internal detail");
 
     [HttpGet("problem")]
-    public IActionResult Problem() => this.CityFyProblem(ErrorCodes.CityNotReady, "not built", StatusCodes.Status404NotFound);
+    public IActionResult Problem() => this.CityFyProblem(ErrorCodes.CityNotFound, "not found", StatusCodes.Status404NotFound);
 
     [HttpGet("validate")]
     public IActionResult Validate([FromQuery] int number) => Ok(number);
@@ -84,7 +84,7 @@ public sealed class ErrorResponsesTests : IAsyncLifetime
         var (status, body) = await GetAsync("/test/problem");
 
         Assert.Equal(HttpStatusCode.NotFound, status);
-        Assert.Equal(ErrorCodes.CityNotReady, body.GetProperty("code").GetString());
+        Assert.Equal(ErrorCodes.CityNotFound, body.GetProperty("code").GetString());
     }
 
     [Fact]

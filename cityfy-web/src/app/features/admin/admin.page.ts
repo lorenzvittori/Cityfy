@@ -146,7 +146,7 @@ export class AdminPage {
       import: "Annullare l'import MusicBrainz in corso?\n\nIl catalogo resta quello precedente (la scrittura è in una transazione).",
       upload: `Annullare l'upload ${short}?\n\nGli ascolti già importati restano; ricaricando lo stesso file non si creano duplicati.`,
       spotify: `Annullare il retrieve Spotify ${short}?`,
-      run: `Annullare la costruzione della città ${short}?\n\nSe è già in corso, Elaboration la completerà ma il risultato verrà ignorato.`,
+      run: `Annullare l'aggiornamento del catalogo artisti ${short}?\n\nSe è già in corso, Catalog lo completerà ma la run resterà annullata.`,
     };
     if (!confirm(questions[kind])) return;
 

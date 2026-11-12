@@ -84,18 +84,23 @@ internal sealed class CityFyExceptionHandler(
         if (status >= 500)
             logger.LogError(exception, "Request failed with {Code}", code);
 
+        var problem = new ProblemDetails
+        {
+            Status = status,
+            Title = code,
+            Detail = detail,
+            Extensions = { [ErrorResponses.CodeExtension] = code }
+        };
+        if (exception is CityFyException { Extensions: var extensions })
+            foreach (var (key, value) in extensions)
+                problem.Extensions.TryAdd(key, value);
+
         context.Response.StatusCode = status;
         return await problemDetails.TryWriteAsync(new ProblemDetailsContext
         {
             HttpContext = context,
             Exception = exception,
-            ProblemDetails = new ProblemDetails
-            {
-                Status = status,
-                Title = code,
-                Detail = detail,
-                Extensions = { [ErrorResponses.CodeExtension] = code }
-            }
+            ProblemDetails = problem
         });
     }
 }

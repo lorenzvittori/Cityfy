@@ -49,14 +49,23 @@ const MESSAGES: Record<string, ErrorMessage> = {
   RETRIEVE_JOB_NOT_FOUND: { message: 'Non troviamo questo aggiornamento.', action: 'none' },
 
   // --- City
-  CITY_INVALID_PERIOD: { message: 'Periodo non valido.', action: 'home' },
-  CITY_NOT_READY: { message: 'La tua città non è ancora pronta.', action: 'none' },
+  CITY_INVALID_RANGE: {
+    message: "Controlla le date: l'inizio deve venire prima della fine e non può essere nel futuro.",
+    action: 'none',
+  },
+  CITY_CATALOG_MISSING: { message: 'Stiamo ancora importando i tuoi ascolti. Potrai creare la tua città tra poco.', action: 'none' },
   CITY_BUILD_FAILED: { message: 'Non siamo riusciti a costruire la tua città. Riprova più tardi.', action: 'retry' },
+  CITY_NOT_FOUND: { message: 'Questa città non esiste più.', action: 'home' },
+  CITY_LIMIT_REACHED: { message: 'Hai già 10 città salvate: cancellane una per crearne una nuova.', action: 'none' },
+  CITY_INVALID_LAYOUT: { message: 'Tipo di mappa non disponibile.', action: 'none' },
+  CITY_INVALID_RECIPE: { message: 'Controlla i parametri della mappa.', action: 'none' },
+  CITY_INVALID_NAME: { message: 'Il nome della città è troppo lungo.', action: 'none' },
+  CITY_INVALID_GENRES: { message: 'Hai selezionato troppi generi.', action: 'none' },
   MUSICBRAINZ_UNAVAILABLE: {
     message: 'Il catalogo dei generi musicali non è disponibile al momento. La città verrà costruita appena torna online.',
     action: 'none',
   },
-  CITY_NO_PLAYS: { message: 'Nessun ascolto in questo periodo.', action: 'none' },
+  CITY_NO_PLAYS: { message: 'Nessun ascolto in questo periodo per i generi scelti.', action: 'none' },
   CITY_GENRES_UNAVAILABLE: { message: 'Non riusciamo ancora a riconoscere i generi dei tuoi artisti.', action: 'none' },
   CITY_LOW_COVERAGE: {
     message: 'La città mostra solo una parte dei tuoi ascolti: alcuni artisti non sono nel nostro catalogo.',

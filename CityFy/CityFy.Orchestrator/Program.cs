@@ -30,14 +30,14 @@ builder.Services.AddSingleton<IPipelineDebounceSubService, PipelineDebounceSubSe
 builder.Services.AddSingleton<IPipelineTriggerSubService, PipelineTriggerSubService>();
 builder.Services.AddSingleton<IPipelineRunStoreSubService, PipelineRunStoreSubService>();
 builder.Services.AddSingleton<IListeningUsersSubService, ListeningUsersSubService>();
-builder.Services.AddSingleton<IBuildRequestSubService, BuildRequestSubService>();
+builder.Services.AddSingleton<ICatalogRefreshRequestSubService, CatalogRefreshRequestSubService>();
 
-// RabbitMQ: consumes the pipeline events, publishes BuildCityRequested
+// RabbitMQ: consumes the pipeline events, publishes RefreshCatalogRequested
 builder.AddCityFyMessaging();
 builder.Services.AddMessageConsumer<ListeningImportedConsumer>();
 builder.Services.AddMessageConsumer<CatalogUpdatedConsumer>();
-builder.Services.AddMessageConsumer<CityBuiltConsumer>();
-builder.Services.AddMessageConsumer<CityBuildFailedConsumer>();
+builder.Services.AddMessageConsumer<UserCatalogUpdatedConsumer>();
+builder.Services.AddMessageConsumer<CatalogRefreshFailedConsumer>();
 builder.Services.AddHostedService<PipelineScheduler>();
 
 var app = builder.Build();

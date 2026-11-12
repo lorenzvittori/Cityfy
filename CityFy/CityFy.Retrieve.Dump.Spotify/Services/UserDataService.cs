@@ -6,7 +6,7 @@ namespace CityFy.Retrieve.Dump.Spotify.Services;
 /// <summary>
 /// Deletes what this service keeps about a user: running/queued imports are stopped, then the
 /// uploaded archives with their extracted files, the legacy per-upload collections and the upload
-/// tasks are removed. Plays are deleted by Elaboration.
+/// tasks are removed. Plays are deleted by Catalog.
 /// </summary>
 public sealed class UserDataService(
     IUploadTaskSubService tasks,

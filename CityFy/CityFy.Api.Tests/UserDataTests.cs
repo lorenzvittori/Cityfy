@@ -14,7 +14,7 @@ public sealed class UserDataTests : IDisposable
 
     public void Dispose() => _factory.Dispose();
 
-    /// <summary>The four services answer and record the order of the calls.</summary>
+    /// <summary>The five services answer and record the order of the calls.</summary>
     private List<string> AllServicesDelete(string userId)
     {
         var calls = new List<string>();
@@ -24,7 +24,7 @@ public sealed class UserDataTests : IDisposable
             return FakeServices.Json(new UserDataDeletion(service, new Dictionary<string, long> { ["items"] = 1 }));
         });
         On($"/internal/spotify/users/{userId}/data", "RetrieveSpotify");
-        On($"/internal/users/{userId}/data", "shared"); // Dump, Orchestrator and Elaboration share the path
+        On($"/internal/users/{userId}/data", "shared"); // Dump, Orchestrator, CityGenerator and Catalog share the path
         return calls;
     }
 
@@ -37,11 +37,11 @@ public sealed class UserDataTests : IDisposable
         var resp = await client.DeleteAsync("/api/v1/me/data", Ct);
 
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
-        // Spotify first (stops the retrieves), then dump, orchestrator, elaboration (plays last)
-        Assert.Equal(["RetrieveSpotify", "shared", "shared", "shared"], calls);
+        // Spotify first (stops the retrieves), then dump, orchestrator, city generator, catalog (plays last)
+        Assert.Equal(["RetrieveSpotify", "shared", "shared", "shared", "shared"], calls);
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(Ct);
         Assert.Equal("u1", body.GetProperty("userId").GetString());
-        Assert.Equal(4, body.GetProperty("deleted").GetArrayLength());
+        Assert.Equal(5, body.GetProperty("deleted").GetArrayLength());
 
         // session closed
         Assert.Contains(resp.Headers.GetValues("Set-Cookie"), c => c.StartsWith("cityfy.auth=;", StringComparison.Ordinal));
@@ -60,7 +60,7 @@ public sealed class UserDataTests : IDisposable
         Assert.Equal(HttpStatusCode.BadGateway, resp.StatusCode);
         var problem = await resp.Content.ReadFromJsonAsync<JsonElement>(Ct);
         Assert.Equal(ErrorCodes.UserDataDeletionIncomplete, problem.GetProperty("code").GetString());
-        Assert.Equal(3, calls.Count); // dump, orchestrator, elaboration still deleted their part
+        Assert.Equal(4, calls.Count); // dump, orchestrator, city generator, catalog still deleted their part
         Assert.False(resp.Headers.TryGetValues("Set-Cookie", out _)); // can retry
     }
 
@@ -82,7 +82,7 @@ public sealed class UserDataTests : IDisposable
         var resp = await client.DeleteAsync("/api/admin/users/u2/data", Ct);
 
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
-        Assert.Equal(4, calls.Count);
+        Assert.Equal(5, calls.Count);
     }
 
     [Fact]

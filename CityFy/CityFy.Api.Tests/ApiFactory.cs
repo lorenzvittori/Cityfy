@@ -60,12 +60,13 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("ConnectionStrings:musicbrainz", "Server=localhost;Database=musicbrainz;User Id=sa;Password=x;TrustServerCertificate=true");
 
         // Service discovery resolves the resource names to these addresses
-        foreach (var resource in new[] { "Elaboration", "Orchestrator", "RetrieveSpotify", "RetrieveDumpSpotify", "RetrieveMusicBrainz" })
+        foreach (var resource in new[] { "Catalog", "CityGenerator", "Orchestrator", "RetrieveSpotify", "RetrieveDumpSpotify", "RetrieveMusicBrainz" })
             builder.UseSetting($"services:{resource}:https:0", $"https://{resource.ToLowerInvariant()}.test");
 
         builder.ConfigureTestServices(services =>
         {
-            services.AddHttpClient<IElaborationClient, ElaborationClient>().ConfigurePrimaryHttpMessageHandler(() => Fakes);
+            services.AddHttpClient<ICatalogClient, CatalogClient>().ConfigurePrimaryHttpMessageHandler(() => Fakes);
+            services.AddHttpClient<ICityGeneratorClient, CityGeneratorClient>().ConfigurePrimaryHttpMessageHandler(() => Fakes);
             services.AddHttpClient<IOrchestratorClient, OrchestratorClient>().ConfigurePrimaryHttpMessageHandler(() => Fakes);
             services.AddHttpClient<ISpotifyServiceClient, SpotifyServiceClient>().ConfigurePrimaryHttpMessageHandler(() => Fakes);
             services.AddHttpClient<IDumpClient, DumpClient>().ConfigurePrimaryHttpMessageHandler(() => Fakes);

@@ -10,7 +10,7 @@ public static class ListeningSources
 
 /// <summary>
 /// One music play, shared contract between the retrieve services (writers) and
-/// Elaboration (reader). Stored in the 'listening_events' collection.
+/// Catalog (reader). Stored in the 'listening_events' collection.
 /// </summary>
 public sealed class ListeningEvent
 {

@@ -19,7 +19,7 @@ public sealed class ApiTests : IDisposable
 
     private static CityModel SampleCity() => new()
     {
-        Id = "u1:all", UserId = "u1", Period = "all", GeneratedAt = DateTime.UtcNow,
+        UserId = "u1", GeneratedAt = DateTime.UtcNow,
         Summary = new CitySummary { TotalPlays = 10, QualifiedPlays = 10, PlacedArtists = 1, TotalArtists = 1, CoveragePercent = 100 },
         Districts =
         [
@@ -42,7 +42,7 @@ public sealed class ApiTests : IDisposable
     [Fact]
     public async Task WithoutSession_ApiAnswers401Unauthenticated()
     {
-        var resp = await _factory.CreateApiClient().GetAsync("/api/v1/city", Ct);
+        var resp = await _factory.CreateApiClient().GetAsync("/api/v1/cities", Ct);
 
         Assert.Equal(HttpStatusCode.Unauthorized, resp.StatusCode);
         Assert.Equal(ErrorCodes.Unauthenticated, await CodeOf(resp));
@@ -82,42 +82,29 @@ public sealed class ApiTests : IDisposable
     public async Task City_IsReadForTheSessionUser_AndMappedToV1()
     {
         var client = await _factory.LoginAsync("u1");
-        _factory.Fakes.OnJson(HttpMethod.Get, "/api/elaboration/city/u1?period=all", SampleCity());
+        var info = new GeneratedCityInfo("c1", null, null, null, "organic", null, [], [], "Done", null, DateTime.UtcNow, DateTime.UtcNow, "v1", 1, 1, ["rock"]);
+        _factory.Fakes.OnJson(HttpMethod.Get, "/api/city-generator/u1/cities/c1", new GeneratedCityDetail(info, SampleCity(), null));
 
-        var city = await client.GetFromJsonAsync<CityDto>("/api/v1/city", Ct);
+        var detail = await client.GetFromJsonAsync<GeneratedCityDetailDto>("/api/v1/cities/c1", Ct);
 
-        var building = Assert.Single(Assert.Single(Assert.Single(city!.Districts).Blocks).Buildings);
+        var building = Assert.Single(Assert.Single(Assert.Single(detail!.City!.Districts).Blocks).Buildings);
         Assert.Equal("mb-nirvana", building.ArtistId);
         Assert.Equal(40, building.Height);
         // internal-only data is not exposed
-        Assert.DoesNotContain("Unknown", await client.GetStringAsync("/api/v1/city", Ct));
-    }
-
-    [Fact]
-    public async Task ArtistAndGenre_AreFoundInsideTheCity()
-    {
-        var client = await _factory.LoginAsync("u1");
-        _factory.Fakes.OnJson(HttpMethod.Get, "/api/elaboration/city/u1?period=30d", SampleCity());
-
-        var artist = await client.GetFromJsonAsync<ArtistDetailDto>("/api/v1/artists/mb-nirvana?period=30d", Ct);
-        var genre = await client.GetFromJsonAsync<GenreDetailDto>("/api/v1/genres/2?period=30d", Ct);
-
-        Assert.Equal("grunge", artist!.GenreName);
-        Assert.Equal("rock", genre!.Genre.DistrictName);
+        Assert.DoesNotContain("Unknown", await client.GetStringAsync("/api/v1/cities/c1", Ct));
     }
 
     [Fact]
     public async Task DownstreamErrorCode_IsForwardedUnchanged()
     {
         var client = await _factory.LoginAsync("u1");
-        _factory.Fakes.On(HttpMethod.Get, "/api/elaboration/city/u1?period=all", _ => FakeServices.Problem(HttpStatusCode.NotFound, ErrorCodes.CityNotReady));
+        _factory.Fakes.On(HttpMethod.Get, "/api/city-generator/u1/cities/c1", _ => FakeServices.Problem(HttpStatusCode.NotFound, ErrorCodes.CityNotFound));
 
-        var resp = await client.GetAsync("/api/v1/city", Ct);
+        var resp = await client.GetAsync("/api/v1/cities/c1", Ct);
 
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
-        Assert.Equal(ErrorCodes.CityNotReady, await CodeOf(resp));
+        Assert.Equal(ErrorCodes.CityNotFound, await CodeOf(resp));
     }
-
     [Fact]
     public async Task UnreachableService_IsServiceUnavailable()
     {

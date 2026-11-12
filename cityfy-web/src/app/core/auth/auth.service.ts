@@ -21,7 +21,7 @@ export class AuthService {
     );
   }
 
-  login(returnUrl = '/city'): void {
+  login(returnUrl = '/cities'): void {
     window.location.href = this.api.loginUrl(returnUrl);
   }
 

@@ -6,7 +6,7 @@ namespace CityFy.Retrieve.Spotify.Services;
 /// <summary>
 /// Deletes what this service keeps about a user: running/queued retrieves are stopped, then the
 /// jobs and the linked account (refresh token included) are removed. The scheduled retrieve
-/// skips the user from then on (no account). Plays are deleted by Elaboration.
+/// skips the user from then on (no account). Plays are deleted by Catalog.
 /// </summary>
 public sealed class UserDataService(
     IRetrieveJobSubService jobs,

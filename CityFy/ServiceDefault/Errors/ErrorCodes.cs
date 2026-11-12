@@ -44,11 +44,27 @@ public static class ErrorCodes
     public const string SpotifyRetrieveFailed = "SPOTIFY_RETRIEVE_FAILED";
     public const string RetrieveJobNotFound = "RETRIEVE_JOB_NOT_FOUND";
 
-    // --- City (Elaboration) -----------------------------------------------
-    public const string CityInvalidPeriod = "CITY_INVALID_PERIOD";
-    /// <summary>The city of that period was never built (yet).</summary>
-    public const string CityNotReady = "CITY_NOT_READY";
+    // --- City (Catalog) -----------------------------------------------
+    /// <summary>The catalog refresh or the generation of a city failed (unexpected error).</summary>
     public const string CityBuildFailed = "CITY_BUILD_FAILED";
+    /// <summary>Date range of a city request: start after end, or start in the future.</summary>
+    public const string CityInvalidRange = "CITY_INVALID_RANGE";
+    /// <summary>The user's artist catalog was never built: the plays are still being imported.</summary>
+    public const string CityCatalogMissing = "CITY_CATALOG_MISSING";
+
+    // --- Generated cities (CityGenerator) ---------------------------------------
+    /// <summary>The generated city does not exist (or belongs to another user).</summary>
+    public const string CityNotFound = "CITY_NOT_FOUND";
+    /// <summary>The user already has the maximum number of saved cities: delete one first.</summary>
+    public const string CityLimitReached = "CITY_LIMIT_REACHED";
+    /// <summary>Unknown map type (organic, grid, custom).</summary>
+    public const string CityInvalidLayout = "CITY_INVALID_LAYOUT";
+    /// <summary>Parameter string of a custom map not valid: "problems" lists the key and the RecipeProblemCodes value.</summary>
+    public const string CityInvalidRecipe = "CITY_INVALID_RECIPE";
+    /// <summary>City name too long.</summary>
+    public const string CityInvalidName = "CITY_INVALID_NAME";
+    /// <summary>Too many genres or subgenres in the request.</summary>
+    public const string CityInvalidGenres = "CITY_INVALID_GENRES";
     public const string MusicBrainzUnavailable = "MUSICBRAINZ_UNAVAILABLE";
 
     // --- City warnings (CityModel.Warnings: the city exists but needs a note in the UI) ---

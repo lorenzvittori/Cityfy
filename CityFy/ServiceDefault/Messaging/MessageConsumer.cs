@@ -35,7 +35,7 @@ public abstract class MessageConsumer<T> : BackgroundService where T : class
         Logger = logger;
     }
 
-    /// <summary>Queue of this consumer, e.g. "elaboration.build-city". One queue per consumer.</summary>
+    /// <summary>Queue of this consumer, e.g. "catalog.build-city". One queue per consumer.</summary>
     protected abstract string QueueName { get; }
 
     /// <summary>Delay before each retry; after the last one the message is dead-lettered.</summary>

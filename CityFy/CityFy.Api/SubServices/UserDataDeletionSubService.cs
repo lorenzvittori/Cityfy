@@ -8,7 +8,8 @@ public sealed class UserDataDeletionSubService(
     ISpotifyServiceClient spotify,
     IDumpClient dump,
     IOrchestratorClient orchestrator,
-    IElaborationClient elaboration,
+    ICityGeneratorClient cityGenerator,
+    ICatalogClient catalog,
     ILogger<UserDataDeletionSubService> logger) : IUserDataDeletionSubService
 {
     public async Task<(IReadOnlyList<UserDataDeletion> Deleted, IReadOnlyList<string> Failed)> DeleteEverywhereAsync(string userId, CancellationToken ct)
@@ -18,7 +19,8 @@ public sealed class UserDataDeletionSubService(
             ("RetrieveSpotify", spotify),
             ("RetrieveDumpSpotify", dump),
             ("Orchestrator", orchestrator),
-            ("Elaboration", elaboration),
+            ("CityGenerator", cityGenerator),
+            ("Catalog", catalog),
         };
 
         var deleted = new List<UserDataDeletion>();

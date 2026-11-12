@@ -1,0 +1,226 @@
+<div class="page">
+  <p><a routerLink="/cities">‹ Le tue città</a></p>
+  <h1>Nuova città</h1>
+
+  @if (catalogMissing()) {
+    <div class="notice">
+      Stiamo ancora importando i tuoi ascolti: potrai creare la tua città tra poco.
+      <a routerLink="/upload">Carica l'export</a> se non l'hai ancora fatto.
+    </div>
+  }
+
+  <form (submit)="$event.preventDefault(); submit()">
+    <section>
+      <h2>Nome</h2>
+      <input
+        type="text"
+        [value]="name()"
+        (input)="name.set($any($event.target).value)"
+        [maxLength]="maxName"
+        placeholder="Facoltativo: se lo lasci vuoto lo scegliamo noi"
+      />
+    </section>
+
+    <section>
+      <h2>Periodo</h2>
+      <div class="segmented">
+        @for (s of shortcuts; track s.value) {
+          <button type="button" (click)="setShortcut(s.value)">{{ s.label }}</button>
+        }
+      </div>
+      <div class="dates">
+        <label>
+          Dal
+          <input type="date" [value]="from()" [max]="today" (change)="setDate('from', $any($event.target).value)" />
+        </label>
+        <label>
+          Al
+          <input type="date" [value]="to()" (change)="setDate('to', $any($event.target).value)" />
+        </label>
+      </div>
+      @if (rangeError(); as e) {
+        <p class="field-error">{{ e }}</p>
+      } @else if (!from() && !to()) {
+        <p class="muted small">Tutti i tuoi ascolti, dal primo all'ultimo.</p>
+      }
+    </section>
+
+    <section>
+      <h2>Mappa</h2>
+      <div class="layouts">
+        @for (l of layouts; track l.value) {
+          <label class="layout" [class.active]="layout() === l.value">
+            <input type="radio" name="layout" [checked]="layout() === l.value" (change)="setLayout(l.value)" />
+            <strong>{{ l.label }}</strong>
+            <span class="muted small">{{ l.description }}</span>
+          </label>
+        }
+        <label class="layout" [class.active]="layout() === 'custom'" [class.disabled]="!recipeSchema()">
+          <input type="radio" name="layout" [checked]="layout() === 'custom'" [disabled]="!recipeSchema()" (change)="setLayout('custom')" />
+          <strong>Personalizzata</strong>
+          <span class="muted small">Scegli tu forma, isolati, strade e altezze</span>
+        </label>
+      </div>
+
+      @if (layout() === 'custom' && recipeSchema(); as schema) {
+        <div class="recipe">
+          <div class="recipe-head">
+            <div class="segmented" role="tablist">
+              <button type="button" role="tab" [class.active]="recipeMode() === 'form'" (click)="recipeMode.set('form')">Form</button>
+              <button type="button" role="tab" [class.active]="recipeMode() === 'text'" (click)="recipeMode.set('text')">Testo</button>
+            </div>
+            <span class="spacer"></span>
+            @for (b of bases(); track b) {
+              <button type="button" class="link" (click)="startFrom(b)">Parti da {{ baseLabel(b) }}</button>
+            }
+          </div>
+
+          @if (recipeMode() === 'form') {
+            <div class="recipe-form">
+              @for (k of recipeKeys(); track k.key) {
+                <div class="field" [class.invalid]="recipeProblem(k.key)">
+                  <label [for]="'recipe-' + k.key">
+                    {{ recipeLabels[k.key]?.label ?? k.key }}
+                    @if (recipeValues()[k.key] === undefined && !k.optional) { <span class="default">default</span> }
+                  </label>
+                  @switch (k.type) {
+                    @case ('choice') {
+                      <select [id]="'recipe-' + k.key" [value]="recipeValues()[k.key] ?? ''" (change)="setRecipeValue(k.key, $any($event.target).value)">
+                        @for (v of k.values; track v) {
+                          <option [value]="v">{{ recipeLabels[k.key]?.values?.[v] ?? v }}</option>
+                        }
+                      </select>
+                    }
+                    @case ('integer') {
+                      <div class="seed">
+                        <input
+                          [id]="'recipe-' + k.key"
+                          type="number"
+                          [min]="k.min"
+                          [max]="k.max"
+                          step="1"
+                          placeholder="standard"
+                          [value]="recipeValues()[k.key] ?? ''"
+                          (change)="setRecipeValue(k.key, $any($event.target).value)"
+                        />
+                        <button type="button" title="Variante a caso" (click)="randomSeed()">🎲</button>
+                      </div>
+                    }
+                    @default {
+                      <div class="slider">
+                        <input
+                          [id]="'recipe-' + k.key"
+                          type="range"
+                          [min]="k.min"
+                          [max]="k.max"
+                          [step]="k.step"
+                          [value]="recipeValues()[k.key] ?? k.min"
+                          (input)="setRecipeValue(k.key, $any($event.target).value)"
+                        />
+                        <output>{{ recipeValues()[k.key] }}</output>
+                      </div>
+                    }
+                  }
+                  <span class="muted small">{{ recipeLabels[k.key]?.help }}</span>
+                  @if (recipeProblem(k.key); as problem) { <span class="field-error">{{ problem }}</span> }
+                </div>
+              }
+            </div>
+          } @else {
+            <textarea
+              rows="3"
+              spellcheck="false"
+              [maxLength]="schema.maxLength"
+              [value]="recipeText()"
+              (input)="setRecipeText($any($event.target).value)"
+              placeholder="base=grid; blocks=0.6; plazas=on"
+            ></textarea>
+            <p class="muted small">
+              Parametri:
+              @for (k of schema.keys; track k.key; let last = $last) {
+                <code [title]="recipeLabels[k.key]?.help ?? ''">{{ k.key }}</code>{{ last ? '' : ', ' }}
+              }
+              — separati da <code>;</code>, nella forma <code>chiave=valore</code>.
+            </p>
+          }
+
+          @if (recipeProblems().length > 0) {
+            <ul class="problems">
+              @for (p of recipeProblems(); track p.key + p.code) { <li>{{ problemText(p) }}</li> }
+            </ul>
+          }
+          <p class="recipe-string">
+            <code>{{ recipeText() }}</code>
+            <button type="button" class="link" (click)="copyRecipe()">Copia</button>
+          </p>
+        </div>
+      }
+    </section>
+
+    <section>
+      <h2>Generi</h2>
+      @if (options(); as all) {
+        <div class="genre-tools">
+          <input type="search" placeholder="Cerca un genere" [value]="search()" (input)="search.set($any($event.target).value)" />
+          <button type="button" (click)="selectAll()">Tutti</button>
+          <button type="button" (click)="selectTop(3)">I 3 più ascoltati</button>
+        </div>
+        <p class="muted small">
+          @if (allGenres()) { Nessun genere scelto: la città li avrà tutti. } @else { Solo i generi scelti: gli altri artisti non saranno nella città. }
+        </p>
+        @if (all.length === 0) {
+          <p class="muted">Nessun ascolto in questo periodo.</p>
+        }
+        <ul class="genres">
+          @for (o of visibleOptions(); track o.genreId) {
+            <li>
+              <div class="district">
+                <input
+                  type="checkbox"
+                  [checked]="districtState(o, selection()) === 'checked'"
+                  [indeterminate]="districtState(o, selection()) === 'partial'"
+                  (change)="toggleDistrict(o)"
+                  [attr.aria-label]="o.name"
+                />
+                <span class="swatch" [style.background]="o.color"></span>
+                <span class="name">{{ o.name }}</span>
+                <span class="muted small">{{ o.artistCount }} artisti</span>
+                @if (o.subgenres.length > 1) {
+                  <button type="button" class="expand" (click)="toggleExpanded(o.genreId)">
+                    {{ expanded().has(o.genreId) || search() ? '▾' : '▸' }} {{ o.subgenres.length }} sottogeneri
+                  </button>
+                }
+              </div>
+              @if (o.subgenres.length > 1 && (expanded().has(o.genreId) || search())) {
+                <ul class="subgenres">
+                  @for (s of o.subgenres; track s.genreId) {
+                    <li>
+                      <label>
+                        <input type="checkbox" [checked]="subgenreChecked(o, s.genreId, selection())" (change)="toggleSubgenre(o, s.genreId)" />
+                        {{ s.name }} <span class="muted small">{{ s.artistCount }}</span>
+                      </label>
+                    </li>
+                  }
+                </ul>
+              }
+            </li>
+          }
+        </ul>
+      } @else if (optionsError(); as e) {
+        @if (!catalogMissing()) {
+          <app-error-message [code]="e.code" [traceId]="e.traceId" [compact]="true" (retry)="loadOptions()" />
+        }
+      } @else {
+        <div class="spinner" aria-label="Caricamento"></div>
+      }
+    </section>
+
+    @if (submitError(); as e) {
+      <app-error-message [code]="e.code" [traceId]="e.traceId" [compact]="true" (retry)="submit()" />
+    }
+    <div class="submit">
+      <button type="submit" class="button primary" [disabled]="!canSubmit()">{{ submitting() ? 'Invio…' : 'Genera la città' }}</button>
+      <a routerLink="/cities">Annulla</a>
+    </div>
+  </form>
+</div>

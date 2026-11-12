@@ -9,7 +9,7 @@ public sealed class ServiceHealthCheckSubService(IHttpClientFactory factory) : I
 
     /// <summary>AppHost resource names, also used as health-probe HttpClient names (<see cref="ClientName"/>).</summary>
     public static readonly string[] Services =
-        [Self, "Elaboration", "Orchestrator", "RetrieveSpotify", "RetrieveDumpSpotify", "RetrieveMusicBrainz"];
+        [Self, "Catalog", "CityGenerator", "Orchestrator", "RetrieveSpotify", "RetrieveDumpSpotify", "RetrieveMusicBrainz"];
 
     public static string ClientName(string service) => $"health-{service}";
 

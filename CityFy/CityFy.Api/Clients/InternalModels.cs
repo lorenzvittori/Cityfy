@@ -38,7 +38,6 @@ public sealed record PipelineRunInfo(
     string UserId,
     string Status,
     List<PipelineTriggerInfo> Triggers,
-    List<string> Periods,
     DateTime CreatedAt,
     DateTime DueAt,
     DateTime? StartedAt,

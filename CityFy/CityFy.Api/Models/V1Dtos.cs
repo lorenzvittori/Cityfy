@@ -1,3 +1,5 @@
+using ServiceDefault.City;
+
 namespace CityFy.Api.Models;
 
 // Public contract of the API (v1). Kept separate from the internal documents (CityModel, ...)
@@ -7,10 +9,11 @@ public sealed record MeDto(string UserId, string? DisplayName, DateTime? LinkedA
 
 // --- City -------------------------------------------------------------------
 
+/// <summary>Data of a generated city (districts > blocks > buildings); From/To: range, To exclusive.</summary>
 public sealed record CityDto(
-    string Period,
     DateTime GeneratedAt,
     DateTime? From,
+    DateTime? To,
     CitySummaryDto Summary,
     IReadOnlyList<string> Warnings,
     IReadOnlyList<DistrictDto> Districts);
@@ -49,30 +52,51 @@ public sealed record BuildingDto(
     string Color,
     IReadOnlyList<string> Genres);
 
-/// <summary>District without its blocks (list views, legends).</summary>
-public sealed record DistrictSummaryDto(
-    string DistrictId,
-    string Name,
-    string Color,
-    double Density,
-    double ListeningIntensity,
-    long Score,
-    int GenreCount,
-    int ArtistCount);
+// --- Generated cities -----------------------------------------------------------
 
-/// <summary>Genre aggregate (one block of the city) with its district.</summary>
-public sealed record GenreDto(
-    int GenreId,
-    string Name,
-    string DistrictId,
-    string DistrictName,
-    string Color,
-    long Score,
-    int ArtistCount);
+/// <summary>
+/// A city to generate. Name optional (null = the UI composes a title). From/To: UTC, To exclusive.
+/// Layout: "organic" (default) | "grid" | "custom" (Recipe: parameter string, see GET api/v1/cities/recipe/schema). Genres = district ids, Subgenres = block ids (GenreOptionDto).
+/// </summary>
+public sealed record CreateCityRequest(
+    string? Name,
+    DateTime? From,
+    DateTime? To,
+    string? Layout,
+    string? Recipe,
+    IReadOnlyList<int>? Genres,
+    IReadOnlyList<int>? Subgenres);
 
-public sealed record GenreDetailDto(GenreDto Genre, IReadOnlyList<BuildingDto> Artists);
+/// <summary>Status: Pending, InProgress, Done, Failed, Cancelled (+ errorCode). TopGenres: main districts, for a default title.</summary>
+public sealed record GeneratedCityDto(
+    string CityId,
+    string? Name,
+    DateTime? From,
+    DateTime? To,
+    string Layout,
+    string? Recipe,
+    IReadOnlyList<int> Genres,
+    IReadOnlyList<int> Subgenres,
+    string Status,
+    string? ErrorCode,
+    DateTime CreatedAt,
+    DateTime? CompletedAt,
+    int DistrictCount,
+    int ArtistCount,
+    IReadOnlyList<string> TopGenres);
 
-public sealed record ArtistDetailDto(BuildingDto Artist, string DistrictId, string DistrictName, int GenreId, string GenreName);
+/// <summary>
+/// City (data) and Map (geometry, scene units): null until Status is Done. Map is the shared
+/// ServiceDefault.City.CityLayout contract, exposed as-is (pure geometric output).
+/// </summary>
+public sealed record GeneratedCityDetailDto(GeneratedCityDto Info, CityDto? City, CityLayout? Map);
+
+public sealed record GeneratedCityPageDto(IReadOnlyList<GeneratedCityDto> Items, int Page, int PageSize, long Total);
+
+/// <summary>A district (top-level genre) that can be chosen, with its subgenres.</summary>
+public sealed record GenreOptionDto(int GenreId, string Name, string Color, long QualifiedPlays, int ArtistCount, IReadOnlyList<SubgenreOptionDto> Subgenres);
+
+public sealed record SubgenreOptionDto(int GenreId, string Name, long QualifiedPlays, int ArtistCount);
 
 // --- Imports and pipeline -----------------------------------------------------
 

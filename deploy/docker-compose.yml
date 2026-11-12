@@ -73,19 +73,27 @@ services:
       <<: *env
       Frontend__BaseUrl: https://${DOMAIN}
       DataProtection__KeysPath: /data/keys # session cookie keys: survive deploys
-      services__Elaboration__http__0: http://elaboration:8080
+      services__Catalog__http__0: http://catalog:8080
+      services__CityGenerator__http__0: http://city-generator:8080
       services__Orchestrator__http__0: http://orchestrator:8080
       services__RetrieveSpotify__http__0: http://retrieve-spotify:8080
       services__RetrieveDumpSpotify__http__0: http://retrieve-dump-spotify:8080
       services__RetrieveMusicBrainz__http__0: http://retrieve-musicbrainz:8080
     volumes: [api-keys:/data/keys]
 
-  elaboration:
+  catalog:
     <<: *dotnet
-    image: ${REGISTRY}/cityfy-elaboration:${TAG}
+    image: ${REGISTRY}/cityfy-catalog:${TAG}
     environment:
       <<: *env
       services__RetrieveMusicBrainz__http__0: http://retrieve-musicbrainz:8080
+
+  city-generator:
+    <<: *dotnet
+    image: ${REGISTRY}/cityfy-city-generator:${TAG}
+    environment:
+      <<: *env
+      services__Catalog__http__0: http://catalog:8080
 
   orchestrator:
     <<: *dotnet
