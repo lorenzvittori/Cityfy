@@ -18,6 +18,14 @@ Carica anche `dotnet-conventions` (naming, classi, errori, test).
   - modelli condivisi tra servizi (es. eventi scritti da uno e letti da un altro, stato dei task).
 - Un progetto per servizio, `<App>.<Area>[.<Sorgente>]`, più il suo `<...>.Tests`.
 - Un unico servizio **gateway** (`<App>.Api`) è esposto al browser: autenticazione, API pubbliche versionate, inoltro agli altri servizi.
+- I servizi prendono il nome dalla **responsabilità**, non dall'operazione tecnica (`Catalog`, `Billing`, `ReportGenerator`; non `Processing` o `Elaboration`).
+
+## Confini tra servizi
+
+- Ogni collection o tabella nuova ha **un solo servizio proprietario**, l'unico che la scrive. Gli altri servizi ottengono quei dati tramite il suo client HTTP o tramite eventi, mai leggendo la collection. L'unica eccezione sono i modelli dichiarati condivisi nella libreria comune.
+- Un servizio nuovo si crea quando una responsabilità ha **dati propri** e un **contratto di input piccolo e stabile**, oppure quando ha un carico molto diverso (calcolo CPU contro query) che va scalato a parte. Esempio: il servizio dati produce un modello, il servizio di calcolo lo trasforma e salva il risultato.
+- Le dipendenze vanno in una sola direzione: chi calcola chiama il servizio dati, mai il contrario. Per avvisare a monte si usano gli eventi.
+- La cancellazione dei dati utente coinvolge ogni servizio proprietario (vedi "Dati utente").
 
 ## Struttura di un servizio
 
@@ -58,6 +66,13 @@ Cartelle: `Controllers/`, `Services/`, `Repositories/`, `Clients/`, `Mappers/`, 
 - I DTO pubblici sono separati dai modelli interni e mappati in un mapper dedicato del gateway (`V1Mapper`).
 - I job asincroni rispondono `202 Accepted` con l'id e la location dello stato (`AcceptedAtAction`).
 - Paginazione e filtri via query string (`?limit=`, `?page=&pageSize=`), con `Math.Clamp` sui limiti.
+- **Risorse create e salvate dall'utente** (es. risultati generati):
+  - lista paginata `GET ...?page=&pageSize=`, che risponde `{ items, page, pageSize, total }`;
+  - dettaglio `GET .../{id}`;
+  - cancellazione singola `DELETE .../{id}`, che risponde 204;
+  - accesso solo alle proprie risorse: una risorsa di un altro utente risponde 404, non 403;
+  - un eventuale limite per utente risponde 409 `<AREA>_LIMIT_REACHED`.
+- **Deduplica**: una richiesta con parametri in forma canonica identici a un risultato già pronto, sugli stessi dati di origine (versione), restituisce quel risultato invece di rifare il calcolo.
 
 ## Errori
 
@@ -76,7 +91,7 @@ Cartelle: `Controllers/`, `Services/`, `Repositories/`, `Clients/`, `Mappers/`, 
 
 ## Messaggistica (RabbitMQ)
 
-- I contratti sono `sealed record` in `Contracts/`, al passato per gli eventi (`ListeningImported`) e all'imperativo + `Requested` per i comandi (`BuildCityRequested`). Il routing key è il nome del tipo: **rinominarlo è una breaking change**. In testa al file, un commento con il diagramma del flusso.
+- I contratti sono `sealed record` in `Contracts/`, al passato per gli eventi (`ListeningImported`) e all'imperativo + `Requested` per i comandi (`BuildCityRequested`). Il routing key è il nome del tipo: **rinominarlo è una breaking change**, e il nome deve essere unico e specifico in tutta la solution (`UserProfileUpdated` e `ProductCatalogUpdated`, mai due significati per lo stesso nome). In testa al file, un commento con il diagramma del flusso.
 - Consumer: `sealed class <Message>Consumer : MessageConsumer<T>`.
   - `QueueName = "<servizio>.<azione-kebab>"`, una coda per consumer.
   - La base si occupa di deduplicazione, scope DI, ack manuale, retry con code di ritardo e DLQ.

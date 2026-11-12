@@ -35,6 +35,7 @@ Prima di iniziare carica `dotnet-conventions` e la skill di architettura del pro
 
 ## Regole
 
+- Ogni comportamento fuori standard (non coperto dalle skill o in deroga a una regola) va chiesto all'utente prima di implementarlo. Se approvato, va aggiunto alla skill generica pertinente (vedi `dotnet-conventions` › Comportamenti fuori standard).
 - Nessuna modifica distruttiva senza backup o idempotenza.
 - Una feature non è finita senza almeno un test di regressione.
 - Porta prima gli algoritmi puri, poi i casi d'uso, poi endpoint e UI. Non copiare 1:1 la struttura di codice legacy.
