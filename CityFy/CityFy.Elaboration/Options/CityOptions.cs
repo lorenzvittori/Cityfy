@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations;
 namespace CityFy.Elaboration.Options;
 
 /// <summary>"City" configuration section: knobs of the city builder.</summary>
-public class CityOptions
+public sealed class CityOptions
 {
     public const string SectionName = "City";
 
@@ -23,7 +23,7 @@ public class CityOptions
     [Range(1, 1000)]
     public double MaxWidth { get; set; } = 12;
 
-    /// <summary>Districts shown on the map; the least listened beyond this are merged into "Altri generi".</summary>
+    /// <summary>Districts shown on the map; the least listened beyond this are merged into "Other genres".</summary>
     [Range(2, 100)]
     public int MaxDistricts { get; set; } = 12;
 
@@ -37,14 +37,4 @@ public class CityOptions
 
     /// <summary>Optional fixed colors per macro-genre name (e.g. "rock": "#80cb4d"); others get a hashed hue.</summary>
     public Dictionary<string, string> Palette { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-}
-
-/// <summary>Base address of Retrieve.MusicBrainz ("Services:MusicBrainz").</summary>
-public class MusicBrainzServiceOptions
-{
-    public const string SectionName = "Services:MusicBrainz";
-
-    /// <summary>Default resolved by Aspire service discovery (resource "RetrieveMusicBrainz").</summary>
-    [Required]
-    public string BaseUrl { get; set; } = "https+http://RetrieveMusicBrainz";
 }

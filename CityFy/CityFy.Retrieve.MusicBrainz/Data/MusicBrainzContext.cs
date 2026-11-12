@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CityFy.Retrieve.MusicBrainz.Data;
 
-public class MusicBrainzContext : DbContext
+public sealed class MusicBrainzContext : DbContext
 {
     public MusicBrainzContext(DbContextOptions<MusicBrainzContext> options) : base(options)
     {

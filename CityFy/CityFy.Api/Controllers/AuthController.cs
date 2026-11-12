@@ -1,10 +1,8 @@
 using CityFy.Api.Auth;
 using CityFy.Api.Clients;
-using CityFy.Api.Models;
 using CityFy.Api.Options;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using ServiceDefault.Errors;
@@ -19,33 +17,28 @@ namespace CityFy.Api.Controllers;
 [ApiController]
 [ApiExplorerSettings(GroupName = "v1")]
 [Route("api/v1/auth")]
-public class AuthController : ControllerBase
+public sealed class AuthController(
+    ISpotifyServiceClient spotify,
+    IOptions<FrontendOptions> frontend,
+    IWebHostEnvironment environment,
+    ILogger<AuthController> logger) : ControllerBase
 {
-    private readonly SpotifyServiceClient _spotify;
-    private readonly FrontendOptions _frontend;
-    private readonly ILogger<AuthController> _logger;
-    private readonly IWebHostEnvironment _environment;
+    private static readonly TimeSpan ReturnUrlLifetime = TimeSpan.FromMinutes(10);
 
-    public AuthController(SpotifyServiceClient spotify, IOptions<FrontendOptions> frontend, ILogger<AuthController> logger, IWebHostEnvironment environment)
-    {
-        _environment = environment;
-        _spotify = spotify;
-        _frontend = frontend.Value;
-        _logger = logger;
-    }
+    private readonly FrontendOptions _frontend = frontend.Value;
 
     // GET api/v1/auth/login?returnUrl=/city — browser navigation (not fetch)
     [HttpGet("login")]
     public async Task<IActionResult> Login([FromQuery] string? returnUrl, CancellationToken ct)
     {
-        var url = await _spotify.GetAuthorizeUrlAsync(ct);
+        var url = await spotify.GetAuthorizeUrlAsync(ct);
 
         Response.Cookies.Append(AuthSetup.ReturnUrlCookie, AuthSetup.SafeReturnUrl(returnUrl), new CookieOptions
         {
             HttpOnly = true,
-            Secure = !_environment.IsDevelopment(),
+            Secure = !environment.IsDevelopment(),
             SameSite = SameSiteMode.Lax,
-            MaxAge = TimeSpan.FromMinutes(10)
+            MaxAge = ReturnUrlLifetime
         });
         return Redirect(url);
     }
@@ -60,11 +53,11 @@ public class AuthController : ControllerBase
         SpotifyLinkResult linked;
         try
         {
-            linked = await _spotify.LinkAsync(code, state, ct);
+            linked = await spotify.LinkAsync(code, state, ct);
         }
         catch (CityFyException ex)
         {
-            _logger.LogWarning("Spotify login failed: {Code} {Detail}", ex.Code, ex.Message);
+            logger.LogWarning("Spotify login failed: {Code} {Detail}", ex.Code, ex.Message);
             return RedirectToLoginError(ex.Code);
         }
 
@@ -87,39 +80,4 @@ public class AuthController : ControllerBase
 
     private RedirectResult RedirectToLoginError(string code) =>
         Redirect($"{_frontend.BaseUrl.TrimEnd('/')}{_frontend.LoginPath}?error={Uri.EscapeDataString(code)}");
-}
-
-[ApiController]
-[Authorize]
-[ApiExplorerSettings(GroupName = "v1")]
-[Route("api/v1/me")]
-public class MeController : ControllerBase
-{
-    // GET api/v1/me — who is logged in and when Spotify was last synced
-    [HttpGet]
-    public async Task<ActionResult<MeDto>> Get([FromServices] SpotifyServiceClient spotify, CancellationToken ct)
-    {
-        try
-        {
-            var account = await spotify.GetAccountAsync(User.UserId(), ct);
-            return Ok(new MeDto(account.UserId, account.DisplayName, account.LinkedAt, account.LastRetrieveAt));
-        }
-        catch (CityFyException ex) when (ex.Code == ErrorCodes.SpotifyAccountNotLinked)
-        {
-            // Session for an account that no longer exists: close it
-            await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-            throw new CityFyException(ErrorCodes.Unauthenticated, "Account no longer linked", StatusCodes.Status401Unauthorized);
-        }
-    }
-
-    // DELETE api/v1/me/data — the user deletes everything Cityfy keeps about them, then is logged out.
-    // USER_DATA_DELETION_INCOMPLETE (502) when a service did not answer: the session stays open so the
-    // user can retry (the deletion is idempotent).
-    [HttpDelete("data")]
-    public async Task<IActionResult> DeleteData([FromServices] CityFy.Api.Account.UserDataEraser eraser, CancellationToken ct)
-    {
-        var result = await eraser.DeleteAsync(User.UserId(), "user", ct);
-        await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-        return Ok(result);
-    }
 }

@@ -4,7 +4,7 @@ namespace CityFy.Retrieve.MusicBrainz.Models;
 /// Genre of an artist, from the MusicBrainz tags (derived dump: artist_tag) whose name is an
 /// official genre. Votes = tag count.
 /// </summary>
-public class ArtistGenre
+public sealed class ArtistGenre
 {
     public int ArtistId { get; set; }
     public Artist Artist { get; set; } = null!;

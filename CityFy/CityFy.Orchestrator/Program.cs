@@ -2,6 +2,7 @@ using CityFy.Orchestrator.Consumers;
 using CityFy.Orchestrator.HostedServices;
 using CityFy.Orchestrator.Options;
 using CityFy.Orchestrator.Repositories;
+using CityFy.Orchestrator.Services;
 using ServiceDefault.Hosting;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -21,7 +22,9 @@ builder.Services.AddOptions<PipelineOptions>()
 // 'pipeline_runs' + message deduplication
 builder.AddCityFyMongo();
 builder.Services.AddMessageDeduplication();
-builder.Services.AddSingleton<PipelineRunRepository>();
+builder.Services.AddSingleton<IPipelineRunRepository, MongoPipelineRunRepository>();
+builder.Services.AddSingleton<IListeningUserRepository, MongoListeningUserRepository>();
+builder.Services.AddScoped<IPipelineService, PipelineService>();
 
 // RabbitMQ: consumes the pipeline events, publishes BuildCityRequested
 builder.AddCityFyMessaging();

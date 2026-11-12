@@ -1,7 +1,7 @@
 namespace CityFy.Retrieve.MusicBrainz.Models;
 
 /// <summary>Official MusicBrainz genre. Id is the MusicBrainz row id (not generated).</summary>
-public class Genre
+public sealed class Genre
 {
     public int Id { get; set; }
 

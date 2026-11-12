@@ -14,7 +14,7 @@ public sealed class UserDataService(
     IStreamingRepository repo,
     IUploadProcessor processor,
     IFileClient files,
-    ILogger<UserDataService> logger)
+    ILogger<UserDataService> logger) : IUserDataService
 {
     public async Task<UserDataDeletion> DeleteAsync(string userId, CancellationToken ct)
     {
@@ -25,7 +25,7 @@ public sealed class UserDataService(
 
         foreach (var upload in uploads)
         {
-            if (upload.Status is ProcessingStatus.Pending or ProcessingStatus.WORKING_IN_PROGRESS)
+            if (upload.Status is ProcessingStatus.Pending or ProcessingStatus.InProgress)
             {
                 try
                 {

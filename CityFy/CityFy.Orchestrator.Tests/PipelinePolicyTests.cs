@@ -2,7 +2,7 @@ using CityFy.Orchestrator.Services;
 
 namespace CityFy.Orchestrator.Tests;
 
-public class PipelinePolicyTests
+public sealed class PipelinePolicyTests
 {
     private static readonly DateTime Created = new(2026, 11, 11, 10, 0, 0, DateTimeKind.Utc);
     private static readonly TimeSpan Debounce = TimeSpan.FromSeconds(30);

@@ -5,7 +5,7 @@ using CityFy.Elaboration.Services;
 
 namespace CityFy.Elaboration.Tests;
 
-public class CityBuilderTests
+public sealed class CityBuilderTests
 {
     private static readonly DateTime Now = new(2026, 11, 11, 12, 0, 0, DateTimeKind.Utc);
     private static readonly CityOptions Options = new();
@@ -169,7 +169,7 @@ public class CityBuilderTests
         // 3 districts, max 2: rock (30) stays, electronic (20) and jazz (10) are merged
         Assert.Equal(["rock", CityBuilder.OtherDistrictId], city.Districts.Select(d => d.DistrictId));
         var other = city.Districts[1];
-        Assert.Equal("Altri generi", other.Name);
+        Assert.Equal("Other genres", other.Name);
         Assert.Equal(2, other.Blocks.Count);
         Assert.Equal(30, other.Score);
         Assert.Equal(100, city.Districts.Sum(d => d.ListeningIntensity), 1);

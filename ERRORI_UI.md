@@ -32,8 +32,8 @@ Caricamento dell'export, lettura da Spotify e costruzione della città richiedon
 
 | Operazione | Stati | Campo con il codice |
 |---|---|---|
-| Caricamento export | `Pending` → `WORKING_IN_PROGRESS` → `DONE` / `FAILED` | `errorCode` |
-| Lettura da Spotify | `Pending` → `WORKING_IN_PROGRESS` → `DONE` / `FAILED` | `errorCode` |
+| Caricamento export | `Pending` → `InProgress` → `Done` / `Failed` / `Cancelled` | `errorCode` |
+| Lettura da Spotify | `Pending` → `InProgress` → `Done` / `Failed` / `Cancelled` | `errorCode` |
 | Costruzione città | `Pending` → `Building` → `Done` / `Failed` | `errorCode` |
 
 ### c) La città c'è, ma va spiegato qualcosa
@@ -78,7 +78,7 @@ Riguarda la pagina in cui l'utente carica lo zip scaricato da Spotify.
 
 **Stati di attesa** (non sono errori):
 - `Pending`: "File ricevuto, in coda…"
-- `WORKING_IN_PROGRESS`: "Stiamo leggendo i tuoi ascolti…" Per export di più anni l'importazione può durare alcuni minuti.
+- `InProgress`: "Stiamo leggendo i tuoi ascolti…" Per export di più anni l'importazione può durare alcuni minuti.
 - `DONE`: "Fatto! Stiamo costruendo la tua città…" (poi si passa allo stato della costruzione, §5).
 
 ---

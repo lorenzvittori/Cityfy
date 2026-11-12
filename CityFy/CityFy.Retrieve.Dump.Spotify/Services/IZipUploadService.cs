@@ -1,12 +1,14 @@
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
 using CityFy.Retrieve.Dump.Spotify.Models;
 
-namespace CityFy.Retrieve.Dump.Spotify.Services
+namespace CityFy.Retrieve.Dump.Spotify.Services;
+
+public interface IZipUploadService
 {
-    public interface IZipUploadService
-    {
-        Task<UploadResult> HandleZipUploadAsync(IFormFile file, string userId);
-        UploadResult? GetUploadResult(string id);
-    }
+    /// <summary>
+    /// Validates, stores and extracts the zip, creates the Pending task and publishes UploadReceived.
+    /// Throws UPLOAD_* CityFyExceptions for invalid input.
+    /// </summary>
+    Task<UploadResult> HandleZipUploadAsync(IFormFile file, string userId, CancellationToken ct);
+
+    UploadResult? GetUploadResult(string id);
 }

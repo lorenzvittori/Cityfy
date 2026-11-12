@@ -8,15 +8,8 @@ namespace CityFy.Retrieve.MusicBrainz.Controllers;
 [ApiController]
 [ApiExplorerSettings(GroupName = "Retrieve-MusicBrainz")]
 [Route("api/artists")]
-public class ArtistsController : ControllerBase
+public sealed class ArtistsController(IMusicBrainzQueryService query) : ControllerBase
 {
-    private readonly MusicBrainzQueryService _query;
-
-    public ArtistsController(MusicBrainzQueryService query)
-    {
-        _query = query;
-    }
-
     // POST api/artists/resolve
     // Spotify ids and/or names -> MusicBrainz artist + genres (ordered by votes).
     // Every input gets an answer, with matchType "none" when not found.
@@ -29,6 +22,6 @@ public class ArtistsController : ControllerBase
                 $"At most {MusicBrainzQueryService.MaxItemsPerRequest} spotifyArtistIds and {MusicBrainzQueryService.MaxItemsPerRequest} names per request",
                 StatusCodes.Status400BadRequest);
 
-        return Ok(await _query.ResolveArtistsAsync(request, ct));
+        return Ok(await query.ResolveArtistsAsync(request, ct));
     }
 }

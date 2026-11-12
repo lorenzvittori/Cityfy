@@ -4,7 +4,7 @@ namespace CityFy.Elaboration.Models;
 
 /// <summary>Plays of one artist in the period, aggregated from 'listening_events'.</summary>
 [BsonIgnoreExtraElements]
-public class ArtistPlays
+public sealed class ArtistPlays
 {
     [BsonId]
     public string ArtistName { get; set; } = null!;

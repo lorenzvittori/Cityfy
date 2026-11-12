@@ -29,7 +29,7 @@
       <ol class="steps">
         <li class="done">File ricevuto</li>
         @if (step(); as s) {
-          @if (s.kind === 'processing' && s.status?.status === 'WORKING_IN_PROGRESS') {
+          @if (s.kind === 'processing' && s.status?.status === 'InProgress') {
             <li class="current">Stiamo leggendo i tuoi ascolti… <span class="muted">({{ s.status?.newPlays ?? 0 }} finora)</span></li>
           } @else {
             <li class="current">File ricevuto, in coda…</li>

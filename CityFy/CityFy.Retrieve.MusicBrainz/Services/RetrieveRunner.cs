@@ -29,23 +29,16 @@ public sealed record RetrieveStatus(
 /// Runs the MusicBrainz retrieve in the background, one at a time (it takes minutes to hours
 /// and replaces the whole database). Status and progress are kept in memory.
 /// </summary>
-public class RetrieveRunner : BackgroundService
+public sealed class RetrieveRunner(
+    IServiceScopeFactory scopeFactory,
+    ImportProgress progress,
+    IMessagePublisher publisher,
+    ILogger<RetrieveRunner> logger) : BackgroundService
 {
     private readonly Channel<bool> _trigger = Channel.CreateBounded<bool>(1);
-    private readonly IServiceScopeFactory _scopeFactory;
-    private readonly ImportProgress _progress;
-    private readonly IMessagePublisher _publisher;
-    private readonly ILogger<RetrieveRunner> _logger;
+    private readonly ImportProgress _progress = progress;
     private volatile RetrieveStatus _status = new(RetrieveState.Idle);
     private volatile CancellationTokenSource? _current;
-
-    public RetrieveRunner(IServiceScopeFactory scopeFactory, ImportProgress progress, IMessagePublisher publisher, ILogger<RetrieveRunner> logger)
-    {
-        _scopeFactory = scopeFactory;
-        _progress = progress;
-        _publisher = publisher;
-        _logger = logger;
-    }
 
     public RetrieveStatus Status
     {
@@ -86,11 +79,11 @@ public class RetrieveRunner : BackgroundService
     {
         try
         {
-            await _publisher.PublishAsync(new CatalogUpdated(result.DumpName, DateTime.UtcNow), result.DumpName, ct);
+            await publisher.PublishAsync(new CatalogUpdated(result.DumpName, DateTime.UtcNow), result.DumpName, ct);
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
-            _logger.LogWarning(ex, "Catalog imported, but CatalogUpdated could not be published: cities are not rebuilt automatically");
+            logger.LogWarning(ex, "Catalog imported, but CatalogUpdated could not be published: cities are not rebuilt automatically");
         }
     }
 
@@ -103,13 +96,13 @@ public class RetrieveRunner : BackgroundService
                 var startedAt = DateTime.UtcNow;
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
                 _current = cts;
-                _progress.Report("Avvio", null, "Ricerca dell'ultimo export MusicBrainz");
+                _progress.Report("Starting", null, "Looking for the latest MusicBrainz export");
                 _status = new RetrieveStatus(RetrieveState.Running, startedAt);
 
                 try
                 {
-                    using var scope = _scopeFactory.CreateScope();
-                    var service = scope.ServiceProvider.GetRequiredService<RetrieveService>();
+                    using var scope = scopeFactory.CreateScope();
+                    var service = scope.ServiceProvider.GetRequiredService<IRetrieveService>();
                     var result = await service.RunRetrieveAsync(cts.Token);
                     _status = new RetrieveStatus(RetrieveState.Done, startedAt, DateTime.UtcNow, result);
                     _progress.Clear();
@@ -122,13 +115,13 @@ public class RetrieveRunner : BackgroundService
                 catch (Exception) when (cts.IsCancellationRequested)
                 {
                     // Cancelled by the admin (tar may surface it as a non-zero exit, not as OCE)
-                    _logger.LogWarning("MusicBrainz retrieve cancelled by the admin");
+                    logger.LogWarning("MusicBrainz retrieve cancelled by the admin");
                     _status = new RetrieveStatus(RetrieveState.Cancelled, startedAt, DateTime.UtcNow,
-                        Error: "Annullato dall'amministratore: il catalogo è rimasto quello precedente");
+                        Error: "Cancelled by an administrator: the previous catalog was kept");
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "MusicBrainz retrieve failed");
+                    logger.LogError(ex, "MusicBrainz retrieve failed");
                     _status = new RetrieveStatus(RetrieveState.Failed, startedAt, DateTime.UtcNow, Error: ex.Message);
                 }
                 finally

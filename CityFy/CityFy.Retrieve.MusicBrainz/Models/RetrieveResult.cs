@@ -1,6 +1,6 @@
 namespace CityFy.Retrieve.MusicBrainz.Models;
 
-public class RetrieveResult
+public sealed class RetrieveResult
 {
     public string? DumpName { get; set; }
     public int Genres { get; set; }

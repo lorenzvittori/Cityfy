@@ -7,7 +7,7 @@ namespace ServiceDefault.City;
 /// District = macro-genre, block = genre, building = artist. Holds metrics, not geometry:
 /// the layout is computed by the frontend, as in the city_generator prototype.
 /// </summary>
-public class CityModel
+public sealed class CityModel
 {
     [BsonId]
     public string Id { get; set; } = null!;
@@ -40,7 +40,7 @@ public class CityModel
     public static string BuildId(string userId, string period) => $"{userId}:{period}";
 }
 
-public class CitySummary
+public sealed class CitySummary
 {
     public long TotalPlays { get; set; }
     public long QualifiedPlays { get; set; }
@@ -54,7 +54,7 @@ public class CitySummary
     public List<string> TopGenres { get; set; } = new();
 }
 
-public class CityDistrict
+public sealed class CityDistrict
 {
     public string DistrictId { get; set; } = null!;
     public string Name { get; set; } = null!;
@@ -71,7 +71,7 @@ public class CityDistrict
     public List<CityBlock> Blocks { get; set; } = new();
 }
 
-public class CityBlock
+public sealed class CityBlock
 {
     public string BlockId { get; set; } = null!;
     public string Name { get; set; } = null!;
@@ -80,7 +80,7 @@ public class CityBlock
     public List<CityBuilding> Buildings { get; set; } = new();
 }
 
-public class CityBuilding
+public sealed class CityBuilding
 {
     /// <summary>MusicBrainz artist MBID.</summary>
     public string BuildingId { get; set; } = null!;
@@ -100,7 +100,7 @@ public class CityBuilding
     public List<string> Genres { get; set; } = new();
 }
 
-public class UnresolvedArtist
+public sealed class UnresolvedArtist
 {
     public string Name { get; set; } = null!;
     public string? SpotifyArtistUri { get; set; }

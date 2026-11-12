@@ -2,7 +2,7 @@ using ServiceDefault.Hosting;
 
 namespace ServiceDefault.Tests;
 
-public class CancellationRegistryTests
+public sealed class CancellationRegistryTests
 {
     [Fact]
     public void Cancel_TripsTheTokenOfTheRunningProcess()

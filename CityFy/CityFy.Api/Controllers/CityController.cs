@@ -16,17 +16,12 @@ namespace CityFy.Api.Controllers;
 [Authorize]
 [ApiExplorerSettings(GroupName = "v1")]
 [Route("api/v1")]
-public class CityController : ControllerBase
+public sealed class CityController(IElaborationClient elaboration, IOrchestratorClient orchestrator) : ControllerBase
 {
-    private readonly ElaborationClient _elaboration;
-
-    public CityController(ElaborationClient elaboration)
-    {
-        _elaboration = elaboration;
-    }
+    private const string DefaultPeriod = "all";
 
     private Task<CityModel> CityAsync(string? period, CancellationToken ct) =>
-        _elaboration.GetCityAsync(User.UserId(), string.IsNullOrWhiteSpace(period) ? "all" : period, ct);
+        elaboration.GetCityAsync(User.UserId(), string.IsNullOrWhiteSpace(period) ? DefaultPeriod : period, ct);
 
     // GET api/v1/city?period=30d — the whole city (districts > blocks > buildings)
     [HttpGet("city")]
@@ -37,7 +32,7 @@ public class CityController : ControllerBase
     // imported: useful when the genre catalog changed or after combining sources. Follow it with
     // GET api/v1/pipeline/runs.
     [HttpPost("city/rebuild")]
-    public async Task<ActionResult<PipelineRunDto>> Rebuild([FromServices] OrchestratorClient orchestrator, CancellationToken ct) =>
+    public async Task<ActionResult<PipelineRunDto>> Rebuild(CancellationToken ct) =>
         Accepted((await orchestrator.TriggerAsync(User.UserId(), ct)).ToDto());
 
     // GET api/v1/districts?period=30d

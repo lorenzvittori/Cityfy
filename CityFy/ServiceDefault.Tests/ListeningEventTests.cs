@@ -2,7 +2,7 @@ using ServiceDefault.Listening;
 
 namespace ServiceDefault.Tests;
 
-public class ListeningEventTests
+public sealed class ListeningEventTests
 {
     [Fact]
     public void BuildId_TruncatesToTheSecond_SoDumpAndApiPlaysCollapse()

@@ -62,7 +62,7 @@ export interface Building {
 }
 
 /** CANCELLED: stopped by an administrator (errorCode PROCESS_CANCELLED). */
-export type ImportState = 'Pending' | 'WORKING_IN_PROGRESS' | 'DONE' | 'FAILED' | 'CANCELLED';
+export type ImportState = 'Pending' | 'InProgress' | 'Done' | 'Failed' | 'Cancelled';
 
 export interface ImportStatus {
   id: string;

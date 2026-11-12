@@ -2,7 +2,7 @@ using CityFy.Retrieve.MusicBrainz.Services;
 
 namespace CityFy.Retrieve.MusicBrainz.Tests;
 
-public class DumpTableReaderTests
+public sealed class DumpTableReaderTests
 {
     [Theory]
     [InlineData("Daft Punk", "Daft Punk")]

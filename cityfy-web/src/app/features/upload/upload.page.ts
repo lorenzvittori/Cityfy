@@ -65,14 +65,14 @@ export class UploadPage {
       });
   }
 
-  /** Pending -> WORKING_IN_PROGRESS -> DONE | FAILED */
+  /** Pending -> InProgress -> Done | Failed | Cancelled */
   private followUpload(uploadId: string): void {
     this.step.set({ kind: 'processing', status: null });
     this.polling = timer(0, POLL_MS)
       .pipe(
         switchMap(() => this.api.uploadStatus(uploadId)),
         filter((s) => {
-          if (s.status === 'DONE' || s.status === 'FAILED' || s.status === 'CANCELLED') return true;
+          if (s.status === 'Done' || s.status === 'Failed' || s.status === 'Cancelled') return true;
           this.step.set({ kind: 'processing', status: s });
           return false;
         }),
@@ -80,7 +80,7 @@ export class UploadPage {
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe({
-        next: (s) => (s.status === 'DONE' ? this.followCity(s.newPlays) : this.fail(s.errorCode ?? 'UPLOAD_PROCESSING_FAILED')),
+        next: (s) => (s.status === 'Done' ? this.followCity(s.newPlays) : this.fail(s.errorCode ?? 'UPLOAD_PROCESSING_FAILED')),
         error: (e: ApiError) => this.step.set({ kind: 'error', error: e }),
       });
   }

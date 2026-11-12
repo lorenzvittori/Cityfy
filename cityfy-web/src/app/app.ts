@@ -37,13 +37,13 @@ export class App {
       .sync()
       .pipe(
         switchMap(({ jobId }) => timer(1000, 2000).pipe(switchMap(() => this.api.syncStatus(jobId)))),
-        filter((s) => s.status === 'DONE' || s.status === 'FAILED' || s.status === 'CANCELLED'),
+        filter((s) => s.status === 'Done' || s.status === 'Failed' || s.status === 'Cancelled'),
         take(1),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe({
         next: (s) =>
-          this.sync.set(s.status === 'DONE' ? { kind: 'done', newPlays: s.newPlays } : { kind: 'error', code: s.errorCode ?? 'SPOTIFY_RETRIEVE_FAILED' }),
+          this.sync.set(s.status === 'Done' ? { kind: 'done', newPlays: s.newPlays } : { kind: 'error', code: s.errorCode ?? 'SPOTIFY_RETRIEVE_FAILED' }),
         error: (e: ApiError) => this.sync.set({ kind: 'error', code: e.code }),
       });
   }

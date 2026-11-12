@@ -1,38 +1,23 @@
+using CityFy.Retrieve.MusicBrainz.Clients;
+using CityFy.Retrieve.MusicBrainz.Models;
 namespace CityFy.Retrieve.MusicBrainz.Services;
 
-public interface IDumpDownloadService
+public sealed class DumpDownloadService(
+    IMbDumpClient mb,
+    IConfiguration configuration,
+    ILogger<DumpDownloadService> logger,
+    ImportProgress progress) : IDumpDownloadService
 {
-    /// <summary>
-    /// Ensures the archives of the latest complete export are available locally.
-    /// Returns the local directory of the export (one sub-directory per export, named like the
-    /// remote one: yyyyMMdd-HHmmss).
-    /// </summary>
-    Task<string> GetOrDownloadLatestAsync(IReadOnlyCollection<string> archives, CancellationToken cancellationToken = default);
-}
-
-public class DumpDownloadService : IDumpDownloadService
-{
-    private readonly MbDumpClient _mb;
-    private readonly IConfiguration _configuration;
-    private readonly ILogger<DumpDownloadService> _logger;
-    private readonly ImportProgress _progress;
-
-    public DumpDownloadService(MbDumpClient mb, IConfiguration configuration, ILogger<DumpDownloadService> logger, ImportProgress progress)
-    {
-        _mb = mb;
-        _configuration = configuration;
-        _logger = logger;
-        _progress = progress;
-    }
+    private readonly ImportProgress _progress = progress;
 
     public async Task<string> GetOrDownloadLatestAsync(IReadOnlyCollection<string> archives, CancellationToken cancellationToken = default)
     {
-        var storageRoot = _configuration["DumpStorage:RootPath"];
+        var storageRoot = configuration["DumpStorage:RootPath"];
         if (string.IsNullOrEmpty(storageRoot))
             storageRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Cityfy", "mb_dumps");
         Directory.CreateDirectory(storageRoot);
 
-        var remoteDir = await _mb.FindLatestDumpDirectoryAsync(archives, cancellationToken)
+        var remoteDir = await mb.FindLatestDumpDirectoryAsync(archives, cancellationToken)
             ?? throw new InvalidOperationException("No complete MusicBrainz export found on the remote server");
 
         var localDir = Path.Combine(storageRoot, remoteDir);
@@ -44,12 +29,12 @@ public class DumpDownloadService : IDumpDownloadService
         {
             var localPath = Path.Combine(localDir, archive);
             var remotePath = $"{remoteDir}/{archive}";
-            var remoteInfo = await _mb.GetRemoteFileInfoAsync(remotePath, cancellationToken);
+            var remoteInfo = await mb.GetRemoteFileInfoAsync(remotePath, cancellationToken);
 
             if (File.Exists(localPath) &&
                 (remoteInfo?.ContentLength is not long size || new FileInfo(localPath).Length == size))
             {
-                _logger.LogInformation("Archive {Archive} already available at {Path}", archive, localPath);
+                logger.LogInformation("Archive {Archive} already available at {Path}", archive, localPath);
                 continue;
             }
             toDownload.Add((archive, remotePath, localPath, remoteInfo?.ContentLength ?? 0));
@@ -72,8 +57,8 @@ public class DumpDownloadService : IDumpDownloadService
 
             // Download to a temporary name: an interrupted download is never mistaken for a complete one
             var partPath = localPath + ".part";
-            _logger.LogInformation("Downloading {Remote} to {Local}", remotePath, localPath);
-            await _mb.DownloadAsync(remotePath, partPath, progress, cancellationToken);
+            logger.LogInformation("Downloading {Remote} to {Local}", remotePath, localPath);
+            await mb.DownloadAsync(remotePath, partPath, progress, cancellationToken);
             File.Move(partPath, localPath, overwrite: true);
             doneBytes += size;
         }
@@ -93,12 +78,12 @@ public class DumpDownloadService : IDumpDownloadService
 
             try
             {
-                _logger.LogInformation("Deleting old dump directory {Dir}", d);
+                logger.LogInformation("Deleting old dump directory {Dir}", d);
                 Directory.Delete(d, true);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to delete old dump directory {Dir}", d);
+                logger.LogWarning(ex, "Failed to delete old dump directory {Dir}", d);
             }
         }
     }

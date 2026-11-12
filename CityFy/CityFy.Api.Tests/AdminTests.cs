@@ -2,7 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using CityFy.Api.Admin;
+using CityFy.Api.Services;
 using ServiceDefault.Errors;
 
 namespace CityFy.Api.Tests;
@@ -92,7 +92,7 @@ public sealed class AdminTests : IDisposable
     public async Task CancellingAFinishedUpload_IsNotCancellable()
     {
         _factory.AdminEnabled = true;
-        _factory.Fakes.On(HttpMethod.Post, "/debug/upload/tasks/up1/cancel", _ => FakeServices.Problem(HttpStatusCode.Conflict, ErrorCodes.ProcessNotCancellable));
+        _factory.Fakes.On(HttpMethod.Post, "/internal/uploads/up1/cancel", _ => FakeServices.Problem(HttpStatusCode.Conflict, ErrorCodes.ProcessNotCancellable));
         var client = await _factory.AdminLoginAsync();
 
         var resp = await client.PostAsync("/api/admin/uploads/up1/cancel", null, Ct);

@@ -76,16 +76,14 @@ table {
   background: var(--badge);
 
   &.Healthy,
-  &.Done,
-  &.DONE {
+  &.Done {
     background: var(--ok-bg);
     color: var(--ok-text);
   }
 
   &.Unhealthy,
   &.Unreachable,
-  &.Failed,
-  &.FAILED {
+  &.Failed {
     background: var(--ko-bg);
     color: var(--danger);
   }
@@ -93,13 +91,12 @@ table {
   &.Running,
   &.Building,
   &.Pending,
-  &.WORKING_IN_PROGRESS {
+  &.InProgress {
     background: var(--run-bg);
     color: var(--run-text);
   }
 
-  &.Cancelled,
-  &.CANCELLED {
+  &.Cancelled {
     background: var(--off-bg);
     color: var(--off-text);
   }

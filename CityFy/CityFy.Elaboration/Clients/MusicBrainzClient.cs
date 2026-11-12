@@ -3,25 +3,10 @@ using CityFy.Elaboration.Models;
 
 namespace CityFy.Elaboration.Clients;
 
-public interface IMusicBrainzClient
-{
-    /// <summary>Resolves any number of artists (split in batches of the API limit).</summary>
-    Task<ResolveArtistsResponse> ResolveArtistsAsync(ResolveArtistsRequest request, CancellationToken ct);
-
-    Task<GenreGraph> GetGenreGraphAsync(CancellationToken ct);
-}
-
-public class MusicBrainzClient : IMusicBrainzClient
+public sealed class MusicBrainzClient(HttpClient http) : IMusicBrainzClient
 {
     // Same limit as MusicBrainzQueryService.MaxItemsPerRequest
     private const int BatchSize = 1000;
-
-    private readonly HttpClient _http;
-
-    public MusicBrainzClient(HttpClient http)
-    {
-        _http = http;
-    }
 
     public async Task<ResolveArtistsResponse> ResolveArtistsAsync(ResolveArtistsRequest request, CancellationToken ct)
     {
@@ -40,7 +25,7 @@ public class MusicBrainzClient : IMusicBrainzClient
                 Names = request.Names.Skip(i * BatchSize).Take(BatchSize).ToList()
             };
 
-            using var resp = await _http.PostAsJsonAsync("api/artists/resolve", batch, ct);
+            using var resp = await http.PostAsJsonAsync("api/artists/resolve", batch, ct);
             resp.EnsureSuccessStatusCode();
             var result = await resp.Content.ReadFromJsonAsync<ResolveArtistsResponse>(ct)
                 ?? throw new InvalidOperationException("Empty response from api/artists/resolve");
@@ -53,6 +38,6 @@ public class MusicBrainzClient : IMusicBrainzClient
     }
 
     public async Task<GenreGraph> GetGenreGraphAsync(CancellationToken ct) =>
-        await _http.GetFromJsonAsync<GenreGraph>("api/genres/graph", ct)
+        await http.GetFromJsonAsync<GenreGraph>("api/genres/graph", ct)
         ?? throw new InvalidOperationException("Empty response from api/genres/graph");
 }

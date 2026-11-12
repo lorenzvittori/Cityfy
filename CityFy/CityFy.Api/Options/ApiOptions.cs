@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations;
 namespace CityFy.Api.Options;
 
 /// <summary>"Frontend" section.</summary>
-public class FrontendOptions
+public sealed class FrontendOptions
 {
     public const string SectionName = "Frontend";
 

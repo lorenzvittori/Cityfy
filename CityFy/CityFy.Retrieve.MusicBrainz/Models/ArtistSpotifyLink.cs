@@ -4,7 +4,7 @@ namespace CityFy.Retrieve.MusicBrainz.Models;
 /// Spotify artist page linked to a MusicBrainz artist (l_artist_url + url,
 /// https://open.spotify.com/artist/{id}). Reliable key to match Spotify plays.
 /// </summary>
-public class ArtistSpotifyLink
+public sealed class ArtistSpotifyLink
 {
     public int ArtistId { get; set; }
     public Artist Artist { get; set; } = null!;

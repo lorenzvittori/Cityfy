@@ -9,36 +9,20 @@ using Microsoft.EntityFrameworkCore.Storage;
 
 namespace CityFy.Retrieve.MusicBrainz.Services;
 
-/// <summary>In-memory result of reading the dump tables, ready to be written.</summary>
-public sealed class MusicBrainzData
-{
-    public List<Genre> Genres { get; } = new();
-    public List<GenreRelation> GenreRelations { get; } = new();
-    public List<Artist> Artists { get; } = new();
-    public List<ArtistGenre> ArtistGenres { get; } = new();
-    public List<ArtistSpotifyLink> SpotifyLinks { get; } = new();
-}
-
 /// <summary>
 /// Reads the extracted dump tables by column position (MusicBrainz schema) and replaces the
 /// content of the database in a single transaction.
 /// </summary>
-public partial class MusicBrainzImporter
+public sealed partial class MusicBrainzImporter(
+    MusicBrainzContext db,
+    ILogger<MusicBrainzImporter> logger,
+    ImportProgress progress) : IMusicBrainzImporter
 {
     /// <summary>Tables in reading order (the progress of the reading phase is by bytes over all of them).</summary>
     private static readonly string[] ReadOrder =
         ["genre", "link_type", "link", "l_genre_genre", "tag", "artist_tag", "artist", "l_artist_url", "url"];
 
-    private readonly MusicBrainzContext _db;
-    private readonly ILogger<MusicBrainzImporter> _logger;
-    private readonly ImportProgress _progress;
-
-    public MusicBrainzImporter(MusicBrainzContext db, ILogger<MusicBrainzImporter> logger, ImportProgress progress)
-    {
-        _db = db;
-        _logger = logger;
-        _progress = progress;
-    }
+    private readonly ImportProgress _progress = progress;
 
     [GeneratedRegex(@"^https?://open\.spotify\.com/artist/([A-Za-z0-9]{22})/?$", RegexOptions.IgnoreCase)]
     private static partial Regex SpotifyArtistUrl();
@@ -78,9 +62,9 @@ public partial class MusicBrainzImporter
             var index = Array.IndexOf(ReadOrder, name) + 1;
             var before = ReadOrder.TakeWhile(t => t != name).Sum(t => sizes[t]);
             var label = $"{name} ({index}/{ReadOrder.Length})";
-            _progress.Report("Lettura tabelle", 100.0 * before / totalBytes, label);
+            _progress.Report("Reading tables", 100.0 * before / totalBytes, label);
             return DumpTableReader.ReadRows(Table(name), ct, position =>
-                _progress.Report("Lettura tabelle", 100.0 * (before + position) / totalBytes,
+                _progress.Report("Reading tables", 100.0 * (before + position) / totalBytes,
                     $"{label} · {100.0 * position / Math.Max(1, sizes[name]):0}%"));
         }
 
@@ -94,7 +78,7 @@ public partial class MusicBrainzImporter
             data.Genres.Add(genre);
             genreIdByName.TryAdd(genre.Name, genre.Id);
         }
-        _logger.LogInformation("Genres: {Count}", data.Genres.Count);
+        logger.LogInformation("Genres: {Count}", data.Genres.Count);
 
         // link_type: id | parent | child_order | gid | entity_type0 | entity_type1 | name | ...
         var genreLinkTypes = new Dictionary<int, string>();
@@ -127,7 +111,7 @@ public partial class MusicBrainzImporter
             if (seenRelations.Add((from, to, relType)))
                 data.GenreRelations.Add(new GenreRelation { FromGenreId = from, ToGenreId = to, RelationType = relType });
         }
-        _logger.LogInformation("Genre relations: {Count}", data.GenreRelations.Count);
+        logger.LogInformation("Genre relations: {Count}", data.GenreRelations.Count);
 
         // tag (derived): id | name | ref_count  -> only tags that are official genres
         var genreByTag = new Dictionary<int, int>();
@@ -151,7 +135,7 @@ public partial class MusicBrainzImporter
             data.ArtistGenres.Add(new ArtistGenre { ArtistId = artistId, GenreId = genreId, Votes = count });
 
         var votesByArtist = data.ArtistGenres.GroupBy(ag => ag.ArtistId).ToDictionary(g => g.Key, g => g.Sum(x => x.Votes));
-        _logger.LogInformation("Artist genres: {Count} for {Artists} artists", data.ArtistGenres.Count, votesByArtist.Count);
+        logger.LogInformation("Artist genres: {Count} for {Artists} artists", data.ArtistGenres.Count, votesByArtist.Count);
 
         // artist: id | gid | name | sort_name | ...  (only artists with at least one genre)
         foreach (var r in Rows("artist"))
@@ -164,7 +148,7 @@ public partial class MusicBrainzImporter
         // Every ArtistGenre must point to an imported artist (FK)
         var artistIds = data.Artists.Select(a => a.Id).ToHashSet();
         data.ArtistGenres.RemoveAll(ag => !artistIds.Contains(ag.ArtistId));
-        _logger.LogInformation("Artists: {Count}", data.Artists.Count);
+        logger.LogInformation("Artists: {Count}", data.Artists.Count);
 
         // l_artist_url: id | link | entity0 (artist) | entity1 (url) | ...
         var artistsByUrl = new Dictionary<int, List<int>>();
@@ -189,7 +173,7 @@ public partial class MusicBrainzImporter
                 if (seenLinks.Add((artistId, m.Groups[1].Value)))
                     data.SpotifyLinks.Add(new ArtistSpotifyLink { ArtistId = artistId, SpotifyArtistId = m.Groups[1].Value });
         }
-        _logger.LogInformation("Spotify links: {Count}", data.SpotifyLinks.Count);
+        logger.LogInformation("Spotify links: {Count}", data.SpotifyLinks.Count);
 
         return data;
     }
@@ -197,25 +181,25 @@ public partial class MusicBrainzImporter
     /// <summary>Replaces all MusicBrainz data atomically: readers never see a half-imported state.</summary>
     private async Task WriteAsync(MusicBrainzData data, CancellationToken ct)
     {
-        var strategy = _db.Database.CreateExecutionStrategy();
+        var strategy = db.Database.CreateExecutionStrategy();
         await strategy.ExecuteAsync(async () =>
         {
-            await using var tx = await _db.Database.BeginTransactionAsync(ct);
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
 
             // Progress by rows over the five tables (a retry of the strategy starts again from 0)
             _writtenRows = 0;
             _totalRows = Math.Max(1, data.Genres.Count + data.GenreRelations.Count + data.Artists.Count
                 + data.ArtistGenres.Count + data.SpotifyLinks.Count);
-            _progress.Report("Scrittura database", 0, "Svuotamento delle tabelle precedenti");
+            _progress.Report("Writing database", 0, "Clearing the previous tables");
 
             // Children first (FKs)
-            await _db.ArtistSpotifyLinks.ExecuteDeleteAsync(ct);
-            await _db.ArtistGenres.ExecuteDeleteAsync(ct);
-            await _db.GenreRelations.ExecuteDeleteAsync(ct);
-            await _db.Artists.ExecuteDeleteAsync(ct);
-            await _db.Genres.ExecuteDeleteAsync(ct);
+            await db.ArtistSpotifyLinks.ExecuteDeleteAsync(ct);
+            await db.ArtistGenres.ExecuteDeleteAsync(ct);
+            await db.GenreRelations.ExecuteDeleteAsync(ct);
+            await db.Artists.ExecuteDeleteAsync(ct);
+            await db.Genres.ExecuteDeleteAsync(ct);
 
-            var conn = (SqlConnection)_db.Database.GetDbConnection();
+            var conn = (SqlConnection)db.Database.GetDbConnection();
             var sqlTx = (SqlTransaction)tx.GetDbTransaction();
 
             await BulkCopyAsync(ct, conn, sqlTx, "Genres", data.Genres,
@@ -257,15 +241,15 @@ public partial class MusicBrainzImporter
         foreach (var c in columns) bulk.ColumnMappings.Add(c.Column, c.Column);
 
         var before = _writtenRows;
-        void Report(long copied) => _progress.Report("Scrittura database", 100.0 * (before + copied) / _totalRows,
-            $"{table} · {copied:N0} / {rows.Count:N0} righe");
+        void Report(long copied) => _progress.Report("Writing database", 100.0 * (before + copied) / _totalRows,
+            $"{table} · {copied:N0} / {rows.Count:N0} rows");
         bulk.SqlRowsCopied += (_, e) => Report(e.RowsCopied);
         Report(0);
 
         // Cancellable: the transaction is rolled back and the previous catalog stays in place
         await bulk.WriteToServerAsync(dt, ct);
         _writtenRows += rows.Count;
-        _logger.LogInformation("Bulk copied {Count} rows into {Table}", rows.Count, table);
+        logger.LogInformation("Bulk copied {Count} rows into {Table}", rows.Count, table);
     }
 
     private long _writtenRows;

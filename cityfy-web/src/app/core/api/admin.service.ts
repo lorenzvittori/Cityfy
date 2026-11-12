@@ -30,7 +30,7 @@ export interface MbImportStatus {
   startedAt: string | null;
   completedAt: string | null;
   error: string | null;
-  /** Download, Estrazione, Lettura tabelle, Scrittura database. */
+  /** Starting, Download, Extracting, Reading tables, Writing database. */
   progress: { phase: string; percent: number | null; detail: string | null; updatedAt: string } | null;
   result: {
     dumpName: string | null;

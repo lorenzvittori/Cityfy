@@ -65,11 +65,11 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
 
         builder.ConfigureTestServices(services =>
         {
-            services.AddHttpClient<ElaborationClient>().ConfigurePrimaryHttpMessageHandler(() => Fakes);
-            services.AddHttpClient<OrchestratorClient>().ConfigurePrimaryHttpMessageHandler(() => Fakes);
-            services.AddHttpClient<SpotifyServiceClient>().ConfigurePrimaryHttpMessageHandler(() => Fakes);
-            services.AddHttpClient<DumpClient>().ConfigurePrimaryHttpMessageHandler(() => Fakes);
-            services.AddHttpClient<MusicBrainzServiceClient>().ConfigurePrimaryHttpMessageHandler(() => Fakes);
+            services.AddHttpClient<IElaborationClient, ElaborationClient>().ConfigurePrimaryHttpMessageHandler(() => Fakes);
+            services.AddHttpClient<IOrchestratorClient, OrchestratorClient>().ConfigurePrimaryHttpMessageHandler(() => Fakes);
+            services.AddHttpClient<ISpotifyServiceClient, SpotifyServiceClient>().ConfigurePrimaryHttpMessageHandler(() => Fakes);
+            services.AddHttpClient<IDumpClient, DumpClient>().ConfigurePrimaryHttpMessageHandler(() => Fakes);
+            services.AddHttpClient<IMusicBrainzServiceClient, MusicBrainzServiceClient>().ConfigurePrimaryHttpMessageHandler(() => Fakes);
         });
     }
 

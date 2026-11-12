@@ -134,9 +134,9 @@ public sealed class ApiTests : IDisposable
     public async Task SomeoneElsesUpload_LooksNotFound()
     {
         var client = await _factory.LoginAsync("u1");
-        _factory.Fakes.OnJson(HttpMethod.Get, "/api/upload/tasks/up1", new
+        _factory.Fakes.OnJson(HttpMethod.Get, "/internal/uploads/up1", new
         {
-            uploadId = "up1", userId = "someone-else", status = "DONE", inserted = 5, startedAt = DateTime.UtcNow
+            uploadId = "up1", userId = "someone-else", status = "Done", inserted = 5, startedAt = DateTime.UtcNow
         });
 
         var resp = await client.GetAsync("/api/v1/uploads/up1", Ct);
@@ -149,14 +149,14 @@ public sealed class ApiTests : IDisposable
     public async Task OwnUpload_StatusIncludesTheErrorCode()
     {
         var client = await _factory.LoginAsync("u1");
-        _factory.Fakes.OnJson(HttpMethod.Get, "/api/upload/tasks/up1", new
+        _factory.Fakes.OnJson(HttpMethod.Get, "/internal/uploads/up1", new
         {
-            uploadId = "up1", userId = "u1", status = "FAILED", inserted = 0, startedAt = DateTime.UtcNow, errorCode = ErrorCodes.UploadNoStreamingFiles
+            uploadId = "up1", userId = "u1", status = "Failed", inserted = 0, startedAt = DateTime.UtcNow, errorCode = ErrorCodes.UploadNoStreamingFiles
         });
 
         var status = await client.GetFromJsonAsync<ImportStatusDto>("/api/v1/uploads/up1", Ct);
 
-        Assert.Equal("FAILED", status!.Status);
+        Assert.Equal("Failed", status!.Status);
         Assert.Equal(ErrorCodes.UploadNoStreamingFiles, status.ErrorCode);
     }
 
@@ -165,7 +165,7 @@ public sealed class ApiTests : IDisposable
     {
         var client = await _factory.LoginAsync("u1");
         string? forwarded = null;
-        _factory.Fakes.On(HttpMethod.Post, "/debug/upload/zip", req =>
+        _factory.Fakes.On(HttpMethod.Post, "/internal/uploads", req =>
         {
             forwarded = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
             return FakeServices.Json(new { id = "up9" });

@@ -4,7 +4,7 @@ namespace CityFy.Retrieve.MusicBrainz.Models;
 /// MusicBrainz artist. Only artists with at least one genre are imported: the others cannot be
 /// placed in the city anyway. Id is the MusicBrainz row id (not generated).
 /// </summary>
-public class Artist
+public sealed class Artist
 {
     public int Id { get; set; }
 

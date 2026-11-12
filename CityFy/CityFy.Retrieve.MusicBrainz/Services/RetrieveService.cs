@@ -1,31 +1,23 @@
+using CityFy.Retrieve.MusicBrainz.Clients;
 using CityFy.Retrieve.MusicBrainz.Models;
 
 namespace CityFy.Retrieve.MusicBrainz.Services;
 
 /// <summary>Download the latest export, extract the needed tables, import them.</summary>
-public class RetrieveService
+public sealed class RetrieveService(
+    IDumpDownloadService downloader,
+    IArchiveExtractor extractor,
+    IMusicBrainzImporter importer,
+    ILogger<RetrieveService> logger,
+    ImportProgress progress) : IRetrieveService
 {
-    private readonly IDumpDownloadService _downloader;
-    private readonly ArchiveExtractor _extractor;
-    private readonly MusicBrainzImporter _importer;
-    private readonly ILogger<RetrieveService> _logger;
-    private readonly ImportProgress _progress;
-
-    public RetrieveService(IDumpDownloadService downloader, ArchiveExtractor extractor, MusicBrainzImporter importer,
-        ILogger<RetrieveService> logger, ImportProgress progress)
-    {
-        _downloader = downloader;
-        _extractor = extractor;
-        _importer = importer;
-        _logger = logger;
-        _progress = progress;
-    }
+    private readonly ImportProgress _progress = progress;
 
     public async Task<RetrieveResult> RunRetrieveAsync(CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Starting MusicBrainz retrieve job");
+        logger.LogInformation("Starting MusicBrainz retrieve job");
 
-        var localDir = await _downloader.GetOrDownloadLatestAsync(DumpFiles.TablesByArchive.Keys.ToList(), cancellationToken);
+        var localDir = await downloader.GetOrDownloadLatestAsync(DumpFiles.TablesByArchive.Keys.ToList(), cancellationToken);
         var extractDir = Path.Combine(localDir, "extracted");
 
         foreach (var (archive, tables) in DumpFiles.TablesByArchive)
@@ -34,16 +26,16 @@ public class RetrieveService
             var missing = tables.Where(t => !File.Exists(Path.Combine(extractDir, t))).ToList();
             if (missing.Count == 0) continue;
 
-            _logger.LogInformation("Extracting {Count} tables from {Archive}", missing.Count, archive);
+            logger.LogInformation("Extracting {Count} tables from {Archive}", missing.Count, archive);
             // tar gives no progress: indeterminate (the core archive takes several minutes)
-            _progress.Report("Estrazione", null, $"{archive}: {string.Join(", ", missing.Select(Path.GetFileName))}");
-            await _extractor.ExtractAsync(Path.Combine(localDir, archive), extractDir, missing, cancellationToken);
+            _progress.Report("Extracting", null, $"{archive}: {string.Join(", ", missing.Select(Path.GetFileName))}");
+            await extractor.ExtractAsync(Path.Combine(localDir, archive), extractDir, missing, cancellationToken);
         }
 
-        var result = await _importer.ImportAsync(Path.Combine(extractDir, "mbdump"), cancellationToken);
+        var result = await importer.ImportAsync(Path.Combine(extractDir, "mbdump"), cancellationToken);
         result.DumpName = Path.GetFileName(localDir);
 
-        _logger.LogInformation(
+        logger.LogInformation(
             "MusicBrainz import {Dump} completed in {Duration}: {Genres} genres, {Relations} genre relations, {Artists} artists, {ArtistGenres} artist genres, {Links} Spotify links",
             result.DumpName, result.Duration, result.Genres, result.GenreRelations, result.Artists, result.ArtistGenres, result.SpotifyLinks);
         return result;

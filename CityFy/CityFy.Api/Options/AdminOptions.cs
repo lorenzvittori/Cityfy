@@ -5,7 +5,7 @@ namespace CityFy.Api.Options;
 /// Disabled by default; appsettings.Development.json enables it for local development.
 /// The panel can read every table and trigger imports: never enable it on a public deployment.
 /// </summary>
-public class AdminOptions
+public sealed class AdminOptions
 {
     public const string SectionName = "Admin";
 

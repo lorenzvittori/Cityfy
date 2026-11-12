@@ -39,6 +39,7 @@ Cartelle: `Controllers/`, `Services/`, `Repositories/`, `Clients/`, `Mappers/`, 
 `Controller / Consumer / HostedService → Service → Repository | Client | logica pura`
 
 - Controller e consumer **non** usano repository, `IMongoDatabase`, `DbContext` o client direttamente: passano sempre da un Service (anche per una sola lettura).
+- Eccezione: nel **gateway** i client verso i servizi interni (`I<Servizio>Client`) fanno da layer di servizio per le chiamate passanti; i controller li ricevono tramite interfaccia. Serve un Service solo quando c'è logica che coinvolge più chiamate (es. `IUserDataEraser`).
 - Il Service orchestra; la logica senza I/O sta in classi pure (vedi `dotnet-conventions`).
 - I controller mappano verso DTO tipizzati (`record`), non oggetti anonimi.
 
@@ -85,7 +86,7 @@ Cartelle: `Controllers/`, `Services/`, `Repositories/`, `Clients/`, `Mappers/`, 
 ## Job in background
 
 - Il controller (o lo scheduler) **accoda**; un `BackgroundService` esegue.
-- Lo stato è persistito in un documento task: `Pending → WORKING_IN_PROGRESS → DONE | FAILED | CANCELLED`, con `ErrorCode`, `Message` tecnico, `ProgressPercent` (null = indeterminato), `ProgressDetail` e `UpdatedAt`.
+- Lo stato è persistito in un documento task: `Pending → InProgress → Done | Failed | Cancelled` (enum PascalCase, salvato come stringa), con `ErrorCode`, `Message` tecnico, `ProgressPercent` (null = indeterminato), `ProgressDetail` e `UpdatedAt`.
 - Annullamento con un `CancellationRegistry` (token per job):
   - prima si scrive `CANCELLED`, poi si annulla il token;
   - un job già `CANCELLED` non viene mai sovrascritto da un DONE/FAILED tardivo (filtro sull'update);

@@ -8,46 +8,25 @@ using Microsoft.Extensions.Options;
 
 namespace CityFy.Elaboration.Services;
 
-public interface ICityService
-{
-    /// <summary>Aggregates the user's plays, resolves the artists' genres and stores the city.</summary>
-    Task<CityModel> BuildAsync(string userId, string period, CancellationToken ct);
-
-    Task<CityModel?> GetAsync(string userId, string period, CancellationToken ct);
-}
-
-public class CityService : ICityService
+public sealed class CityService(
+    IElaborationRepository repo,
+    IMusicBrainzClient musicBrainz,
+    IMemoryCache cache,
+    IOptions<CityOptions> options,
+    ILogger<CityService> logger) : ICityService
 {
     private const string SpotifyArtistUriPrefix = "spotify:artist:";
     private const string NoMatch = "none";
     private static readonly TimeSpan GenreGraphCacheDuration = TimeSpan.FromHours(1);
 
-    private readonly IElaborationRepository _repo;
-    private readonly IMusicBrainzClient _musicBrainz;
-    private readonly IMemoryCache _cache;
-    private readonly CityOptions _options;
-    private readonly ILogger<CityService> _logger;
-
-    public CityService(
-        IElaborationRepository repo,
-        IMusicBrainzClient musicBrainz,
-        IMemoryCache cache,
-        IOptions<CityOptions> options,
-        ILogger<CityService> logger)
-    {
-        _repo = repo;
-        _musicBrainz = musicBrainz;
-        _cache = cache;
-        _options = options.Value;
-        _logger = logger;
-    }
+    private readonly CityOptions _options = options.Value;
 
     public async Task<CityModel> BuildAsync(string userId, string period, CancellationToken ct)
     {
         var now = DateTime.UtcNow;
         var from = Periods.GetStart(period, now);
 
-        var plays = await _repo.AggregateArtistPlaysAsync(userId, from, _options.QualifiedPlayMs, ct);
+        var plays = await repo.AggregateArtistPlaysAsync(userId, from, _options.QualifiedPlayMs, ct);
         var resolved = await ResolveAsync(plays, ct);
         var hierarchy = await GetHierarchyAsync(ct);
 
@@ -55,15 +34,15 @@ public class CityService : ICityService
 
         // A user without any play (e.g. data deleted while a build was queued) gets no city: storing
         // one would bring back data the user asked to delete. Checked right before saving.
-        if (plays.Count == 0 && !await _repo.HasPlaysAsync(userId, ct))
+        if (plays.Count == 0 && !await repo.HasPlaysAsync(userId, ct))
         {
-            _logger.LogInformation("City {CityId} not stored: user {UserId} has no plays", city.Id, userId);
+            logger.LogInformation("City {CityId} not stored: user {UserId} has no plays", city.Id, userId);
             return city;
         }
 
-        await _repo.SaveCityAsync(city, ct);
+        await repo.SaveCityAsync(city, ct);
 
-        _logger.LogInformation(
+        logger.LogInformation(
             "City {CityId}: {Districts} districts, {Placed}/{Artists} artists placed, coverage {Coverage}% of qualified plays",
             city.Id, city.Districts.Count, city.Summary.PlacedArtists, city.Summary.TotalArtists, city.Summary.CoveragePercent);
 
@@ -71,7 +50,7 @@ public class CityService : ICityService
     }
 
     public Task<CityModel?> GetAsync(string userId, string period, CancellationToken ct) =>
-        _repo.GetCityAsync(userId, period, ct);
+        repo.GetCityAsync(userId, period, ct);
 
     // Spotify id match first (reliable), name match as fallback (export plays have no artist id)
     private async Task<Dictionary<string, ResolvedArtist>> ResolveAsync(IReadOnlyList<ArtistPlays> plays, CancellationToken ct)
@@ -82,7 +61,7 @@ public class CityService : ICityService
             Names = plays.Select(p => p.ArtistName).Distinct(StringComparer.OrdinalIgnoreCase).ToList()
         };
 
-        var response = await _musicBrainz.ResolveArtistsAsync(request, ct);
+        var response = await musicBrainz.ResolveArtistsAsync(request, ct);
         var bySpotify = response.BySpotifyId.Where(r => r.MatchType != NoMatch)
             .ToDictionary(r => r.Input, StringComparer.Ordinal);
         var byName = response.ByName.Where(r => r.MatchType != NoMatch)
@@ -101,10 +80,10 @@ public class CityService : ICityService
     }
 
     private async Task<GenreHierarchy> GetHierarchyAsync(CancellationToken ct) =>
-        (await _cache.GetOrCreateAsync("musicbrainz:genre-hierarchy", async entry =>
+        (await cache.GetOrCreateAsync("musicbrainz:genre-hierarchy", async entry =>
         {
             entry.AbsoluteExpirationRelativeToNow = GenreGraphCacheDuration;
-            return new GenreHierarchy(await _musicBrainz.GetGenreGraphAsync(ct));
+            return new GenreHierarchy(await musicBrainz.GetGenreGraphAsync(ct));
         }))!;
 
     private static string? SpotifyId(string? artistUri) =>

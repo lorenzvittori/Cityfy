@@ -135,7 +135,7 @@ public sealed class MusicBrainzImporterReadTests : IDisposable
 
         new MusicBrainzImporter(null!, NullLogger<MusicBrainzImporter>.Instance, progress).Read(_dir, CancellationToken.None);
 
-        Assert.Equal("Lettura tabelle", progress.Current!.Phase);
+        Assert.Equal("Reading tables", progress.Current!.Phase);
         Assert.StartsWith("url (9/9)", progress.Current.Detail);
         Assert.InRange(progress.Current.Percent!.Value, 0, 100);
     }

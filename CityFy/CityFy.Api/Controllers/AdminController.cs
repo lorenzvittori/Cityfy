@@ -1,191 +1,118 @@
-using CityFy.Api.Admin;
+using System.Text.Json;
 using CityFy.Api.Auth;
 using CityFy.Api.Clients;
-using CityFy.Api.Options;
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Cookies;
+using CityFy.Api.Models;
+using CityFy.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.Filters;
-using Microsoft.Extensions.Options;
-using ServiceDefault.Errors;
 
 namespace CityFy.Api.Controllers;
 
-/// <summary>Admin endpoints answer 404 when the panel is disabled (Admin:Enabled=false), as if they did not exist.</summary>
-public sealed class AdminEnabledAttribute : Attribute, IResourceFilter
-{
-    public void OnResourceExecuting(ResourceExecutingContext context)
-    {
-        if (!context.HttpContext.RequestServices.GetRequiredService<IOptions<AdminOptions>>().Value.Enabled)
-            context.Result = new NotFoundResult();
-    }
-
-    public void OnResourceExecuted(ResourceExecutedContext context)
-    {
-    }
-}
-
-[ApiController]
-[AdminEnabled]
-[ApiExplorerSettings(GroupName = "admin")]
-[Route("api/admin")]
-public class AdminAuthController : ControllerBase
-{
-    public sealed record LoginRequest(string Username, string Password);
-
-    // POST api/admin/login — mock admin user from configuration (Admin:Username / Admin:Password)
-    [HttpPost("login")]
-    public async Task<IActionResult> Login([FromBody] LoginRequest request, [FromServices] IOptions<AdminOptions> options)
-    {
-        var o = options.Value;
-        if (!FixedTimeEquals(request.Username, o.Username) | !FixedTimeEquals(request.Password, o.Password))
-            return this.CityFyProblem(ErrorCodes.AdminInvalidCredentials, "Invalid admin credentials", StatusCodes.Status401Unauthorized);
-
-        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, AuthSetup.CreateAdminPrincipal(o.Username));
-        return Ok(new { username = o.Username });
-    }
-
-    // GET api/admin/me — is the current session an admin?
-    [Authorize(Policy = AuthSetup.AdminPolicy)]
-    [HttpGet("me")]
-    public IActionResult Me() => Ok(new { username = User.Identity?.Name });
-
-    // POST api/admin/logout
-    [HttpPost("logout")]
-    public async Task<IActionResult> Logout()
-    {
-        await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-        return NoContent();
-    }
-
-    private static bool FixedTimeEquals(string? a, string b) =>
-        System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
-            System.Text.Encoding.UTF8.GetBytes(a ?? ""), System.Text.Encoding.UTF8.GetBytes(b));
-}
-
-/// <summary>Operations on the services: health, MusicBrainz import, pipeline, Spotify, uploads, databases.</summary>
+/// <summary>
+/// Operations on the services: health, MusicBrainz import, pipeline, Spotify, uploads, databases.
+/// Downstream admin data is passed through as is (the panel shows it, the gateway does not interpret it).
+/// </summary>
 [ApiController]
 [AdminEnabled]
 [Authorize(Policy = AuthSetup.AdminPolicy)]
 [ApiExplorerSettings(GroupName = "admin")]
 [Route("api/admin")]
-public class AdminController : ControllerBase
+public sealed class AdminController(
+    IServiceHealthService health,
+    IMusicBrainzServiceClient musicBrainz,
+    IOrchestratorClient orchestrator,
+    ISpotifyServiceClient spotify,
+    IDumpClient dump,
+    IUserDataEraser eraser,
+    IDatabaseBrowser db) : ControllerBase
 {
-    /// <summary>AppHost resource names, also used as health-probe HttpClient names.</summary>
-    public static readonly string[] Services =
-        ["Api", "Elaboration", "Orchestrator", "RetrieveSpotify", "RetrieveDumpSpotify", "RetrieveMusicBrainz"];
-
-    public sealed record ServiceHealth(string Name, string Status, long? ElapsedMs, string? Detail);
+    private const int MaxLimit = 200;
 
     // GET api/admin/services — /health of every service (the Api itself answers in-process)
     [HttpGet("services")]
-    public async Task<IActionResult> GetServices([FromServices] IHttpClientFactory factory, [FromServices] IOptions<AdminOptions> options, CancellationToken ct)
-    {
-        var checks = Services.Where(s => s != "Api").Select(async name =>
-        {
-            var sw = System.Diagnostics.Stopwatch.StartNew();
-            try
-            {
-                using var resp = await factory.CreateClient($"health-{name}").GetAsync("health", ct);
-                return new ServiceHealth(name, resp.IsSuccessStatusCode ? "Healthy" : "Unhealthy", sw.ElapsedMilliseconds,
-                    resp.IsSuccessStatusCode ? null : $"HTTP {(int)resp.StatusCode}");
-            }
-            catch (Exception ex) when (!ct.IsCancellationRequested)
-            {
-                return new ServiceHealth(name, "Unreachable", null, ex.Message);
-            }
-        });
-
-        var results = new List<ServiceHealth> { new("Api", "Healthy", 0, null) };
-        results.AddRange(await Task.WhenAll(checks));
-
-        var o = options.Value;
-        return Ok(new { services = results, links = new { dashboard = o.DashboardUrl, rabbitMq = o.RabbitMqManagementUrl } });
-    }
+    public async Task<ActionResult<ServicesOverviewDto>> GetServices(CancellationToken ct) =>
+        Ok(await health.GetOverviewAsync(ct));
 
     // --- MusicBrainz catalog ---------------------------------------------------------
 
     [HttpGet("musicbrainz/import")]
-    public async Task<IActionResult> GetImport([FromServices] MusicBrainzServiceClient mb, CancellationToken ct) =>
-        Ok(await mb.GetImportStatusAsync(ct));
+    public async Task<ActionResult<JsonElement>> GetImport(CancellationToken ct) =>
+        Ok(await musicBrainz.GetImportStatusAsync(ct));
 
     [HttpPost("musicbrainz/import")]
-    public async Task<IActionResult> StartImport([FromServices] MusicBrainzServiceClient mb, CancellationToken ct) =>
-        Accepted(await mb.StartImportAsync(ct));
+    public async Task<ActionResult<JsonElement>> StartImport(CancellationToken ct) =>
+        Accepted(await musicBrainz.StartImportAsync(ct));
 
     // --- Pipeline (orchestrator) -------------------------------------------------------
 
     [HttpGet("pipeline/runs")]
-    public async Task<IActionResult> GetRuns([FromServices] OrchestratorClient orchestrator, [FromQuery] int limit = 50, CancellationToken ct = default) =>
-        Ok(await orchestrator.ListAllRunsAsync(Math.Clamp(limit, 1, 200), ct));
+    public async Task<ActionResult<List<PipelineRunInfo>>> GetRuns([FromQuery] int limit = 50, CancellationToken ct = default) =>
+        Ok(await orchestrator.ListAllRunsAsync(Math.Clamp(limit, 1, MaxLimit), ct));
 
     [HttpPost("pipeline/rebuild/{userId}")]
-    public async Task<IActionResult> Rebuild(string userId, [FromServices] OrchestratorClient orchestrator, CancellationToken ct) =>
+    public async Task<ActionResult<PipelineRunInfo>> Rebuild(string userId, CancellationToken ct) =>
         Accepted(await orchestrator.TriggerAsync(userId, ct));
 
     // --- Spotify accounts and uploads --------------------------------------------------
 
     [HttpGet("spotify/accounts")]
-    public async Task<IActionResult> GetAccounts([FromServices] SpotifyServiceClient spotify, CancellationToken ct) =>
+    public async Task<ActionResult<List<SpotifyAccountInfo>>> GetAccounts(CancellationToken ct) =>
         Ok(await spotify.ListAccountsAsync(ct));
 
     [HttpGet("spotify/jobs")]
-    public async Task<IActionResult> GetJobs([FromServices] SpotifyServiceClient spotify, [FromQuery] int limit = 30, CancellationToken ct = default) =>
-        Ok(await spotify.ListJobsAsync(Math.Clamp(limit, 1, 200), ct));
+    public async Task<ActionResult<JsonElement>> GetJobs([FromQuery] int limit = 30, CancellationToken ct = default) =>
+        Ok(await spotify.ListJobsAsync(Math.Clamp(limit, 1, MaxLimit), ct));
 
     [HttpPost("spotify/accounts/{userId}/sync")]
-    public async Task<IActionResult> Sync(string userId, [FromServices] SpotifyServiceClient spotify, CancellationToken ct) =>
+    public async Task<ActionResult<JobAccepted>> Sync(string userId, CancellationToken ct) =>
         Accepted(await spotify.StartRetrieveAsync(userId, ct));
 
     [HttpGet("uploads")]
-    public async Task<IActionResult> GetUploads([FromServices] DumpClient dump, [FromQuery] int page = 1, [FromQuery] int pageSize = 50, CancellationToken ct = default) =>
-        Ok(await dump.ListUploadsAsync(Math.Max(1, page), Math.Clamp(pageSize, 1, 200), ct));
+    public async Task<ActionResult<JsonElement>> GetUploads([FromQuery] int page = 1, [FromQuery] int pageSize = 50, CancellationToken ct = default) =>
+        Ok(await dump.ListUploadsAsync(Math.Max(1, page), Math.Clamp(pageSize, 1, MaxLimit), ct));
 
     // --- Cancellation -----------------------------------------------------------------
     // 404 when the id does not exist, 409 PROCESS_NOT_CANCELLABLE when it already finished.
 
     [HttpPost("musicbrainz/import/cancel")]
-    public async Task<IActionResult> CancelImport([FromServices] MusicBrainzServiceClient mb, CancellationToken ct) =>
-        Accepted(await mb.CancelImportAsync(ct));
+    public async Task<ActionResult<JsonElement>> CancelImport(CancellationToken ct) =>
+        Accepted(await musicBrainz.CancelImportAsync(ct));
 
     [HttpPost("uploads/{uploadId}/cancel")]
-    public async Task<IActionResult> CancelUpload(string uploadId, [FromServices] DumpClient dump, CancellationToken ct) =>
+    public async Task<ActionResult<JsonElement>> CancelUpload(string uploadId, CancellationToken ct) =>
         Accepted(await dump.CancelUploadAsync(uploadId, ct));
 
     [HttpPost("spotify/jobs/{jobId}/cancel")]
-    public async Task<IActionResult> CancelSpotifyJob(string jobId, [FromServices] SpotifyServiceClient spotify, CancellationToken ct) =>
+    public async Task<ActionResult<JsonElement>> CancelSpotifyJob(string jobId, CancellationToken ct) =>
         Accepted(await spotify.CancelJobAsync(jobId, ct));
 
     [HttpPost("pipeline/runs/{runId}/cancel")]
-    public async Task<IActionResult> CancelRun(string runId, [FromServices] OrchestratorClient orchestrator, CancellationToken ct) =>
+    public async Task<ActionResult<JsonElement>> CancelRun(string runId, CancellationToken ct) =>
         Accepted(await orchestrator.CancelRunAsync(runId, ct));
 
     // --- User data ----------------------------------------------------------------------
 
-    // DELETE api/admin/users/{userId}/data — everything Cityfy keeps about that user (same as the
-    // user's own "Cancella i miei dati"); the user's sessions end at their next request
+    // DELETE api/admin/users/{userId}/data — everything CityFy keeps about that user (same as the
+    // user's own "delete my data"); the user's sessions end at their next request
     [HttpDelete("users/{userId}/data")]
-    public async Task<IActionResult> DeleteUserData(string userId, [FromServices] CityFy.Api.Account.UserDataEraser eraser, CancellationToken ct) =>
+    public async Task<ActionResult<UserDataDeletionResult>> DeleteUserData(string userId, CancellationToken ct) =>
         Ok(await eraser.DeleteAsync(userId, $"admin {User.Identity?.Name}", ct));
 
     // --- Databases (read-only) ---------------------------------------------------------
 
     [HttpGet("db/mongo")]
-    public async Task<IActionResult> GetCollections([FromServices] DatabaseBrowser db, CancellationToken ct) =>
+    public async Task<ActionResult<IReadOnlyList<TableInfo>>> GetCollections(CancellationToken ct) =>
         Ok(await db.ListCollectionsAsync(ct));
 
     [HttpGet("db/mongo/{name}")]
-    public async Task<IActionResult> GetCollection(string name, [FromServices] DatabaseBrowser db,
-        [FromQuery] int page = 1, [FromQuery] int pageSize = 25, CancellationToken ct = default) =>
+    public async Task<ActionResult<TablePage>> GetCollection(string name, [FromQuery] int page = 1, [FromQuery] int pageSize = 25, CancellationToken ct = default) =>
         Ok(await db.GetCollectionPageAsync(name, page, pageSize, ct));
 
     [HttpGet("db/sql")]
-    public async Task<IActionResult> GetTables([FromServices] DatabaseBrowser db, CancellationToken ct) =>
+    public async Task<ActionResult<IReadOnlyList<TableInfo>>> GetTables(CancellationToken ct) =>
         Ok(await db.ListTablesAsync(ct));
 
     [HttpGet("db/sql/{name}")]
-    public async Task<IActionResult> GetTable(string name, [FromServices] DatabaseBrowser db,
-        [FromQuery] int page = 1, [FromQuery] int pageSize = 25, CancellationToken ct = default) =>
+    public async Task<ActionResult<TablePage>> GetTable(string name, [FromQuery] int page = 1, [FromQuery] int pageSize = 25, CancellationToken ct = default) =>
         Ok(await db.GetTablePageAsync(name, page, pageSize, ct));
 }

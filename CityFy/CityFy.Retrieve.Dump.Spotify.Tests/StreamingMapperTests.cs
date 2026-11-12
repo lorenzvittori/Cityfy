@@ -3,7 +3,7 @@ using CityFy.Retrieve.Dump.Spotify.Models;
 
 namespace CityFy.Retrieve.Dump.Spotify.Tests;
 
-public class StreamingMapperTests
+public sealed class StreamingMapperTests
 {
     private static StreamingBl Entry(string? trackUri) => new()
     {

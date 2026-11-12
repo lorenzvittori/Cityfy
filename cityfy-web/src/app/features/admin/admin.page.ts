@@ -45,6 +45,7 @@ export class AdminPage {
     { id: 'spotify', label: 'Spotify e upload' },
     { id: 'database', label: 'Database' },
   ];
+  protected readonly phaseLabel = phaseLabel;
   protected readonly tab = signal<Tab>('activity');
   protected readonly error = signal<ApiError | null>(null);
   protected readonly notice = signal<string | null>(null);
@@ -274,7 +275,20 @@ export class AdminPage {
   }
 }
 
-/** Upload/Spotify statuses (Pending, WORKING_IN_PROGRESS) and pipeline statuses (Pending, Building). */
+/** Phases of the MusicBrainz import (ImportProgress.Phase on the backend) -> label. */
+const PHASE_LABELS: Record<string, string> = {
+  Starting: 'Avvio',
+  Download: 'Download',
+  Extracting: 'Estrazione',
+  'Reading tables': 'Lettura tabelle',
+  'Writing database': 'Scrittura database',
+};
+
+function phaseLabel(phase: string): string {
+  return PHASE_LABELS[phase] ?? phase;
+}
+
+/** Upload/Spotify statuses (Pending, InProgress) and pipeline statuses (Pending, Building). */
 function isActive(status: string): boolean {
-  return status === 'Pending' || status === 'WORKING_IN_PROGRESS' || status === 'Building';
+  return status === 'Pending' || status === 'InProgress' || status === 'Building';
 }

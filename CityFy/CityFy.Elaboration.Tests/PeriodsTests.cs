@@ -2,7 +2,7 @@ using CityFy.Elaboration.Services;
 
 namespace CityFy.Elaboration.Tests;
 
-public class PeriodsTests
+public sealed class PeriodsTests
 {
     private static readonly DateTime Now = new(2026, 11, 11, 0, 0, 0, DateTimeKind.Utc);
 

@@ -98,12 +98,12 @@ Il pannello è attivo solo in Development (`appsettings.Development.json` dell'A
 ### Primo giro completo
 1. **Generi:** `POST /api/retrieve` su **RetrieveMusicBrainz**. Scarica e importa il dump MusicBrainz. Dura a lungo; lo stato si legge su `GET /api/retrieve/status`.
 2. **Ascolti:** si possono caricare in due modi:
-   - `POST /debug/upload/zip` su **RetriveDumpSpotify**, con il file dell'export e lo `userId`;
+   - `POST /internal/uploads` su **RetrieveDumpSpotify**, con il file dell'export e lo `userId`;
    - login su `/debug/spotify/login` di **RetrieveSpotify**, poi `POST /debug/spotify/start/{userId}`.
 3. **Città:** si costruisce da sola. Circa 30 secondi dopo l'ultimo import con nuovi ascolti, l'**Orchestrator** fa ricostruire a **Elaboration** la città per i periodi `all`, `1y`, `6m` e `30d`.
    - Avanzamento: `GET /api/pipeline/runs?userId=...` su **Orchestrator**.
    - Risultato: `GET /api/elaboration/city/{userId}?period=all` su **Elaboration**.
-   - Ricostruzione senza nuovi import: dal pulsante **Ricostruisci la città** nella pagina della città (`POST /api/v1/city/rebuild`, usa tutti gli ascolti importati da qualunque fonte), oppure `POST /debug/pipeline/trigger/{userId}` su **Orchestrator**.
+   - Ricostruzione senza nuovi import: dal pulsante **Ricostruisci la città** nella pagina della città (`POST /api/v1/city/rebuild`, usa tutti gli ascolti importati da qualunque fonte), oppure `POST /internal/pipeline/trigger/{userId}` su **Orchestrator**.
    - Quando un import di MusicBrainz finisce, **RetrieveMusicBrainz** pubblica `CatalogUpdated` e l'Orchestrator ricostruisce le città di tutti gli utenti che hanno ascolti: una città costruita con il catalogo ancora vuoto si sistema da sola.
    - Una città ha al massimo `City:MaxDistricts` quartieri (default 12); i macro-generi meno ascoltati finiscono nel quartiere "Altri generi".
 

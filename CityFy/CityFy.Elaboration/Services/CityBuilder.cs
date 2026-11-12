@@ -13,15 +13,8 @@ namespace CityFy.Elaboration.Services;
 ///   block    = the artist's most voted genre inside that macro-genre
 ///   building = artist; height/width grow with the qualified plays
 /// </summary>
-public sealed class CityBuilder
+public sealed class CityBuilder(CityOptions options)
 {
-    private readonly CityOptions _options;
-
-    public CityBuilder(CityOptions options)
-    {
-        _options = options;
-    }
-
     private sealed record Placement(ArtistPlays Plays, ResolvedArtist Artist, int MacroGenreId, int BlockGenreId);
 
     public CityModel Build(
@@ -97,8 +90,8 @@ public sealed class CityBuilder
                                     Plays = b.Plays,
                                     QualifiedPlays = b.Qualified,
                                     ListeningMinutes = Math.Round(b.Ms / 60_000.0, 1),
-                                    Height = Scale(_options.MinHeight, _options.MaxHeight, Math.Log(1 + b.Qualified) / Math.Log(1 + maxQualified)),
-                                    Width = Scale(_options.MinWidth, _options.MaxWidth, Math.Sqrt((double)b.Qualified / maxQualified)),
+                                    Height = Scale(options.MinHeight, options.MaxHeight, Math.Log(1 + b.Qualified) / Math.Log(1 + maxQualified)),
+                                    Width = Scale(options.MinWidth, options.MaxWidth, Math.Sqrt((double)b.Qualified / maxQualified)),
                                     Color = color,
                                     Genres = b.First.Artist.Genres.Select(g => g.Name).ToList()
                                 })
@@ -136,7 +129,7 @@ public sealed class CityBuilder
             warnings.Add(ErrorCodes.CityNoPlays);                 // nothing listened in the period
         else if (buildings.Count == 0)
             warnings.Add(ErrorCodes.CityGenresUnavailable);       // plays, but no artist matched a genre
-        else if (coverage < _options.LowCoveragePercent)
+        else if (coverage < options.LowCoveragePercent)
             warnings.Add(ErrorCodes.CityLowCoverage);             // the city shows only part of the listening
 
         return new CityModel
@@ -158,30 +151,30 @@ public sealed class CityBuilder
                 TopGenres = districts.SelectMany(d => d.Blocks).OrderByDescending(b => b.Score).Take(5).Select(b => b.Name).ToList()
             },
             Districts = districts,
-            Unresolved = unresolved.OrderByDescending(u => u.QualifiedPlays).Take(_options.MaxUnresolvedReported)
+            Unresolved = unresolved.OrderByDescending(u => u.QualifiedPlays).Take(options.MaxUnresolvedReported)
                 .Select(u => new UnresolvedArtist { Name = u.ArtistName, SpotifyArtistUri = u.ArtistUri, Plays = u.QualifiedPlays })
                 .ToList()
         };
     }
 
-    public const string OtherDistrictId = "altri_generi";
+    public const string OtherDistrictId = "other_genres";
 
     /// <summary>
     /// MusicBrainz has many top-level genres: a large listening history produces 100+ districts,
     /// which no map can show legibly. The most listened (MaxDistricts - 1) stay, the rest become
-    /// one "Altri generi" district whose blocks keep their genre (and their buildings their colors).
+    /// one "Other genres" district whose blocks keep their genre (and their buildings their colors).
     /// </summary>
     private List<CityDistrict> MergeSmallDistricts(List<CityDistrict> districts)
     {
-        if (districts.Count <= _options.MaxDistricts)
+        if (districts.Count <= options.MaxDistricts)
             return districts;
 
-        var keep = districts.Take(_options.MaxDistricts - 1).ToList();
-        var rest = districts.Skip(_options.MaxDistricts - 1).ToList();
+        var keep = districts.Take(options.MaxDistricts - 1).ToList();
+        var rest = districts.Skip(options.MaxDistricts - 1).ToList();
         keep.Add(new CityDistrict
         {
             DistrictId = OtherDistrictId,
-            Name = "Altri generi",
+            Name = "Other genres",
             GenreId = 0,
             Color = "#9e9e9e",
             Score = rest.Sum(d => d.Score),
@@ -213,7 +206,7 @@ public sealed class CityBuilder
 
     private string ColorFor(string macroName)
     {
-        if (_options.Palette.TryGetValue(macroName, out var fixedColor))
+        if (options.Palette.TryGetValue(macroName, out var fixedColor))
             return fixedColor;
 
         // FNV-1a: stable across runs (string.GetHashCode is randomized per process)

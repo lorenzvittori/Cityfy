@@ -16,7 +16,7 @@ public static class GenreRelationTypes
 /// Genre-genre relationship from MusicBrainz (l_genre_genre), read as
 /// "From {RelationType} To", see <see cref="GenreRelationTypes"/>.
 /// </summary>
-public class GenreRelation
+public sealed class GenreRelation
 {
     public int Id { get; set; }
 

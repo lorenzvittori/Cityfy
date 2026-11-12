@@ -1,3 +1,4 @@
+using CityFy.Retrieve.MusicBrainz.Clients;
 using CityFy.Retrieve.MusicBrainz.Data;
 using CityFy.Retrieve.MusicBrainz.Services;
 using Microsoft.EntityFrameworkCore;
@@ -17,7 +18,7 @@ builder.Services.AddCityFyCors(builder.Configuration);
 builder.AddSqlServerDbContext<MusicBrainzContext>("musicbrainz");
 
 // Dump download: no client timeout, the archives are several GB
-builder.Services.AddHttpClient<MbDumpClient>(c =>
+builder.Services.AddHttpClient<IMbDumpClient, MbDumpClient>(c =>
 {
     c.BaseAddress = new Uri("https://data.metabrainz.org/pub/musicbrainz/data/fullexport/");
     c.Timeout = System.Threading.Timeout.InfiniteTimeSpan;
@@ -25,9 +26,9 @@ builder.Services.AddHttpClient<MbDumpClient>(c =>
 
 // Retrieve pipeline: download -> extract -> import (background, one at a time)
 builder.Services.AddScoped<IDumpDownloadService, DumpDownloadService>();
-builder.Services.AddTransient<ArchiveExtractor>();
-builder.Services.AddScoped<MusicBrainzImporter>();
-builder.Services.AddScoped<RetrieveService>();
+builder.Services.AddSingleton<IArchiveExtractor, ArchiveExtractor>();
+builder.Services.AddScoped<IMusicBrainzImporter, MusicBrainzImporter>();
+builder.Services.AddScoped<IRetrieveService, RetrieveService>();
 builder.Services.AddSingleton<ImportProgress>();
 // RabbitMQ: CatalogUpdated after an import, so the orchestrator rebuilds every city
 builder.AddCityFyMessaging();
@@ -35,7 +36,7 @@ builder.Services.AddSingleton<RetrieveRunner>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<RetrieveRunner>());
 
 // Read API
-builder.Services.AddScoped<MusicBrainzQueryService>();
+builder.Services.AddScoped<IMusicBrainzQueryService, MusicBrainzQueryService>();
 
 var app = builder.Build();
 

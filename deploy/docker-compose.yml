@@ -107,7 +107,7 @@ services:
     image: ${REGISTRY}/cityfy-retrieve-dump-spotify:${TAG}
     environment:
       <<: *env
-      DebugUpload__RootPath: /data/uploads
+      Upload__RootPath: /data/uploads
     volumes: [uploads:/data/uploads]
 
   retrieve-musicbrainz:

@@ -13,7 +13,7 @@ namespace ServiceDefault.Tests;
 
 [ApiController]
 [Route("test")]
-public class ErrorTestController : ControllerBase
+public sealed class ErrorTestController : ControllerBase
 {
     [HttpGet("cityfy")]
     public IActionResult ThrowCityFy() => throw new CityFyException(ErrorCodes.UploadNotZip, "Only .zip files are accepted");

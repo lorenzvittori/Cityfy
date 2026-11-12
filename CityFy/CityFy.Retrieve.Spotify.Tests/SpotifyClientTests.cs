@@ -7,7 +7,7 @@ using Microsoft.Extensions.Options;
 
 namespace CityFy.Retrieve.Spotify.Tests;
 
-public class SpotifyClientTests
+public sealed class SpotifyClientTests
 {
     private const string RecentlyPlayedPage = """
         {

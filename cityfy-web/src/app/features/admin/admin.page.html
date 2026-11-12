@@ -38,7 +38,7 @@
               @if (s.state === 'Running') { <button type="button" class="small cancel" (click)="cancel('import')">Annulla</button> }
             </header>
             @if (s.progress; as p) {
-              <div class="phase">{{ p.phase }}</div>
+              <div class="phase">{{ phaseLabel(p.phase) }}</div>
               @if (s.state === 'Running') { <app-progress-bar [percent]="p.percent" /> }
               <div class="detail">{{ p.detail }}</div>
               @if (s.state === 'Running' && silentMinutes(p.updatedAt) >= 5) {
@@ -172,7 +172,7 @@
         </dl>
         @if (s.progress; as p) {
           <div class="activity">
-            <div class="phase">{{ p.phase }}</div>
+            <div class="phase">{{ phaseLabel(p.phase) }}</div>
             @if (s.state === 'Running') { <app-progress-bar [percent]="p.percent" /> }
             <div class="detail">{{ p.detail }}</div>
           </div>

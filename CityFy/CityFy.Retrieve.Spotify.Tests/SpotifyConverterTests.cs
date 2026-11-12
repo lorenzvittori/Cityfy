@@ -3,7 +3,7 @@ using CityFy.Retrieve.Spotify.Models;
 
 namespace CityFy.Retrieve.Spotify.Tests;
 
-public class SpotifyConverterTests
+public sealed class SpotifyConverterTests
 {
     private static SpotifyPlayHistoryDto Play(string? uri, params (string Name, string Uri)[] artists) => new()
     {

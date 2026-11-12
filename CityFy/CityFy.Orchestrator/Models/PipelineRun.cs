@@ -22,7 +22,7 @@ public enum PipelineStatus
 /// One execution of the pipeline for a user ('pipeline_runs'): the imports that triggered it
 /// and the city build they caused. At most one Pending run per user at a time.
 /// </summary>
-public class PipelineRun
+public sealed class PipelineRun
 {
     [BsonId]
     public string RunId { get; set; } = null!;
@@ -56,7 +56,7 @@ public class PipelineRun
     public string? ErrorCode { get; set; }
 }
 
-public class PipelineTrigger
+public sealed class PipelineTrigger
 {
     /// <summary>"dump", "api" or "manual".</summary>
     public string Source { get; set; } = null!;

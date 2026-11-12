@@ -1,8 +1,9 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable, catchError, throwError } from 'rxjs';
+import { Observable, catchError, map, throwError } from 'rxjs';
 import { ApiError } from '../errors/api-error';
 import { City, ImportStatus, Me, Period, PipelineRun, UserDataDeletionResult } from './api.models';
+import { localizeCity } from './city-labels';
 
 /** Calls to CityFy.Api (/api/v1, same origin through the dev-server proxy). Errors are ApiError. */
 @Injectable({ providedIn: 'root' })
@@ -24,7 +25,7 @@ export class ApiService {
   }
 
   city(period: Period): Observable<City> {
-    return this.wrap(this.http.get<City>(`${this.base}/city`, { params: new HttpParams().set('period', period) }));
+    return this.wrap(this.http.get<City>(`${this.base}/city`, { params: new HttpParams().set('period', period) })).pipe(map(localizeCity));
   }
 
   runs(limit = 5): Observable<PipelineRun[]> {

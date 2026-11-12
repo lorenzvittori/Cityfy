@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations;
 namespace CityFy.Orchestrator.Options;
 
 /// <summary>"Pipeline" configuration section.</summary>
-public class PipelineOptions
+public sealed class PipelineOptions
 {
     public const string SectionName = "Pipeline";
 

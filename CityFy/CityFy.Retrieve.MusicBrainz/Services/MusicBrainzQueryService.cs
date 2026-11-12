@@ -4,17 +4,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CityFy.Retrieve.MusicBrainz.Services;
 
-public class MusicBrainzQueryService
+public sealed class MusicBrainzQueryService(MusicBrainzContext db) : IMusicBrainzQueryService
 {
     public const int MaxItemsPerRequest = 1000;
     private const string SpotifyArtistUriPrefix = "spotify:artist:";
-
-    private readonly MusicBrainzContext _db;
-
-    public MusicBrainzQueryService(MusicBrainzContext db)
-    {
-        _db = db;
-    }
 
     public async Task<ResolveArtistsResponse> ResolveArtistsAsync(ResolveArtistsRequest request, CancellationToken ct)
     {
@@ -24,7 +17,7 @@ public class MusicBrainzQueryService
         // Spotify id -> best artist id
         var spotifyIds = spotifyInputs.ToDictionary(i => i, NormalizeSpotifyId);
         var wantedSpotify = spotifyIds.Values.Distinct().ToList();
-        var bySpotify = (await _db.ArtistSpotifyLinks
+        var bySpotify = (await db.ArtistSpotifyLinks
                 .Where(l => wantedSpotify.Contains(l.SpotifyArtistId))
                 .Select(l => new { l.SpotifyArtistId, l.ArtistId, l.Artist.TotalGenreVotes })
                 .ToListAsync(ct))
@@ -32,7 +25,7 @@ public class MusicBrainzQueryService
             .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.TotalGenreVotes).First().ArtistId);
 
         // Name -> best artist id (SQL comparison is case-insensitive with the default collation)
-        var byName = (await _db.Artists
+        var byName = (await db.Artists
                 .Where(a => nameInputs.Contains(a.Name))
                 .Select(a => new { a.Name, a.Id, a.TotalGenreVotes })
                 .ToListAsync(ct))
@@ -40,7 +33,7 @@ public class MusicBrainzQueryService
             .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.TotalGenreVotes).First().Id, StringComparer.OrdinalIgnoreCase);
 
         var artistIds = bySpotify.Values.Concat(byName.Values).Distinct().ToList();
-        var artists = await _db.Artists
+        var artists = await db.Artists
             .Where(a => artistIds.Contains(a.Id))
             .Select(a => new
             {
@@ -73,9 +66,9 @@ public class MusicBrainzQueryService
 
     public async Task<GenreGraph> GetGenreGraphAsync(CancellationToken ct)
     {
-        var genres = await _db.Genres.OrderBy(g => g.Name)
+        var genres = await db.Genres.OrderBy(g => g.Name)
             .Select(g => new GenreNode(g.Id, g.Gid, g.Name)).ToListAsync(ct);
-        var relations = await _db.GenreRelations
+        var relations = await db.GenreRelations
             .Select(r => new GenreEdge(r.FromGenreId, r.ToGenreId, r.RelationType)).ToListAsync(ct);
         return new GenreGraph(genres, relations);
     }
@@ -86,10 +79,10 @@ public class MusicBrainzQueryService
     /// </summary>
     public async Task<IReadOnlyList<GenreNode>?> GetGenreRootsAsync(int genreId, CancellationToken ct)
     {
-        if (!await _db.Genres.AnyAsync(g => g.Id == genreId, ct))
+        if (!await db.Genres.AnyAsync(g => g.Id == genreId, ct))
             return null;
 
-        var parentsOf = (await _db.GenreRelations
+        var parentsOf = (await db.GenreRelations
                 .Where(r => r.RelationType == GenreRelationTypes.Subgenre)
                 .Select(r => new { Parent = r.FromGenreId, Child = r.ToGenreId })
                 .ToListAsync(ct))
@@ -107,7 +100,7 @@ public class MusicBrainzQueryService
             foreach (var p in parents.Where(visited.Add)) queue.Enqueue(p);
         }
 
-        return await _db.Genres.Where(g => roots.Contains(g.Id)).OrderBy(g => g.Name)
+        return await db.Genres.Where(g => roots.Contains(g.Id)).OrderBy(g => g.Name)
             .Select(g => new GenreNode(g.Id, g.Gid, g.Name)).ToListAsync(ct);
     }
 

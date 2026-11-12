@@ -5,7 +5,7 @@ using ServiceDefault.Errors;
 namespace CityFy.Retrieve.Spotify.Tests;
 
 /// <summary>Which code the UI receives for a failed retrieve job (see ERRORI_UI.md §4).</summary>
-public class ErrorCodeMappingTests
+public sealed class ErrorCodeMappingTests
 {
     public static TheoryData<Exception, string> Cases => new()
     {

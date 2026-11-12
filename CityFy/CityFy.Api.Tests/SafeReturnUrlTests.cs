@@ -2,7 +2,7 @@ using CityFy.Api.Auth;
 
 namespace CityFy.Api.Tests;
 
-public class SafeReturnUrlTests
+public sealed class SafeReturnUrlTests
 {
     [Theory]
     [InlineData("/city", "/city")]

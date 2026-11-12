@@ -27,7 +27,7 @@ builder.Services.AddOptions<MusicBrainzServiceOptions>()
 
 // Reads 'listening_events', writes 'city_models'
 builder.AddCityFyMongo();
-builder.Services.AddSingleton<IElaborationRepository, ElaborationRepository>();
+builder.Services.AddSingleton<IElaborationRepository, MongoElaborationRepository>();
 
 // Service-to-service call: standard resilience (retry, circuit breaker, timeouts) is appropriate here
 builder.Services.AddHttpClient<IMusicBrainzClient, MusicBrainzClient>((sp, c) =>
@@ -35,6 +35,7 @@ builder.Services.AddHttpClient<IMusicBrainzClient, MusicBrainzClient>((sp, c) =>
     .AddStandardResilienceHandler();
 
 builder.Services.AddScoped<ICityService, CityService>();
+builder.Services.AddScoped<IUserDataService, UserDataService>();
 
 // RabbitMQ: BuildCityRequested (from the orchestrator) -> CityBuilt | CityBuildFailed
 builder.AddCityFyMessaging();

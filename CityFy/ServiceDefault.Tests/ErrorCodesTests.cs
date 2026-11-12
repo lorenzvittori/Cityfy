@@ -4,7 +4,7 @@ using ServiceDefault.Errors;
 
 namespace ServiceDefault.Tests;
 
-public class ErrorCodesTests
+public sealed class ErrorCodesTests
 {
     private static readonly string[] AllCodes = typeof(ErrorCodes)
         .GetFields(BindingFlags.Public | BindingFlags.Static)

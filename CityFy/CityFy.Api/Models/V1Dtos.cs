@@ -76,7 +76,11 @@ public sealed record ArtistDetailDto(BuildingDto Artist, string DistrictId, stri
 
 // --- Imports and pipeline -----------------------------------------------------
 
-/// <summary>Status of an upload or of a Spotify sync: Pending, WORKING_IN_PROGRESS, DONE, FAILED (+ errorCode).</summary>
+public sealed record UploadAcceptedDto(string UploadId);
+
+public sealed record SyncAcceptedDto(string JobId);
+
+/// <summary>Status of an upload or of a Spotify sync: Pending, InProgress, Done, Failed, Cancelled (+ errorCode).</summary>
 public sealed record ImportStatusDto(string Id, string Status, int NewPlays, DateTime StartedAt, DateTime? CompletedAt, string? ErrorCode);
 
 /// <summary>City build: Pending, Building, Done, Failed (+ errorCode).</summary>

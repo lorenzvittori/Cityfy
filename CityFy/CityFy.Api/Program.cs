@@ -1,6 +1,7 @@
 using CityFy.Api.Auth;
 using CityFy.Api.Clients;
 using CityFy.Api.Options;
+using CityFy.Api.Services;
 using Microsoft.AspNetCore.DataProtection;
 using ServiceDefault.Hosting;
 
@@ -26,9 +27,11 @@ builder.Services.AddOptions<FrontendOptions>()
     .ValidateOnStart();
 
 // Internal services, resolved by Aspire service discovery (resource names of the AppHost)
-static void AddService<TClient>(IServiceCollection services, string resource, TimeSpan? uploadTimeout = null) where TClient : class
+static void AddService<TClient, TImplementation>(IServiceCollection services, string resource, TimeSpan? uploadTimeout = null)
+    where TClient : class
+    where TImplementation : class, TClient
 {
-    var http = services.AddHttpClient<TClient>(c =>
+    var http = services.AddHttpClient<TClient, TImplementation>(c =>
     {
         c.BaseAddress = new Uri($"https+http://{resource}");
         if (uploadTimeout.HasValue) c.Timeout = uploadTimeout.Value;
@@ -39,27 +42,29 @@ static void AddService<TClient>(IServiceCollection services, string resource, Ti
         http.AddStandardResilienceHandler();
 }
 
-AddService<ElaborationClient>(builder.Services, "Elaboration");
-AddService<OrchestratorClient>(builder.Services, "Orchestrator");
-AddService<SpotifyServiceClient>(builder.Services, "RetrieveSpotify");
-AddService<MusicBrainzServiceClient>(builder.Services, "RetrieveMusicBrainz");
+AddService<IElaborationClient, ElaborationClient>(builder.Services, "Elaboration");
+AddService<IOrchestratorClient, OrchestratorClient>(builder.Services, "Orchestrator");
+AddService<ISpotifyServiceClient, SpotifyServiceClient>(builder.Services, "RetrieveSpotify");
+AddService<IMusicBrainzServiceClient, MusicBrainzServiceClient>(builder.Services, "RetrieveMusicBrainz");
 // Uploads: large bodies, no automatic retry, long timeout
-AddService<DumpClient>(builder.Services, "RetrieveDumpSpotify", uploadTimeout: TimeSpan.FromMinutes(10));
+AddService<IDumpClient, DumpClient>(builder.Services, "RetrieveDumpSpotify", uploadTimeout: TimeSpan.FromMinutes(10));
+
+// Data deletion (user "delete my data" and admin)
+builder.Services.AddScoped<IUserDataEraser, UserDataEraser>();
 
 // --- Admin panel (mock admin user, Development only: see AdminOptions) ---
 builder.Services.Configure<AdminOptions>(builder.Configuration.GetSection(AdminOptions.SectionName));
-foreach (var service in CityFy.Api.Controllers.AdminController.Services.Where(s => s != "Api"))
-    builder.Services.AddHttpClient($"health-{service}", c =>
+foreach (var service in ServiceHealthService.Services.Where(s => s != ServiceHealthService.Self))
+    builder.Services.AddHttpClient(ServiceHealthService.ClientName(service), c =>
     {
         c.BaseAddress = new Uri($"https+http://{service}");
         c.Timeout = TimeSpan.FromSeconds(5);
     });
+builder.Services.AddScoped<IServiceHealthService, ServiceHealthService>();
 // Read-only database browser: Mongo (cityfy) and SQL Server (musicbrainz)
 builder.AddCityFyMongo();
 builder.AddSqlServerClient("musicbrainz");
-builder.Services.AddScoped<CityFy.Api.Admin.DatabaseBrowser>();
-// Data deletion (user "Cancella i miei dati" and admin)
-builder.Services.AddScoped<CityFy.Api.Account.UserDataEraser>();
+builder.Services.AddScoped<IDatabaseBrowser, DatabaseBrowser>();
 
 var app = builder.Build();
 

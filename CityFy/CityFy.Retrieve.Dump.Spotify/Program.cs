@@ -1,10 +1,10 @@
+using CityFy.Retrieve.Dump.Spotify.Consumers;
 using CityFy.Retrieve.Dump.Spotify.FileClients;
 using CityFy.Retrieve.Dump.Spotify.HostedServices;
 using CityFy.Retrieve.Dump.Spotify.Mappers;
-using CityFy.Retrieve.Dump.Spotify.Models;
+using CityFy.Retrieve.Dump.Spotify.Options;
 using CityFy.Retrieve.Dump.Spotify.Repositories;
 using CityFy.Retrieve.Dump.Spotify.Services;
-using Microsoft.Extensions.Options;
 using ServiceDefault.Hosting;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -16,37 +16,30 @@ builder.Services.AddControllers();
 builder.Services.AddCityFySwagger("Retrieve Dump.Spotify");
 builder.Services.AddCityFyCors(builder.Configuration);
 
-// Bind debug upload options
-builder.Services.Configure<DebugUploadOptions>(builder.Configuration.GetSection("DebugUpload"));
+// "Upload" section validated at startup (storage folder, size limit)
+builder.Services.AddOptions<UploadOptions>()
+    .BindConfiguration(UploadOptions.SectionName)
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
 
 // Shared Mongo client/database + writer for 'listening_events'
 builder.AddCityFyMongo();
 builder.Services.AddListeningEventStore();
 
-// Register file client and zip service using options
-builder.Services.AddSingleton(sp =>
-{
-    var opts = sp.GetRequiredService<IOptions<DebugUploadOptions>>().Value;
-    // ensure root path exists
-    if (string.IsNullOrWhiteSpace(opts.RootPath))
-    {
-        opts.RootPath = Path.Combine(Path.GetTempPath(), "CityFyDebug");
-    }
-    Directory.CreateDirectory(opts.RootPath);
-    return new LocalFileClient(opts) as IFileClient;
-});
-
+// Uploaded archives and extracted files on the local disk (a persistent volume in a container)
+builder.Services.AddSingleton<IFileClient, LocalFileClient>();
 builder.Services.AddSingleton<IStreamingRepository, MongoStreamingRepository>();
+builder.Services.AddSingleton<IStreamingMapper, StreamingMapper>();
 
-// Services
 builder.Services.AddScoped<IStreamingBlPersistenceService, StreamingBlPersistenceService>();
 builder.Services.AddScoped<IStreamingHistoryService, StreamingHistoryService>();
 builder.Services.AddScoped<IZipUploadService, ZipUploadService>();
+builder.Services.AddScoped<IUploadTaskService, UploadTaskService>();
 builder.Services.AddScoped<IUploadProcessor, UploadProcessor>();
-builder.Services.AddScoped<UserDataService>();
-builder.Services.AddSingleton<ServiceDefault.Hosting.CancellationRegistry>();
-// Mapper
-builder.Services.AddSingleton<IStreamingMapper, StreamingMapper>();
+builder.Services.AddScoped<IUserDataService, UserDataService>();
+
+// Running imports, so the admin can stop them
+builder.Services.AddSingleton<CancellationRegistry>();
 
 // RabbitMQ: UploadReceived -> import -> ListeningImported (to the orchestrator)
 builder.AddCityFyMessaging();
@@ -56,12 +49,8 @@ builder.Services.AddHostedService<UploadRecoveryService>();
 
 var app = builder.Build();
 
-
 // Swagger (dev), HTTPS, CORS, /health and /alive
 app.UseServiceDefaults();
-
 app.UseAuthorization();
-
 app.MapControllers();
-
 app.Run();

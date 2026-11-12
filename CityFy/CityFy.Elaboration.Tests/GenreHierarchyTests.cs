@@ -3,7 +3,7 @@ using CityFy.Elaboration.Services;
 
 namespace CityFy.Elaboration.Tests;
 
-public class GenreHierarchyTests
+public sealed class GenreHierarchyTests
 {
     // rock -> alternative rock -> grunge ; electronic -> house ; "influenced by" must be ignored
     internal static GenreGraph SampleGraph() => new(
