@@ -1,6 +1,6 @@
 ---
 name: dotnet-conventions
-description: Convenzioni di codice .NET valide in ogni progetto — gestione dei casi fuori standard (chiedere e poi aggiornare le skill), lingua, file, namespace, interfacce, classi sealed/primary constructor, naming, DI, Options, errori con codici stabili, logica pura, test. Usala prima di creare, rinominare o spostare classi, interfacce, DTO, Options o registrazioni DI.
+description: Convenzioni di codice .NET valide in ogni progetto — gestione dei casi fuori standard (chiedere e poi aggiornare le skill), lingua, file, namespace, interfacce, classi sealed/primary constructor, naming, DI, Options, errori con codici stabili (anche per campo), logica pura, modelli con metodi e delegate, parametri da stringa, porting numerico da JS, persistenza Mongo, test. Usala prima di creare, rinominare o spostare classi, interfacce, DTO, Options o registrazioni DI.
 ---
 
 # Convenzioni .NET (tutti i progetti)
@@ -80,6 +80,8 @@ builder.Services.AddOptions<XOptions>()
 - Factory statiche per gli errori ricorrenti di un'area (`SpotifyAccountException.NotLinked(userId)`).
 - Dove un'eccezione tecnica va tradotta in codice (job, consumer), usa un metodo `internal static string ToErrorCode(Exception ex)` con `switch` sui tipi, e testalo.
 - Dati corrotti in input a un parser → `InvalidDataException`.
+- Errori di più campi insieme (form, stringhe di parametri): un solo codice, più un'estensione con l'elenco `problems: [{ key, code }]` (codici stabili per campo). L'eccezione applicativa porta le estensioni (`Extensions`), che il gestore globale copia nel ProblemDetails.
+- Testi per l'utente (titoli predefiniti, etichette di stato) non si costruiscono nel backend: il backend restituisce i dati (es. `name: null` + generi principali) e la UI compone il testo.
 
 ## Service e SubService
 
@@ -115,7 +117,29 @@ public async Task<CityModel> BuildAsync(string userId, string period, Cancellati
   - lo schema (chiavi, range, default) è esposto dal backend, così la UI non ripete le costanti;
   - la UI offre sia la stringa sia un form, sincronizzati tra loro, e all'API invia sempre la stringa.
 - **Algoritmi portati da un altro linguaggio o modulo**: prima di rimuovere l'originale, scrivi dei golden test che confrontano l'output della nuova implementazione con quello dell'originale su input di esempio.
-- **Determinismo**: stesso input + stesso seed = stesso output. Niente `Random` senza seed e niente dipendenza dall'ordine di dizionari o hash randomizzati.
+- **Determinismo**: stesso input + stesso seed = stesso output. Niente `Random` senza seed e niente dipendenza dall'ordine di dizionari o hash randomizzati (`string.GetHashCode` cambia a ogni processo: per un seed usa FNV-1a o simili).
+
+### Porting numerico da JavaScript/TypeScript
+
+Per ottenere gli stessi numeri (golden test con tolleranza relativa 1e-6):
+- **Ordinamenti**: `Array.sort` è stabile, `List.Sort` no. Usa `OrderBy`/`ThenBy`.
+- **Somme**: da sinistra a destra con un ciclo, come `reduce`. L'ordine delle somme in virgola mobile cambia il risultato.
+- **`Math.hypot`**: il browser scala e usa la somma di Kahan. Riproducilo invece di `Math.Sqrt(x*x+y*y)`.
+- **`Math.round`**: arrotonda le metà verso +∞, quindi `Math.Floor(x + 0.5)`, non `Math.Round` (banker's).
+- **`Math.imul` e `>>>`**: aritmetica `uint` in `unchecked`.
+- **`Map`**: mantiene l'ordine di inserimento. Tieni una lista delle chiavi accanto al `Dictionary`.
+- **`toFixed`**: formattazione invariante (`"F1"`, `CultureInfo.InvariantCulture`).
+- **`x || 1`**: zero e NaN diventano 1.
+- **Seno, coseno, atan2**: differiscono all'ultimo bit tra runtime. Ogni **pareggio** (distanze uguali, lati uguali, massimi uguali) va rotto con una tolleranza (`> best + 1e-9`, distanza arrotondata a 1e-6) **in entrambe le implementazioni**, poi si rigenerano i golden.
+
+## Persistenza (MongoDB)
+
+- I documenti salvati hanno `[BsonIgnoreExtraElements]` quando un campo potrebbe sparire: togliere una proprietà non deve rompere la lettura dei documenti vecchi.
+- I modelli annidati possono essere `record` immutabili (mappati dal costruttore). Evita gli `struct` nei documenti.
+- Un test di andata e ritorno in memoria (`ToBson()` → `BsonSerializer.Deserialize`) per i documenti nuovi e complessi.
+- Per sostituire un insieme di dati senza mostrarlo a metà: scrivi la versione nuova con un id di versione, sposta il puntatore alla versione corrente, poi cancella le vecchie.
+- Le collection dismesse vanno comunque ripulite nella cancellazione dei dati utente, finché esistono.
+- Indici creati una volta sola al primo uso (`Lazy<Task>`).
 
 ## Commenti
 

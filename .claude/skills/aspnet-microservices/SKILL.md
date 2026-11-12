@@ -85,7 +85,8 @@ Cartelle: `Controllers/`, `Services/`, `Repositories/`, `Clients/`, `Mappers/`, 
 
 - **Verso altri servizi**:
   - typed HttpClient con `BaseAddress = https+http://<risorsa-aspire>` e `AddStandardResilienceHandler()`;
-  - base `DownstreamClient` che trasforma un ProblemDetails a valle in `<App>Exception` con lo stesso codice e status, e un servizio irraggiungibile in `SERVICE_UNAVAILABLE` (503);
+  - base `DownstreamClient` **nella libreria condivisa** (la usano il gateway e i servizi che chiamano altri servizi): trasforma un ProblemDetails a valle in `<App>Exception` con lo stesso codice, status ed estensioni (es. `problems`), e un servizio irraggiungibile in `SERVICE_UNAVAILABLE` (503);
+  - i client leggono il JSON con le opzioni Web di default, che **non** convertono gli enum scritti come stringhe: nei contratti tra servizi gli stati sono `string` (il nome dell'enum), oppure il client registra il converter;
   - ID nell'URL con `Uri.EscapeDataString`.
 - **Verso API esterne**: retry gestito nel client (429 rispettando `Retry-After`, 5xx con backoff, attesa massima limitata). Al fallimento definitivo lancia `HttpRequestException` con lo `StatusCode`: un risultato parziale non deve mai sembrare completo.
 - Upload e download lunghi: niente resilience handler standard (timeout totale di 30 s), timeout esplicito.
@@ -100,6 +101,8 @@ Cartelle: `Controllers/`, `Services/`, `Repositories/`, `Clients/`, `Mappers/`, 
   - Le eccezioni con status 4xx non si ritentano.
 - Ogni messaggio porta `RunId`/`JobId` come correlation id.
 - Gli handler sono idempotenti: un messaggio può arrivare più volte.
+- **Eventi di fine run e di dato cambiato.** Lo stesso evento può fare da tutti e due (es. `<Data>Updated` con `RunId` nullable: chiude la run di chi l'ha chiesta e avvisa chi usa quel dato). Un esito "niente da fare" (es. utente senza dati) chiude comunque la run, con un codice esplicito.
+- **Rinominare un messaggio** crea code nuove: le vecchie restano sul broker, vuote. Segnalalo all'utente come pulizia da fare al deploy, insieme ai container rinominati (`docker compose up -d --remove-orphans`).
 
 ## Job in background
 
@@ -118,6 +121,14 @@ Cartelle: `Controllers/`, `Services/`, `Repositories/`, `Clients/`, `Mappers/`, 
 - Ogni servizio che possiede dati di un utente espone `DELETE internal/.../users/{userId}/data`, restituisce i conteggi (`UserDataDeletion`) ed è idempotente.
 - Il gateway orchestra la cancellazione su tutti i servizi.
 - Prima di salvare un risultato derivato, verifica che i dati di origine esistano ancora (cancellazione arrivata mentre un job era in coda).
+- Un job che sta girando quando l'utente cancella i suoi dati non deve ricreare nulla: l'update finale filtra sullo stato atteso (es. `InProgress`), quindi un documento cancellato o annullato non viene riscritto.
+
+## Dati derivati e risultati salvati
+
+- **Dato precalcolato con versione.** Ciò che costa calcolare (es. arricchimento da un'API esterna) si calcola nella pipeline, si salva con una `Version` e si espone con un endpoint leggero che restituisce solo la versione corrente.
+- **Calcoli su richiesta** per i parametri liberi (date, filtri): sul dato precalcolato, senza salvare nulla.
+- **Risultati salvati dall'utente:** sono fotografie. Salvano i parametri canonici, l'hash dei parametri e la versione del dato con cui sono stati calcolati; non cambiano quando il dato si aggiorna.
+- **Calcolo pesante** in un servizio separato dal servizio dati (vedi "Confini tra servizi"), con un job asincrono: `Pending` alla richiesta, poi l'evento `<X>Requested` consumato dal servizio stesso, recupero all'avvio dei job rimasti a metà.
 
 ## Sicurezza
 
