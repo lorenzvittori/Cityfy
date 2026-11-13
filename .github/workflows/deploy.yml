@@ -173,6 +173,10 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Normalize Windows CRLF line endings before validation.
+          SSH_KEY="${SSH_KEY//$'\r'/}"
+          KNOWN_HOSTS="${KNOWN_HOSTS//$'\r'/}"
+
           install -m 700 -d ~/.ssh
 
           echo "SSH key diagnostics"
@@ -180,13 +184,15 @@ jobs:
           echo "Line count: $(printf '%s' "$SSH_KEY" | awk 'END {print NR}')"
 
           if [[ "$SSH_KEY" == *'\n'* ]]; then
-            echo "FORMAT: literal backslash-n detected"
+            echo "::error::Literal backslash-n detected in SSH key"
+            exit 1
           else
             echo "FORMAT: no literal backslash-n"
           fi
 
           if [[ "$SSH_KEY" == *$'\r'* ]]; then
-            echo "FORMAT: CR characters detected"
+            echo "::error::CR characters still detected"
+            exit 1
           else
             echo "FORMAT: no CR characters"
           fi
@@ -204,9 +210,6 @@ jobs:
             echo "::error::FOOTER: incorrect"
             exit 1
           fi
-
-          # Normalize Windows CRLF line endings.
-          SSH_KEY="${SSH_KEY//$'\r'/}"
 
           printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
