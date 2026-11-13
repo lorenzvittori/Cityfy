@@ -46,11 +46,28 @@ Prima di iniziare carica `dotnet-conventions` e la skill di architettura del pro
 - Una fase completata si segna con ✅ e una nota sulle differenze rispetto al piano. Le scelte prese durante l'implementazione vanno nel piano, non solo nel messaggio.
 - Se l'utente dice "salva il piano ma non procedere", non si scrive codice.
 - Le rinomine (servizi, progetti, namespace) sono una fase a sé, a parità di comportamento, prima delle modifiche funzionali.
+- **Sostituire un'integrazione** (es. un login o una fonte di dati con un'altra):
+  1. si costruisce la nuova accanto alla vecchia;
+  2. si toglie la vecchia dal frontend;
+  3. solo alla fine si dismette il servizio vecchio, come fase a sé.
+- **Checklist della dismissione di un servizio:**
+  - progetto e test, solution, AppHost (risorsa, parametri e segreti);
+  - client, endpoint e pannello admin del gateway, health check, elenco dei proprietari di dati per la cancellazione;
+  - codici d'errore nei tre cataloghi (backend, documento per la UI, frontend) e costanti condivise rimaste senza uso;
+  - compose, workflow, segreti e `.env.example`, con i passi da fare una volta sul server (container orfani, volumi, dati);
+  - README, guida di deploy, skill;
+  - una ricerca finale dei riferimenti residui.
+- **Dismissione di un metodo di login:** i cookie già emessi restano validi finché scadono. Il controllo del cookie deve rifiutare i principal che non sono più di un tipo previsto, altrimenti restano utenti fantasma senza scadenza.
 
 ## Dipendenze esterne
 
 - Prima di basare un flusso su un'API di terze parti, verifica con una ricerca aggiornata: quote, limiti di utenti in modalità sviluppo, scope, termini d'uso, webhook o push disponibili. Le condizioni cambiano spesso; non fidarti della memoria e cita le fonti all'utente.
 - Preferisci le integrazioni che non dipendono da un unico fornitore limitato (es. un aggregatore che riceve i dati dal fornitore lato server) e tieni sempre un'importazione manuale (export) come riserva.
+- **Termini d'uso:** leggili prima del codice e riporta nel piano, clausola per clausola, cosa comportano. Esempi: uso solo non commerciale, approvazione scritta per le pagine pubbliche, attribuzione, dati da cancellare a fine licenza, limiti di richieste non dichiarati. Le azioni che spettano all'utente (es. chiedere un'approvazione) vanno segnalate subito come bloccanti per l'apertura al pubblico, e conviene offrire una bozza della richiesta.
+- **Credenziali di un'API di terze parti:**
+  - alcuni fornitori mostrano il secret **una sola volta**, alla creazione dell'applicazione: avvisa l'utente di copiarlo subito; se l'ha perso, serve una nuova applicazione (e la vecchia va disattivata);
+  - la callback di OAuth/web auth va registrata con il percorso giusto; se il fornitore accetta una callback per richiesta (es. `cb`), quella della richiesta prevale;
+  - i secret vanno in user-secrets (sviluppo) e nei segreti della CI (produzione), mai in un file del repository. Chiedi all'utente di impostarli da sé, senza incollarli in chat; se lo fa comunque, impostali e fagli presente che restano nel registro della conversazione.
 
 ## Strumenti (Windows / PowerShell 5.1)
 
@@ -58,8 +75,13 @@ Prima di iniziare carica `dotnet-conventions` e la skill di architettura del pro
   - non chiamare una funzione `R` (è l'alias di `Invoke-History`) né `Enum` (parola chiave): usa nomi come `Rep` o `Sub`;
   - leggi e scrivi con `[IO.File]::ReadAllText/WriteAllText` e `UTF8Encoding($false)`, normalizzando `\r\n` → `\n` prima dei confronti;
   - `-ne` e `-eq` ignorano maiuscole e minuscole: per i confronti esatti usa `[string]::Equals(a, b, 'Ordinal')`;
-  - un array di una sola coppia viene "srotolato": avvolgilo con `,@(...)` o usa una funzione per coppia.
-- Prima di modifiche estese fai un backup mirato dei soli sorgenti (escludi bin, obj, node_modules, dump): copiare tutto il repository può richiedere minuti.
+  - un array di una sola coppia viene "srotolato": avvolgilo con `,@(...)` o usa una funzione per coppia;
+  - i metodi .NET (`[IO.File]::…`) risolvono i percorsi relativi sulla cartella del **processo**, non su quella di `Set-Location`: passa percorsi assoluti (`(Resolve-Path x).Path`);
+  - nelle stringhe tra virgolette doppie il backtick è un carattere di escape (`` `a `` diventa il carattere "bell", `` `n `` un a capo): per cercare testo Markdown con backtick usa stringhe tra apici singoli, oppure il tool Edit;
+  - una sostituzione che non trova il testo deve dirlo: stampa le chiavi mancanti invece di fallire in silenzio;
+  - `robocopy` termina con codice 1 quando ha copiato dei file: non è un errore (lo sono i codici da 8 in su).
+- Prima di modifiche estese fai un backup mirato dei soli sorgenti (escludi bin, obj, node_modules, dump): copiare tutto il repository può richiedere minuti. Se `git` non è disponibile, prima di **cancellare** un progetto fanne uno zip nella cartella temporanea della sessione e dì all'utente dove si trova.
+- `dotnet test` va lanciato dalla cartella del `global.json`, se questo sceglie il runner (Microsoft.Testing.Platform): `dotnet test --solution <sln>`.
 - Angular: i test si lanciano con `ng test --watch=false`; `vitest` da solo non carica il setup di Angular. Il budget di stile per componente (4 kB) si rispetta dividendo gli stili in più file (`styleUrls`).
 
 ## Regole

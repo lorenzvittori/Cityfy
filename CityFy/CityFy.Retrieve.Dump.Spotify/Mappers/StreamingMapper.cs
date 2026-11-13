@@ -49,10 +49,13 @@ public sealed class StreamingMapper : IStreamingMapper
 
         // Platform, IP address and country are deliberately not carried over (personal data
         // not needed downstream).
+        // 'ts' is when the play ended: the start, for the dedup with Last.fm, is ts - ms_played
+        var endedAt = DateTime.SpecifyKind(bl.Timestamp, DateTimeKind.Utc);
         return new ListeningEvent
         {
             UserId = userId,
-            PlayedAt = DateTime.SpecifyKind(bl.Timestamp, DateTimeKind.Utc),
+            PlayedAt = endedAt,
+            StartedAt = endedAt.AddMilliseconds(-bl.MsPlayed),
             MsPlayed = bl.MsPlayed,
             Skipped = bl.Skipped,
             TrackUri = bl.SpotifyTrackUri,

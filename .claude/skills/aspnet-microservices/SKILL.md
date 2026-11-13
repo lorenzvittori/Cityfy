@@ -102,6 +102,7 @@ Cartelle: `Controllers/`, `Services/`, `Repositories/`, `Clients/`, `Mappers/`, 
 - Ogni messaggio porta `RunId`/`JobId` come correlation id.
 - Gli handler sono idempotenti: un messaggio può arrivare più volte.
 - **Eventi di fine run e di dato cambiato.** Lo stesso evento può fare da tutti e due (es. `<Data>Updated` con `RunId` nullable: chiude la run di chi l'ha chiesta e avvisa chi usa quel dato). Un esito "niente da fare" (es. utente senza dati) chiude comunque la run, con un codice esplicito.
+- **Eventi di stato** ("cosa succede adesso", es. il brano in ascolto): un solo messaggio con i campi null per "fermo", invece di due messaggi. Portano l'ora dell'evento, e il consumer scarta quelli più vecchi di qualche minuto.
 - **Rinominare un messaggio** crea code nuove: le vecchie restano sul broker, vuote. Segnalalo all'utente come pulizia da fare al deploy, insieme ai container rinominati (`docker compose up -d --remove-orphans`).
 
 ## Job in background
@@ -113,6 +114,8 @@ Cartelle: `Controllers/`, `Services/`, `Repositories/`, `Clients/`, `Mappers/`, 
   - un job già `CANCELLED` non viene mai sovrascritto da un DONE/FAILED tardivo (filtro sull'update);
   - gli update di stato usano `CancellationToken.None`, così vengono salvati anche quando il job è annullato.
 - Distingui l'annullamento dell'admin (`cts` del job) dallo shutdown (`stoppingToken`): solo il secondo diventa FAILED e viene rilanciato.
+  - Eccezione: un job **ripristinabile**, che salva un punto di ripresa dopo ogni passo (es. la pagina successiva da leggere), allo shutdown resta `InProgress`. Il recovery all'avvio lo riaccoda e il job riparte dal punto salvato. Il punto di ripresa si salva prima dell'avanzamento visibile e il passo deve essere idempotente.
+- **Limiti di un'API esterna per IP o per applicazione:** un solo limitatore singleton condiviso da tutte le richieste del servizio (job e polling). Gestisce la spaziatura minima e la pausa su "rate limit", che raddoppia fino a un massimo e si azzera dopo una richiesta riuscita.
 - Scheduler: `PeriodicTimer` con intervallo da Options (0 = disabilitato); un giro fallito viene loggato e non ferma il servizio.
 - All'avvio, un servizio di recovery riaccoda i task rimasti `Pending`.
 
@@ -122,9 +125,23 @@ Cartelle: `Controllers/`, `Services/`, `Repositories/`, `Clients/`, `Mappers/`, 
 - Il gateway orchestra la cancellazione su tutti i servizi.
 - Prima di salvare un risultato derivato, verifica che i dati di origine esistano ancora (cancellazione arrivata mentre un job era in coda).
 - Un job che sta girando quando l'utente cancella i suoi dati non deve ricreare nulla: l'update finale filtra sullo stato atteso (es. `InProgress`), quindi un documento cancellato o annullato non viene riscritto.
-- **Passaggio di proprietario** (es. da una sessione anonima a un account): stessa forma della cancellazione, `POST internal/.../users/{fromUserId}/transfer` con body `{ toUserId }`, idempotente, orchestrato dal gateway. Si spostano solo i **dati di origine**; i derivati del vecchio proprietario si cancellano e si ricalcolano per il nuovo con l'evento della pipeline.
+- **Passaggio di proprietario** (es. da una sessione anonima a un account): stessa forma della cancellazione, `POST internal/.../users/{fromUserId}/transfer` con body `{ toUserId }`, idempotente, orchestrato dal gateway.
+  - Lo espongono solo i servizi con **dati di origine**, e la risposta dice se il passaggio è completo (`complete: false` se, per esempio, un import del vecchio proprietario sta ancora girando).
+  - I derivati del vecchio proprietario si cancellano con l'endpoint di cancellazione e si ricalcolano per il nuovo, facendo ripartire la pipeline.
+  - Se l'id del documento contiene il proprietario, il passaggio riscrive con l'id nuovo prima di cancellare il vecchio: un'interruzione lascia al più una copia, mai una perdita.
+  - Il gateway segna la sorgente "in passaggio" (così non scade) e ritenta finché non è completo; l'azione dell'utente (es. il login) riesce comunque.
 - **Proprietari temporanei** (sessioni con scadenza): la verità sulla scadenza è un documento nel gateway, non il cookie. Alla scadenza un job del gateway chiama la cancellazione su tutti i servizi e ritenta finché non è completa. Un indice TTL non basta: toglierebbe solo il documento della sessione.
 - **Dati da fonti esterne con licenza** (es. Last.fm): ogni dato salvato porta la sua sorgente, così si può cancellare tutto ciò che viene da una fonte se la licenza termina.
+  - **Cancellazione totale per fine licenza:** un endpoint admin che chiede nel corpo una frase di conferma esatta.
+    - Prima ferma la fonte (lettura periodica e job) e cancella i suoi dati nel servizio che la legge.
+    - Poi cancella gli utenti che dipendono solo da quella fonte con la normale cancellazione per utente.
+    - È ripetibile: risponde "incompleta" se resta qualcosa.
+    - Dopo vanno tolte le credenziali della fonte, altrimenti si ricomincia.
+  - **Deduplica tra fonti** di dati che hanno id diversi:
+    - una **chiave di confronto** normalizzata (minuscolo, senza accenti, punteggiatura come spazi, senza le parti accessorie) più una tolleranza sul tempo;
+    - si uniscono solo dati di fonti **diverse** (due eventi uguali della stessa fonte sono reali), scegliendo il candidato più vicino, e ognuno assorbe al più un dato;
+    - il primo arrivato resta, il secondo aggiunge la sua fonte e i campi che ha;
+    - l'indice copre proprietario, chiave e tempo.
 
 ## Dati derivati e risultati salvati
 
@@ -133,7 +150,42 @@ Cartelle: `Controllers/`, `Services/`, `Repositories/`, `Clients/`, `Mappers/`, 
 - **Risultati salvati dall'utente:** sono fotografie. Salvano i parametri canonici, l'hash dei parametri e la versione del dato con cui sono stati calcolati; non cambiano quando il dato si aggiorna.
 - **Calcolo pesante** in un servizio separato dal servizio dati (vedi "Confini tra servizi"), con un job asincrono: `Pending` alla richiesta, poi l'evento `<X>Requested` consumato dal servizio stesso, recupero all'avvio dei job rimasti a metà.
 
+## Eventi verso il browser (Server-Sent Events)
+
+- **Dove:** solo nel gateway, con un endpoint `GET api/v1/<area>` che restituisce `TypedResults.ServerSentEvents(IAsyncEnumerable<SseItem<T>>)` (integrato in ASP.NET Core 10, nessuna libreria). Il browser usa `EventSource`, che si riconnette da solo e manda il cookie di sessione.
+- **Flusso:**
+  - un servizio pubblica un evento sul broker;
+  - un consumer del gateway lo passa a un hub in memoria (SubService singleton) con un `Channel` limitato per ogni pagina aperta, `DropOldest`, così una pagina lenta non blocca le altre;
+  - l'enumerazione dello stream legge il proprio canale.
+- **Connessione:**
+  - all'apertura si manda subito lo stato attuale, poi solo le variazioni;
+  - un evento `ping` ogni 25 s tiene viva la connessione attraverso i proxy;
+  - un tetto di connessioni per utente; oltre, 429 `RATE_LIMITED`.
+- **Eventi di stato** ("cosa succede adesso"): il consumer scarta quelli più vecchi di qualche minuto (es. accodati mentre il gateway era giù) invece di ripeterli.
+- **Ritorno verso i servizi:** se una pagina aperta deve cambiare il comportamento di un servizio (es. lettura più frequente), lo stream pubblica periodicamente un evento (`UserActive`) e il servizio lo considera valido solo per una finestra di tempo. In questo modo non serve sapere quando la pagina si chiude.
+- **Proxy:** niente compressione e flush immediato sul percorso dello stream (Caddy: `encode` con un matcher che esclude il percorso, `flush_interval -1`).
+- **Più istanze del gateway:** con una coda condivisa ogni evento arriverebbe a una sola istanza. Con più istanze serve una coda per istanza (fan-out).
+
+## Limiti di richieste (gateway)
+
+- Rate limiter integrato di ASP.NET Core (`AddRateLimiter` / `UseRateLimiter`), solo nel gateway e solo sulle API pubbliche: admin, `internal/` e health non sono limitati.
+- **Chiave:** la rete del client, cioè l'indirizzo IPv4 o il /64 IPv6. Contare i singoli indirizzi IPv6 permetterebbe di aggirare il limite cambiando indirizzo.
+- **Dietro un reverse proxy** serve `UseForwardedHeaders` come primo middleware, con `X-Forwarded-For` accettato solo dalle reti del proxy configurate. Senza, tutti i client hanno l'IP del proxy e condividono un contatore.
+- **Policy per endpoint** (`[EnableRateLimiting]`) per le azioni costose o abusabili: creazione di sessioni, upload, login con terzi. Un `GlobalLimiter` concatenato (`PartitionedRateLimiter.CreateChained`) gestisce:
+  - il tetto generale per rete;
+  - i limiti per utente, per cui `UseRateLimiter` va dopo `UseAuthentication`;
+  - la concorrenza sull'intero server per i lavori pesanti.
+- **Configurazione:** numeri in una sezione di Options, validati all'avvio. Nei test sono alti di default, e i test dei limiti li abbassano.
+- **Risposta:** 429 ProblemDetails con codice `RATE_LIMITED`, `Retry-After` ed estensione `retryAfterSeconds` quando il limiter li conosce. Le navigazioni del browser (login) tornano invece alla pagina del frontend con `?error=RATE_LIMITED`.
+
 ## Sicurezza
 
 - Data Protection con un key ring persistente (`DataProtection:KeysPath`) per cookie e token salvati.
 - Scope OAuth minimi; token di refresh cifrati; access token solo in cache in memoria, con un margine prima della scadenza.
+- **Più tipi di sessione nello stesso cookie** (es. anonima, account, admin):
+  - un claim distingue il tipo;
+  - un `CookieAuthenticationEvents` registrato come `EventsType` valida ogni richiesta sul documento lato server: una sessione scaduta o cancellata viene rifiutata anche se il browser manda ancora il cookie;
+  - il rinnovo (sliding) lo decide il server, con `ShouldRenew`, e non lo sliding automatico;
+  - un principal di tipo sconosciuto viene rifiutato.
+- **Chiavi di sessione di terzi** salvate cifrate con Data Protection, su un key ring persistente. Se il key ring si perde, l'account va sospeso con un codice "ricollega", non lasciato fallire a ogni lettura.
+- **Id casuali come segreti** (es. id di una sessione anonima): 128 bit da `RandomNumberGenerator`, mai `Guid` né contatori.

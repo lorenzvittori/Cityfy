@@ -1,7 +1,12 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Claims;
 using System.Text.Json;
 using CityFy.Api.Models;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using ServiceDefault.City;
 using ServiceDefault.Errors;
 
@@ -49,11 +54,11 @@ public sealed class ApiTests : IDisposable
     }
 
     [Fact]
-    public async Task Login_SetsSession_AndRedirectsToTheFrontend()
+    public async Task Login_SetsAnHttpOnlySession_AndRedirectsToTheFrontend()
     {
-        _factory.Fakes.OnJson(HttpMethod.Post, "/internal/spotify/link", new { userId = "u1", displayName = "U" });
+        _factory.FakeLastFmLink();
 
-        var resp = await _factory.CreateApiClient().GetAsync("/api/v1/auth/callback?code=c&state=s", Ct);
+        var resp = await _factory.LastFmCallbackAsync(_factory.CreateApiClient());
 
         Assert.Equal(HttpStatusCode.Redirect, resp.StatusCode);
         Assert.Equal("http://frontend.test/", resp.Headers.Location!.ToString());
@@ -61,21 +66,36 @@ public sealed class ApiTests : IDisposable
     }
 
     [Fact]
-    public async Task LoginFailure_RedirectsToTheLoginPageWithTheCode()
+    public async Task CookieOfTheOldSpotifyLogin_IsRefused()
     {
-        _factory.Fakes.On(HttpMethod.Post, "/internal/spotify/link", _ => FakeServices.Problem(HttpStatusCode.BadRequest, ErrorCodes.SpotifyLoginExpired));
+        var (_, sessionId) = await _factory.StartAnonymousAsync(); // also starts the server
+        var options = _factory.Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
+            .Get(CookieAuthenticationDefaults.AuthenticationScheme);
+        HttpClient WithCookie(ClaimsPrincipal principal)
+        {
+            var client = _factory.CreateApiClient();
+            client.DefaultRequestHeaders.Add("Cookie",
+                $"cityfy.auth={options.TicketDataFormat.Protect(new AuthenticationTicket(principal, CookieAuthenticationDefaults.AuthenticationScheme))}");
+            return client;
+        }
+        _factory.Fakes.OnJson(HttpMethod.Get, $"/api/pipeline/runs?userId=anon_{sessionId}&limit=10", Array.Empty<object>());
 
-        var resp = await _factory.CreateApiClient().GetAsync("/api/v1/auth/callback?code=c&state=old", Ct);
+        // control: a cookie made this way for a real anonymous session works
+        var anonymous = await WithCookie(Auth.AuthSetup.CreateAnonymousPrincipal(sessionId)).GetAsync("/api/v1/pipeline/runs", Ct);
+        // a valid cookie, signed by the gateway, whose user is neither anonymous nor an account
+        var oldSpotify = await WithCookie(new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim(ClaimTypes.NameIdentifier, "spotify-user-1")], CookieAuthenticationDefaults.AuthenticationScheme))).GetAsync("/api/v1/pipeline/runs", Ct);
 
-        Assert.Equal("http://frontend.test/login?error=SPOTIFY_LOGIN_EXPIRED", resp.Headers.Location!.ToString());
+        Assert.Equal(HttpStatusCode.OK, anonymous.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, oldSpotify.StatusCode);
     }
 
     [Fact]
-    public async Task UserDenial_RedirectsWithAuthDenied()
+    public async Task TheSpotifyLogin_IsGone()
     {
-        var resp = await _factory.CreateApiClient().GetAsync("/api/v1/auth/callback?error=access_denied", Ct);
+        var resp = await _factory.CreateApiClient().GetAsync("/api/v1/auth/callback?code=c&state=s", Ct);
 
-        Assert.Equal("http://frontend.test/login?error=SPOTIFY_AUTH_DENIED", resp.Headers.Location!.ToString());
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
 
     [Fact]

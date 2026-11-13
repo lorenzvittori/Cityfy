@@ -43,4 +43,11 @@ public static class MongoExtensions
         services.AddSingleton<IListeningEventStore, MongoListeningEventStore>();
         return services;
     }
+
+    /// <summary>Change of owner of the plays (only for the service that owns their deletion: Catalog).</summary>
+    public static IServiceCollection AddListeningEventTransfer(this IServiceCollection services)
+    {
+        services.AddSingleton<IListeningEventTransfer, MongoListeningEventTransfer>();
+        return services;
+    }
 }

@@ -5,7 +5,7 @@ using ServiceDefault.Models;
 namespace CityFy.Api.SubServices;
 
 public sealed class UserDataDeletionSubService(
-    ISpotifyServiceClient spotify,
+    ILastFmServiceClient lastFm,
     IDumpClient dump,
     IOrchestratorClient orchestrator,
     ICityGeneratorClient cityGenerator,
@@ -14,9 +14,10 @@ public sealed class UserDataDeletionSubService(
 {
     public async Task<(IReadOnlyList<UserDataDeletion> Deleted, IReadOnlyList<string> Failed)> DeleteEverywhereAsync(string userId, CancellationToken ct)
     {
+        // Sources first (they stop their jobs, so nothing writes plays any more), Catalog (plays) last
         var owners = new (string Name, IUserDataOwner Owner)[]
         {
-            ("RetrieveSpotify", spotify),
+            ("RetrieveLastFm", lastFm),
             ("RetrieveDumpSpotify", dump),
             ("Orchestrator", orchestrator),
             ("CityGenerator", cityGenerator),

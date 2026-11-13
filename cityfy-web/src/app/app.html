@@ -1,4 +1,4 @@
-@if (auth.me(); as me) {
+@if (auth.me()) {
   <header class="topbar">
     <a class="brand" routerLink="/cities">Cityfy</a>
     <nav>
@@ -7,38 +7,30 @@
     </nav>
     <div class="spacer"></div>
 
-    @switch (sync().kind) {
-      @case ('running') { <span class="sync muted">Aggiornamento da Spotify…</span> }
-      @case ('done') {
-        @if (sync(); as s) {
-          @if (s.kind === 'done') {
-            <span class="sync muted">{{ s.newPlays > 0 ? s.newPlays + ' nuovi ascolti: tra poco potrai usarli nelle tue città' : 'Nessun ascolto nuovo' }}</span>
-          }
-        }
-      }
-      @default {
-        <button type="button" class="ghost" (click)="syncNow()">Aggiorna da Spotify</button>
+    @if (live.nowPlaying(); as p) {
+      @if (p.playing) {
+        <a class="now-playing" [href]="p.trackUrl" target="_blank" rel="noopener" title="Stai ascoltando (da Last.fm)">
+          <span aria-hidden="true">♪</span> {{ p.artist }} – {{ p.track }}
+        </a>
       }
     }
 
     <button type="button" class="ghost theme" [title]="themeLabel()" [attr.aria-label]="themeLabel()" (click)="theme.cycle()">{{ themeIcon() }}</button>
-    <a class="user" routerLink="/account" routerLinkActive="active" title="Il tuo account e i tuoi dati">{{ me.displayName ?? me.userId }}</a>
-    <button type="button" class="ghost" (click)="logout()">Esci</button>
-  </header>
-
-  @if (sync(); as s) {
-    @if (s.kind === 'error') {
-      <!-- SPOTIFY_REAUTH_REQUIRED and the other sync errors: persistent banner with the action -->
-      <div class="banner">
-        <app-error-message [code]="s.code" [compact]="true" (retry)="syncNow()" />
-      </div>
+    <a class="user" routerLink="/account" routerLinkActive="active" title="I tuoi dati">{{ userLabel() }}</a>
+    @if (auth.isAccount()) {
+      <button type="button" class="ghost" (click)="logout()">Esci</button>
     }
-  }
+  </header>
 } @else {
-  <!-- login and other pages without the top bar -->
+  <!-- welcome and other pages without the top bar -->
   <button type="button" class="ghost theme floating" [title]="themeLabel()" [attr.aria-label]="themeLabel()" (click)="theme.cycle()">{{ themeIcon() }}</button>
 }
 
 <main>
   <router-outlet />
 </main>
+
+@if (auth.isAccount()) {
+  <!-- Last.fm terms (2.7): attribution with a link back on the pages that use Last.fm data -->
+  <footer class="powered">powered by <a href="https://www.last.fm" target="_blank" rel="noopener">AudioScrobbler</a></footer>
+}

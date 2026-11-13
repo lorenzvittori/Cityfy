@@ -1,11 +1,16 @@
-# The only public service. Browser, Spotify callback (/api/v1/auth/callback) and session cookie
+# The only public service. Browser, Last.fm callback (/api/v1/auth/lastfm/callback) and session cookie
 # live on this single origin, as in development (proxy.conf.mjs).
 {$DOMAIN} {
-	encode zstd gzip
+	# The live events (Server-Sent Events) must reach the browser one by one: never compressed
+	@compressible not path /api/v1/live
+	encode @compressible zstd gzip
 
-	# Api: the only backend reachable from outside (the other services stay on the internal network)
+	# Api: the only backend reachable from outside (the other services stay on the internal network).
+	# flush_interval -1: no buffering, every event of /api/v1/live goes out at once
 	handle /api/* {
-		reverse_proxy api:8080
+		reverse_proxy api:8080 {
+			flush_interval -1
+		}
 	}
 
 	# Angular: static files, unknown paths -> index.html (client-side routes like /city, /account)

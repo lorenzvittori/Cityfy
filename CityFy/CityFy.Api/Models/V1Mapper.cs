@@ -42,8 +42,23 @@ public static class V1Mapper
     public static ImportStatusDto ToDto(this TaskInfo t) =>
         new(t.UploadId, t.Status, t.Inserted, t.StartedAt, t.CompletedAt, t.ErrorCode);
 
-    public static ImportStatusDto ToDto(this SpotifyJobInfo j) =>
-        new(j.JobId, j.Status, j.Inserted, j.StartedAt, j.CompletedAt, j.ErrorCode);
+    /// <summary>Attribution (Last.fm terms 2.7): the profile page of the user, linked from the UI.</summary>
+    public static LastFmStatusDto ToDto(this LastFmAccountInfo a) => new(
+        a.Username, $"https://www.last.fm/user/{Uri.EscapeDataString(a.Username)}", a.Status, a.ErrorCode,
+        a.LastScrobbleAt, a.LastPolledAt, a.HistoryImportId, a.Warning);
+
+    public static LastFmImportDto ToDto(this LastFmImportInfo i) =>
+        new(i.ImportId, i.Status, i.Inserted, i.ProgressPercent, i.ProgressDetail, i.StartedAt, i.CompletedAt, i.ErrorCode);
+
+    public static NowPlayingDto ToDto(this LastFmNowPlayingInfo? p) =>
+        p is null ? NowPlayingDto.Nothing : NowPlaying(p.Artist, p.Track, p.Album, p.ArtistMbid, p.SeenAt);
+
+    public static NowPlayingDto ToDto(this ServiceDefault.Contracts.NowPlayingChanged m) =>
+        m.Artist is null || m.Track is null ? NowPlayingDto.Nothing : NowPlaying(m.Artist, m.Track, m.Album, m.ArtistMbid, m.StartedAt);
+
+    private static NowPlayingDto NowPlaying(string artist, string track, string? album, string? mbid, DateTime? startedAt) =>
+        new(true, artist, track, album, mbid, startedAt,
+            $"https://www.last.fm/music/{Uri.EscapeDataString(artist)}/_/{Uri.EscapeDataString(track)}");
 
     public static PipelineRunDto ToDto(this PipelineRunInfo r) => new(
         r.RunId, r.Status, r.Triggers.Sum(t => t.NewPlays), r.Triggers.Select(t => t.Source).Distinct().ToList(),

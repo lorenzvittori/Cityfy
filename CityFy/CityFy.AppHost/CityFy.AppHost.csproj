@@ -13,8 +13,8 @@
     <ProjectReference Include="..\CityFy.Catalog\CityFy.Catalog.csproj" />
     <ProjectReference Include="..\CityFy.CityGenerator\CityFy.CityGenerator.csproj" />
     <ProjectReference Include="..\CityFy.Retrieve.Dump.Spotify\CityFy.Retrieve.Dump.Spotify.csproj" />
+    <ProjectReference Include="..\CityFy.Retrieve.LastFm\CityFy.Retrieve.LastFm.csproj" />
     <ProjectReference Include="..\CityFy.Retrieve.MusicBrainz\CityFy.Retrieve.MusicBrainz.csproj" />
-    <ProjectReference Include="..\CityFy.Retrieve.Spotify\CityFy.Retrieve.Spotify.csproj" />
     <ProjectReference Include="..\CityFy.Orchestrator\CityFy.Orchestrator.csproj" />
     <ProjectReference Include="..\CityFy.Api\CityFy.Api.csproj" />
   </ItemGroup>

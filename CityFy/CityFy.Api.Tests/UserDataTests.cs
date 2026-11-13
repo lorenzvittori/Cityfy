@@ -14,7 +14,7 @@ public sealed class UserDataTests : IDisposable
 
     public void Dispose() => _factory.Dispose();
 
-    /// <summary>The five services answer and record the order of the calls.</summary>
+    /// <summary>The five owners answer and record the order of the calls.</summary>
     private List<string> AllServicesDelete(string userId)
     {
         var calls = new List<string>();
@@ -23,7 +23,7 @@ public sealed class UserDataTests : IDisposable
             calls.Add(service);
             return FakeServices.Json(new UserDataDeletion(service, new Dictionary<string, long> { ["items"] = 1 }));
         });
-        On($"/internal/spotify/users/{userId}/data", "RetrieveSpotify");
+        On($"/internal/lastfm/users/{userId}/data", "RetrieveLastFm");
         On($"/internal/users/{userId}/data", "shared"); // Dump, Orchestrator, CityGenerator and Catalog share the path
         return calls;
     }
@@ -37,8 +37,8 @@ public sealed class UserDataTests : IDisposable
         var resp = await client.DeleteAsync("/api/v1/me/data", Ct);
 
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
-        // Spotify first (stops the retrieves), then dump, orchestrator, city generator, catalog (plays last)
-        Assert.Equal(["RetrieveSpotify", "shared", "shared", "shared", "shared"], calls);
+        // Sources first (they stop their jobs), then dump, orchestrator, city generator, catalog (plays last)
+        Assert.Equal(["RetrieveLastFm", "shared", "shared", "shared", "shared"], calls);
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(Ct);
         Assert.Equal("u1", body.GetProperty("userId").GetString());
         Assert.Equal(5, body.GetProperty("deleted").GetArrayLength());
@@ -51,7 +51,7 @@ public sealed class UserDataTests : IDisposable
     public async Task ServiceDown_DeletionIsIncomplete_TheOthersStillRun_AndTheSessionStays()
     {
         var calls = AllServicesDelete("u1");
-        _factory.Fakes.On(HttpMethod.Delete, "/internal/spotify/users/u1/data",
+        _factory.Fakes.On(HttpMethod.Delete, "/internal/lastfm/users/u1/data",
             _ => FakeServices.Problem(HttpStatusCode.ServiceUnavailable, ErrorCodes.ServiceUnavailable));
         var client = await _factory.LoginAsync("u1");
 

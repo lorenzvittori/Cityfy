@@ -12,12 +12,23 @@ public sealed class ArtistResolveSubService(MusicBrainzContext db) : IArtistReso
     private const string SpotifyArtistUriPrefix = "spotify:artist:";
     public async Task<ResolveArtistsResponse> ResolveAsync(ResolveArtistsRequest request, CancellationToken ct)
     {
-        if ((request.SpotifyArtistIds?.Count ?? 0) > MaxItemsPerRequest || (request.Names?.Count ?? 0) > MaxItemsPerRequest)
+        if ((request.SpotifyArtistIds?.Count ?? 0) > MaxItemsPerRequest || (request.Names?.Count ?? 0) > MaxItemsPerRequest ||
+            (request.Mbids?.Count ?? 0) > MaxItemsPerRequest)
             throw new CityFyException(ErrorCodes.MbTooManyItems,
-                $"At most {MaxItemsPerRequest} spotifyArtistIds and {MaxItemsPerRequest} names per request", StatusCodes.Status400BadRequest);
+                $"At most {MaxItemsPerRequest} spotifyArtistIds, {MaxItemsPerRequest} names and {MaxItemsPerRequest} mbids per request",
+                StatusCodes.Status400BadRequest);
 
         var spotifyInputs = Distinct(request.SpotifyArtistIds);
         var nameInputs = Distinct(request.Names);
+        var mbidInputs = Distinct(request.Mbids);
+
+        // MusicBrainz id -> artist id (exact; gid stored in lower case)
+        var wantedMbids = mbidInputs.Select(m => m.ToLowerInvariant()).ToList();
+        var byMbid = (await db.Artists
+                .Where(a => wantedMbids.Contains(a.Gid))
+                .Select(a => new { a.Gid, a.Id })
+                .ToListAsync(ct))
+            .ToDictionary(x => x.Gid, x => x.Id, StringComparer.OrdinalIgnoreCase);
 
         // Spotify id -> best artist id
         var spotifyIds = spotifyInputs.ToDictionary(i => i, NormalizeSpotifyId);
@@ -37,7 +48,7 @@ public sealed class ArtistResolveSubService(MusicBrainzContext db) : IArtistReso
             .GroupBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.TotalGenreVotes).First().Id, StringComparer.OrdinalIgnoreCase);
 
-        var artistIds = bySpotify.Values.Concat(byName.Values).Distinct().ToList();
+        var artistIds = bySpotify.Values.Concat(byName.Values).Concat(byMbid.Values).Distinct().ToList();
         var artists = await db.Artists
             .Where(a => artistIds.Contains(a.Id))
             .Select(a => new
@@ -66,7 +77,8 @@ public sealed class ArtistResolveSubService(MusicBrainzContext db) : IArtistReso
 
         return new ResolveArtistsResponse(
             spotifyInputs.Select(i => Build(i, bySpotify.TryGetValue(spotifyIds[i], out var id) ? id : null, ArtistMatchTypes.SpotifyUrl)).ToList(),
-            nameInputs.Select(n => Build(n, byName.TryGetValue(n, out var id) ? id : null, ArtistMatchTypes.Name)).ToList());
+            nameInputs.Select(n => Build(n, byName.TryGetValue(n, out var id) ? id : null, ArtistMatchTypes.Name)).ToList(),
+            mbidInputs.Select(m => Build(m, byMbid.TryGetValue(m, out var id) ? id : null, ArtistMatchTypes.Mbid)).ToList());
     }
 
     private static List<string> Distinct(List<string>? values) =>

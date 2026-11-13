@@ -10,10 +10,10 @@
   <Project Path="CityFy.Orchestrator/CityFy.Orchestrator.csproj" />
   <Project Path="CityFy.Retrieve.Dump.Spotify.Tests/CityFy.Retrieve.Dump.Spotify.Tests.csproj" />
   <Project Path="CityFy.Retrieve.Dump.Spotify/CityFy.Retrieve.Dump.Spotify.csproj" Id="72f0681e-fd1f-4701-add5-c3734aa0701d" />
+  <Project Path="CityFy.Retrieve.LastFm.Tests/CityFy.Retrieve.LastFm.Tests.csproj" />
+  <Project Path="CityFy.Retrieve.LastFm/CityFy.Retrieve.LastFm.csproj" />
   <Project Path="CityFy.Retrieve.MusicBrainz.Tests/CityFy.Retrieve.MusicBrainz.Tests.csproj" />
   <Project Path="CityFy.Retrieve.MusicBrainz/CityFy.Retrieve.MusicBrainz.csproj" />
-  <Project Path="CityFy.Retrieve.Spotify.Tests/CityFy.Retrieve.Spotify.Tests.csproj" />
-  <Project Path="CityFy.Retrieve.Spotify/CityFy.Retrieve.Spotify.csproj" />
   <Project Path="ServiceDefault.Tests/ServiceDefault.Tests.csproj" />
   <Project Path="ServiceDefault/ServiceDefault.csproj" />
 </Solution>

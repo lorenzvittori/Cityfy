@@ -5,11 +5,12 @@ using CityFy.Api.Models;
 using CityFy.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ServiceDefault.Errors;
 
 namespace CityFy.Api.Controllers;
 
 /// <summary>
-/// Operations on the services: health, MusicBrainz import, pipeline, Spotify, uploads, databases.
+/// Operations on the services: health, MusicBrainz import, pipeline, Last.fm, uploads, databases.
 /// Downstream admin data is passed through as is (the panel shows it, the gateway does not interpret it).
 /// </summary>
 [ApiController]
@@ -21,9 +22,10 @@ public sealed class AdminController(
     IServiceHealthService health,
     IMusicBrainzServiceClient musicBrainz,
     IOrchestratorClient orchestrator,
-    ISpotifyServiceClient spotify,
+    ILastFmServiceClient lastFm,
     IDumpClient dump,
     IUserDataEraser eraser,
+    ILastFmPurgeService purge,
     IDatabaseBrowser db) : ControllerBase
 {
     private const int MaxLimit = 200;
@@ -53,19 +55,41 @@ public sealed class AdminController(
     public async Task<ActionResult<PipelineRunInfo>> Rebuild(string userId, CancellationToken ct) =>
         Accepted(await orchestrator.TriggerAsync(userId, ct));
 
-    // --- Spotify accounts and uploads --------------------------------------------------
+    // --- Last.fm accounts and history imports, uploads ------------------------------------
 
-    [HttpGet("spotify/accounts")]
-    public async Task<ActionResult<List<SpotifyAccountInfo>>> GetAccounts(CancellationToken ct) =>
-        Ok(await spotify.ListAccountsAsync(ct));
+    [HttpGet("lastfm/accounts")]
+    public async Task<ActionResult<JsonElement>> GetLastFmAccounts(CancellationToken ct) =>
+        Ok(await lastFm.ListAccountsAsync(ct));
 
-    [HttpGet("spotify/jobs")]
-    public async Task<ActionResult<JsonElement>> GetJobs([FromQuery] int limit = 30, CancellationToken ct = default) =>
-        Ok(await spotify.ListJobsAsync(Math.Clamp(limit, 1, MaxLimit), ct));
+    [HttpGet("lastfm/imports")]
+    public async Task<ActionResult<JsonElement>> GetLastFmImports([FromQuery] int limit = 30, CancellationToken ct = default) =>
+        Ok(await lastFm.ListImportsAsync(Math.Clamp(limit, 1, MaxLimit), ct));
 
-    [HttpPost("spotify/accounts/{userId}/sync")]
-    public async Task<ActionResult<JobAccepted>> Sync(string userId, CancellationToken ct) =>
-        Accepted(await spotify.StartRetrieveAsync(userId, ct));
+    [HttpPost("lastfm/accounts/{userId}/import")]
+    public async Task<ActionResult<JsonElement>> StartLastFmImport(string userId, CancellationToken ct) =>
+        Accepted(await lastFm.StartImportAsync(userId, ct));
+
+    [HttpPost("lastfm/accounts/{userId}/poll")]
+    public async Task<IActionResult> PollLastFm(string userId, CancellationToken ct)
+    {
+        await lastFm.PollNowAsync(userId, ct);
+        return Accepted();
+    }
+
+    [HttpPost("lastfm/imports/{importId}/cancel")]
+    public async Task<ActionResult<JsonElement>> CancelLastFmImport(string importId, CancellationToken ct) =>
+        Accepted(await lastFm.CancelImportAsync(importId, ct));
+
+    // POST api/admin/lastfm/purge { confirm: "DELETE ALL LASTFM DATA" } — end of the Last.fm licence
+    // (terms 9.3): every Last.fm account and all the data of every account, on every service.
+    // 502 USER_DATA_DELETION_INCOMPLETE when something is left: repeat.
+    [HttpPost("lastfm/purge")]
+    public async Task<ActionResult<LastFmPurgeResult>> PurgeLastFm([FromBody] LastFmPurgeRequest request, CancellationToken ct)
+    {
+        if (request.Confirm != LastFmPurgeRequest.Phrase)
+            return this.CityFyProblem(ErrorCodes.ValidationFailed, $"Confirm with \"{LastFmPurgeRequest.Phrase}\"", StatusCodes.Status400BadRequest);
+        return Ok(await purge.PurgeAllAsync($"admin {User.Identity?.Name}", ct));
+    }
 
     [HttpGet("uploads")]
     public async Task<ActionResult<JsonElement>> GetUploads([FromQuery] int page = 1, [FromQuery] int pageSize = 50, CancellationToken ct = default) =>
@@ -81,10 +105,6 @@ public sealed class AdminController(
     [HttpPost("uploads/{uploadId}/cancel")]
     public async Task<ActionResult<JsonElement>> CancelUpload(string uploadId, CancellationToken ct) =>
         Accepted(await dump.CancelUploadAsync(uploadId, ct));
-
-    [HttpPost("spotify/jobs/{jobId}/cancel")]
-    public async Task<ActionResult<JsonElement>> CancelSpotifyJob(string jobId, CancellationToken ct) =>
-        Accepted(await spotify.CancelJobAsync(jobId, ct));
 
     [HttpPost("pipeline/runs/{runId}/cancel")]
     public async Task<ActionResult<JsonElement>> CancelRun(string runId, CancellationToken ct) =>

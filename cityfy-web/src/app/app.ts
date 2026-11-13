@@ -1,26 +1,25 @@
-import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Component, computed, effect, inject } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
-import { filter, switchMap, take, timer } from 'rxjs';
-import { ApiService } from './core/api/api.service';
 import { AuthService } from './core/auth/auth.service';
-import { ApiError } from './core/errors/api-error';
-import { ErrorMessage } from './shared/error-message/error-message';
+import { dateTimeLabel } from './core/auth/session-labels';
+import { LiveService } from './core/live/live.service';
 import { ThemeService } from './core/theme/theme.service';
-
-type SyncState = { kind: 'idle' } | { kind: 'running' } | { kind: 'done'; newPlays: number } | { kind: 'error'; code: string };
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, ErrorMessage],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })
 export class App {
   protected readonly auth = inject(AuthService);
-  private readonly api = inject(ApiService);
+  protected readonly live = inject(LiveService);
   private readonly router = inject(Router);
-  private readonly destroyRef = inject(DestroyRef);
+
+  constructor() {
+    // The live connection (track playing now) only for accounts: it comes from Last.fm
+    effect(() => (this.auth.isAccount() ? this.live.connect() : this.live.disconnect()));
+  }
 
   protected readonly theme = inject(ThemeService);
   protected readonly themeLabel = computed(
@@ -28,27 +27,16 @@ export class App {
   );
   protected readonly themeIcon = computed(() => ({ system: '◐', light: '☀', dark: '☾' })[this.theme.preference()]);
 
-  protected readonly sync = signal<SyncState>({ kind: 'idle' });
+  /** Anonymous session: "Senza account · fino a domani alle 15:40" (moves forward with every visit). */
+  protected readonly userLabel = computed(() => {
+    const me = this.auth.me();
+    if (!me) return '';
+    if (me.kind === 'anonymous') return me.expiresAt ? `Senza account · fino a ${dateTimeLabel(me.expiresAt)}` : 'Senza account';
+    return me.displayName ?? me.userId;
+  });
 
-  /** Reads the latest plays from Spotify now (it also happens every 30 minutes on its own). */
-  protected syncNow(): void {
-    this.sync.set({ kind: 'running' });
-    this.api
-      .sync()
-      .pipe(
-        switchMap(({ jobId }) => timer(1000, 2000).pipe(switchMap(() => this.api.syncStatus(jobId)))),
-        filter((s) => s.status === 'Done' || s.status === 'Failed' || s.status === 'Cancelled'),
-        take(1),
-        takeUntilDestroyed(this.destroyRef),
-      )
-      .subscribe({
-        next: (s) =>
-          this.sync.set(s.status === 'Done' ? { kind: 'done', newPlays: s.newPlays } : { kind: 'error', code: s.errorCode ?? 'SPOTIFY_RETRIEVE_FAILED' }),
-        error: (e: ApiError) => this.sync.set({ kind: 'error', code: e.code }),
-      });
-  }
-
+  /** Only accounts log out: an anonymous session without its cookie could not be reopened. */
   protected logout(): void {
-    this.auth.logout().subscribe({ complete: () => this.router.navigate(['/login']) });
+    this.auth.logout().subscribe({ complete: () => this.router.navigate(['/welcome']) });
   }
 }

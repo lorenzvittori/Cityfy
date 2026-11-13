@@ -10,6 +10,13 @@ public sealed class CatalogClient(HttpClient http) : DownstreamClient(http, "Cat
     public Task<UserDataDeletion> DeleteUserDataAsync(string userId, CancellationToken ct) =>
         SendAsync<UserDataDeletion>(new HttpRequestMessage(HttpMethod.Delete, $"internal/users/{Uri.EscapeDataString(userId)}/data"), ct);
 
+    /// <summary>Every play changes owner; the old owner's artist catalog is deleted.</summary>
+    public Task<UserDataTransfer> TransferUserDataAsync(string fromUserId, string toUserId, CancellationToken ct) =>
+        SendAsync<UserDataTransfer>(new HttpRequestMessage(HttpMethod.Post, $"internal/users/{Uri.EscapeDataString(fromUserId)}/transfer")
+        {
+            Content = System.Net.Http.Json.JsonContent.Create(new UserDataTransferRequest(toUserId), options: JsonOptions)
+        }, ct);
+
     public async Task<IReadOnlyList<GenreOption>> GetGenresAsync(string userId, DateTime? from, DateTime? to, CancellationToken ct)
     {
         var query = string.Join('&', new[] { ("from", from), ("to", to) }

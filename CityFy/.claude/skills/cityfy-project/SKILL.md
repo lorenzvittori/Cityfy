@@ -32,20 +32,26 @@ L'utente genera città salvate scegliendo periodo, tipo di mappa e generi; il fr
 
 | Servizio | Responsabilità | Dati propri |
 |---|---|---|
-| **Api** (`CityFy.Api`) | Gateway, l'unico esposto al browser: sessione (cookie `cityfy.auth`), API `api/v1`, pannello admin (utente fittizio, solo Development), cancellazione dati su tutti i servizi, health check | — |
+| **Api** (`CityFy.Api`) | Gateway, l'unico esposto al browser: sessione (cookie `cityfy.auth`), sessioni anonime con scadenza e pulizia dei dati (`ExpiredSessionCleanupScheduler`), account con login Last.fm (`AccountService`) e passaggio dei dati da una sessione anonima, API `api/v1`, pannello admin (utente fittizio, solo Development), cancellazione dati su tutti i servizi, health check | `anonymous_sessions`, `users` |
 | **Catalog** (ex Elaboration) | Aggrega gli ascolti, tiene il **catalogo artisti** dell'utente (artista → quartiere, genere, colore), costruisce su richiesta il `CityModel` di un intervallo con filtro generi/sottogeneri | `user_catalogs`, `user_artist_placements`; legge `listening_events` (modello condiviso) |
 | **CityGenerator** | Città salvate: richiesta e job di generazione, layout della mappa (geometria in C#), parametri della mappa custom, limite di 10 città, riuso per hash | `generated_cities` |
 | **Orchestrator** | Debounce degli import, run della pipeline (aggiornamento del catalogo) | `pipeline_runs` |
-| **RetrieveSpotify** | Login OAuth Spotify, retrieve `recently-played` (manuale e ogni 30 min) | `spotify_accounts`, `spotify_retrieve_tasks` |
+| **RetrieveLastFm** | Collegamento account Last.fm (token → chiave di sessione cifrata), import dello storico (job ripristinabile, cursore `HistoryImport` sull'account), lettura degli ascolti nuovi con cadenza adattiva (`LastFmPollingHostedService`), brano in corso in memoria, limitatore unico delle richieste (`LastFmRequestGate`) | `lastfm_accounts`, `lastfm_import_tasks` |
 | **RetrieveDumpSpotify** | Upload dell'export zip di Spotify, import dello storico | task di upload, file su disco |
 | **RetrieveMusicBrainz** | Import del dump MusicBrainz in SQL Server, API di lettura: resolve degli artisti, grafo dei generi | DB SQL `musicbrainz` |
 
-Collection condivisa: `listening_events`, scritta dalle sorgenti (Spotify, Dump) e letta da Catalog. Collection dismessa: `city_models` (città per periodo); Catalog la ripulisce ancora nella cancellazione dati.
+Collection condivisa: `listening_events`, scritta dalle sorgenti (Dump, cioè l'export di Spotify, e Last.fm) e letta da Catalog.
+- Gli ascolti Last.fm hanno `TrackUri` = `lastfm:{artista}|{brano}` in minuscolo, e `PlayedAt` = `StartedAt` = ora dello scrobble. Per l'export `PlayedAt` = `ts` (la fine) e `StartedAt` = `ts - ms_played`.
+- **Deduplica tra fonti** (`ListeningEventWriter`, usato da `MongoListeningEventStore` e `MongoListeningEventTransfer`):
+  - stesso id → upsert;
+  - altrimenti si unisce a un ascolto di **un'altra** fonte con la stessa `MatchKey` (`ListeningEvent.BuildMatchKey`) e un inizio entro `MatchTolerance` (2 min);
+  - il primo arrivato resta, il secondo aggiunge sorgente e campi.
+- **Risoluzione degli artisti in Catalog:** id Spotify (`ArtistUri`, oggi non lo scrive nessuna sorgente), poi `ArtistMbid` (Last.fm), poi nome. `api/artists/resolve` di RetrieveMusicBrainz accetta `mbids` e risponde `byMbid`. Collection dismessa: `city_models` (città per periodo); Catalog la ripulisce ancora nella cancellazione dati.
 
 ## Flusso dei dati
 
 ```
-Dump.Spotify / Spotify ──► listening_events ──► ListeningImported
+Dump.Spotify / LastFm ──► listening_events ──► ListeningImported
 Orchestrator  ListeningImported ──(debounce 30 s)──► RefreshCatalogRequested
 Catalog       ricalcolo catalogo (resolve MusicBrainz + gerarchia) ──► UserCatalogUpdated | CatalogRefreshFailed
 Orchestrator  UserCatalogUpdated | CatalogRefreshFailed ──► run Done | Failed
@@ -55,6 +61,10 @@ Utente        POST api/v1/cities ──► CityGenerator (Pending) ──► Gen
               ──► POST api/catalog/city-model/{userId} ──► layout ──► generated city Done
 ```
 
+- **Brano in corso** (`Contracts/LiveMessages.cs`):
+  - Retrieve.LastFm pubblica `NowPlayingChanged` quando il polling vede un brano diverso, o nessuno;
+  - il gateway lo consuma (`api.now-playing-changed`) e lo manda in SSE su `api/v1/live`;
+  - una pagina aperta pubblica `UserActive` ogni minuto (`retrieve-lastfm.user-active`), e l'utente viene letto ogni 15 s per 150 s.
 - **Code:** `<servizio>.<azione>`, per esempio `catalog.refresh-catalog`, `orchestrator.user-catalog-updated`, `orchestrator.catalog-refresh-failed`, `city-generator.generate-city`, `city-generator.user-catalog-updated`.
 - **Code orfane:** sul broker possono restare le code vecchie (`elaboration.build-city`, `catalog.build-city`, `orchestrator.city-built`, `orchestrator.city-build-failed`).
 - **Stati della run:** `Pending → Building → Done | Failed | Cancelled`. `Building` significa "catalogo in aggiornamento"; non è stato rinominato per non cambiare l'API.
@@ -79,10 +89,11 @@ Utente        POST api/v1/cities ──► CityGenerator (Pending) ──► Gen
 
 ## Gateway: API pubblica `api/v1`
 
-- `auth/login`, `auth/callback`, `auth/logout`, `me`, `me/data` (cancellazione).
+- `session` (POST, "Inizia senza account"), `auth/lastfm/login`, `auth/lastfm/callback`, `auth/logout`, `me` (`kind` anonymous | lastfm, `expiresAt`, `lastFm`), `me/data` (cancellazione), `lastfm/imports/{id}`.
+- `live`: SSE solo per gli account, con gli eventi `now-playing` (`NowPlayingDto`) e `ping`; al massimo 5 pagine per utente (`LiveHubSubService`).
 - `cities` (lista paginata, POST 202), `cities/{id}` (GET, DELETE 204), `cities/{id}/cancel`, `cities/recipe/schema`.
 - `city/genres?from&to`, `city/rebuild` (aggiorna il catalogo).
-- `uploads`, `spotify/sync`, `pipeline/runs`.
+- `uploads`, `pipeline/runs`.
 - Admin: `api/admin/*`.
 
 Il gateway inoltra con `DownstreamClient` (in `ServiceDefault/Clients`), che conserva codice, status ed estensioni dei ProblemDetails.
@@ -95,14 +106,20 @@ Il gateway inoltra con `DownstreamClient` (in `ServiceDefault/Clients`), che con
 
 ## Comandi e verifica
 
-- **Backend:** `dotnet build CityFy/CityFy.slnx` (0 warning) e `dotnet test CityFy/CityFy.slnx`. L'output è in italiano: cercare `Avvisi`, `Errori`, `totale`, `non riuscito`.
+- **Backend:** `dotnet build CityFy/CityFy.slnx` (0 warning). I test si lanciano **dalla cartella `CityFy/`** (lì c'è il `global.json` che attiva Microsoft.Testing.Platform) con `dotnet test --solution CityFy.slnx`; dalla radice `dotnet test` fallisce con "Testing with VSTest target is no longer supported". L'output è in italiano: cercare `Avvisi`, `Errori`, `totale`, `non riuscito`.
+- **Test del gateway:** non aprono Mongo né RabbitMQ (`ApiFactory.Published` registra i messaggi pubblicati, il consumer viene tolto). `ApiFactory` sostituisce i servizi interni con `FakeServices` e `anonymous_sessions` con `InMemoryAnonymousSessionRepository`; `StartAnonymousAsync()` apre una sessione anonima vera.
 - **Frontend:** da `cityfy-web/`, `npx ng build` e `npx ng test --watch=false`.
 - **App:** si avvia con l'AppHost (`CityFy.AppHost`), ma **non va avviata**: le prove manuali le fa l'utente.
 - **Ambiente:** `git` non è nel PATH; la shell è Windows PowerShell 5.1.
+- **Configurazione locale di Last.fm:**
+  - applicazione "CityFy" su last.fm/api/accounts, creata il 2026-11-13 (la prima applicazione, senza secret salvato, va disattivata);
+  - API key e shared secret negli user-secrets dell'AppHost (`Parameters:lastfm-api-key`, `Parameters:lastfm-shared-secret`), mai nel repository;
+  - callback `http://127.0.0.1:4200/api/v1/auth/lastfm/callback`; CityFy la manda comunque a ogni autorizzazione (`cb`);
+  - in produzione: segreti GitHub `LASTFM_API_KEY` e `LASTFM_SHARED_SECRET`.
 
 ## Vincoli esterni (verificati il 2026-11-12)
 
-- **Spotify Web API in modalità sviluppo:** al massimo 5 utenti autorizzati e sviluppatore Premium; gli altri ricevono 403 dopo il login. Nessun webhook. La quota estesa è riservata ad app affermate. Il login Spotify attuale quindi non scala.
+- **Spotify Web API in modalità sviluppo:** al massimo 5 utenti autorizzati e sviluppatore Premium, nessun webhook: per questo il login e il retrieve Spotify sono stati tolti (fase 6 di `PIANO_LASTFM.md`). Da Spotify arriva solo l'export zip.
 - **Last.fm:** l'utente collega Spotify a Last.fm dalle impostazioni di Last.fm, e Spotify invia gli ascolti lato server da ogni dispositivo. `user.getRecentTracks` dà anche il brano in corso (`nowplaying`). Nessun push verso terzi.
 - **Termini Last.fm (verificati il 2026-11-13, dettagli in `PIANO_LASTFM.md`):**
   - solo uso **non commerciale**; per un uso commerciale serve un accordo;
@@ -113,21 +130,34 @@ Il gateway inoltra con `DownstreamClient` (in `ServiceDefault/Clients`), che con
 
 ## Identità e sessioni (da `PIANO_LASTFM.md`)
 
-- Il `userId` che i servizi interni ricevono è **opaco**: `anon_{sessionId}` per una sessione anonima, l'id CityFy per un utente Last.fm. I servizi non distinguono i due casi.
-- Sessione anonima: 1 giorno, si rinnova a ogni visita; alla scadenza il gateway cancella i dati su tutti i servizi. Passando a Last.fm i dati di origine passano all'account.
-- `anonymous_sessions` e `users` stanno nel **gateway** (Api), che quindi ha un suo database Mongo.
-- Gli ascolti in `listening_events` portano già le sorgenti (`Sources`, valori in `ListeningSources`: oggi `dump` e `api`; si aggiunge `lastfm`).
+- Il `userId` che i servizi interni ricevono è **opaco**: `anon_{sessionId}` per una sessione anonima, `u_{24 hex}` per un account. I servizi non distinguono i due casi.
+- Sessione anonima: 1 giorno, si rinnova a ogni visita; alla scadenza il gateway cancella i dati su tutti i servizi.
+- Account: l'account Last.fm è l'identità (`internal/lastfm/link` restituisce il proprietario esistente, se c'è). Cookie da 30 giorni, rinnovato al massimo una volta al giorno; rifiutato se l'utente non è più in `users`.
+- Passaggio da anonimo ad account (`AccountService`, `UserDataTransferSubService`):
+  - `POST internal/users/{from}/transfer` su RetrieveDumpSpotify (upload finiti; `complete: false` finché un import gira) e Catalog (ascolti, con `IListeningEventTransfer`);
+  - poi DELETE dei derivati della sessione su Orchestrator e CityGenerator e trigger della pipeline per l'account;
+  - la sessione resta `Transferring` (mai cancellata dal cleanup) finché il passaggio non è completo; lo scheduler ritenta.
+- `anonymous_sessions` (e poi `users`) stanno nel **gateway** (Api), nel database condiviso `cityfy`.
+- **Limiti di richieste** (`RateLimiting/RateLimitSetup.cs`, sezione `RateLimits`):
+  - per rete del client: `POST session`, `POST uploads`, login Last.fm, tutto `api/v1`;
+  - per utente: upload al giorno;
+  - per tutto il server: upload in corso.
+  
+  In produzione l'IP arriva da Caddy (`Proxy:KnownNetworks`). I test usano `ApiFactory.RateLimits` (alti di default) e `X-Forwarded-For` per scegliere la rete.
+- Il cookie di una sessione anonima porta solo l'id (claim `cityfy:session`): `CityFyCookieEvents` controlla il documento a ogni richiesta, risponde `SESSION_EXPIRED` se non è più valida e riemette il cookie quando la rinnova. Lo sliding automatico del cookie è spento.
+- Gli ascolti in `listening_events` portano le sorgenti (`Sources`, valori in `ListeningSources`: `dump`, `lastfm`).
 - L'`_id` di un ascolto contiene lo `userId` (`ListeningEvent.BuildId`): il passaggio di proprietario non può fare un semplice update, deve reinserire con l'id nuovo e cancellare il vecchio.
 - **ListenBrainz:** API aperta compatibile Last.fm, ascolti con MBID, endpoint `playing-now`. Il suo import da Spotify può restare indietro di ore.
 
 ## Piani
 
 - **`PIANO_GENERAZIONE_CITTA.md`:** completato (fasi 0–6). Rimasto aperto: arrotondamento e compressione della risposta del dettaglio città (circa 280 KB per una città grande).
-- **`PIANO_LASTFM.md`:** rivisto e confermato il 2026-11-13, **fase 0 completata, prossima la fase 1** (sessioni anonime). Prevede:
+- **`PIANO_LASTFM.md`:** rivisto e confermato il 2026-11-13, **completato** (fasi 0–6). Ha portato:
   - nessun login obbligatorio: sessione anonima (`sessionId`) da 1 giorno che si rinnova a ogni visita, con i dati cancellati su tutti i servizi alla scadenza;
   - "Accedi con Last.fm" come unico login, con un account persistente; i dati della sessione anonima passano all'account;
   - nessuna migrazione degli utenti di oggi: i database si ricreano;
   - un servizio `Retrieve.LastFm` con lettura a cadenza adattiva e import dello storico;
   - deduplica tra Last.fm ed export;
   - brano in corso nel browser via SSE;
-  - rimozione del login Spotify e del retrieve Spotify.
+  - rimozione del login Spotify e del retrieve Spotify (il cookie di un login Spotify vecchio viene rifiutato).
+  Fatti anche il comando admin "cancella tutti i dati Last.fm" (`POST api/admin/lastfm/purge` con la frase di conferma; cancella tutti gli account con i loro dati) e l'avviso `LASTFM_SPOTIFY_NOT_SCROBBLING` (`me.lastFm.warning`). Rimasta aperta: l'approvazione scritta di Last.fm prima dell'apertura al pubblico.

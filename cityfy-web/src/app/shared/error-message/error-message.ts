@@ -5,7 +5,8 @@ import { errorMessage } from '../../core/errors/error-messages';
 
 /**
  * Error message reused everywhere (ERRORI_UI.md §7.1): message chosen by code, the matching
- * action, and a collapsed "Dettagli" with the traceId for support.
+ * action, and a collapsed "Dettagli" with the traceId for support. 'login' leads back to the welcome
+ * page; 'relink' logs in with Last.fm again.
  */
 @Component({
   selector: 'app-error-message',
@@ -16,8 +17,8 @@ import { errorMessage } from '../../core/errors/error-messages';
       <div class="actions">
         @switch (info().action) {
           @case ('retry') { <button type="button" (click)="retry.emit()">Riprova</button> }
-          @case ('login') { <button type="button" (click)="auth.login()">Accedi con Spotify</button> }
-          @case ('relink') { <button type="button" (click)="auth.login()">Ricollega Spotify</button> }
+          @case ('login') { <a routerLink="/welcome">Ricomincia</a> }
+          @case ('relink') { <button type="button" (click)="auth.loginWithLastFm()">Accedi di nuovo con Last.fm</button> }
           @case ('export-guide') { <a routerLink="/upload" fragment="guida">Come scaricare l'export giusto</a> }
           @case ('upload') { <a routerLink="/upload">Carica l'export</a> }
           @case ('home') { <a routerLink="/cities">Torna alle tue città</a> }

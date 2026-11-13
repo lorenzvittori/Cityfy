@@ -23,9 +23,15 @@ Skill specifica di questo progetto. Per il backend e il flusso dei dati vedi `Ci
 | `features/cities/cities.page.*` | `/cities`: tabella paginata, polling mentre qualcosa è in costruzione, limite di 10, "Aggiorna i dati" |
 | `features/cities/new-city.page.*` | `/cities/new`: nome, date con scorciatoie, tipo di mappa, albero di generi e sottogeneri, pannello custom (stili in `recipe-panel.scss`). Si può precompilare con query param (`from`, `to`, `layout`, `recipe`, `genres`, `subgenres`, `name`) |
 | `features/cities/city-detail.page.*` | `/cities/:cityId`: stato con polling, scena 3D, legenda esplorabile (quartiere → generi → artisti, con volo della camera), scheda artista, "Duplica e modifica" |
-| `features/cities/city-scene/` | Scena three.js: disegna `CityMap`, tema giorno e notte, minimappa, navigazione. Metodi pubblici `focusDistrict`, `focusBlock`, `focusArtist` |
+| `features/cities/city-scene/` | Scena three.js: disegna `CityMap`, tema giorno e notte, minimappa, navigazione. Metodi pubblici `focusDistrict`, `focusBlock`, `focusArtist`; input `selected` (contorno bianco) e `playing` (contorno dorato dell'artista in ascolto) |
 | `features/cities/city-form.ts`, `recipe.ts` | Logica pura del form: date (`to` esclusivo verso l'API), selezione dei generi, lettura e scrittura della stringa dei parametri (stesse regole del parser del backend, schema da `cities/recipe/schema`) |
 | `features/admin/` | Pannello admin (run della pipeline, import MusicBrainz, database) |
+| `features/welcome/` | `/welcome`: "Inizia senza account" (sessione anonima, `POST api/v1/session`) e "Accedi con Last.fm" (navigazione verso `auth/lastfm/login`). Mostra `?error=CODICE` e `?deleted=1` |
+| `features/account/` | `/account` ("I tuoi dati"): scadenza della sessione anonima con l'invito ad accedere con Last.fm, stato della lettura Last.fm e import dello storico (`lastfm-status.ts`), "Cancella i miei dati" |
+| `core/live/` | `LiveService` (`EventSource` su `api/v1/live`, segnale `nowPlaying`, solo per gli account; si collega dall'`App`) e `playingArtistId` (edificio dell'artista in ascolto: prima per MBID, poi per nome) |
+| `core/auth/` | `AuthService` (`me`, `isAnonymous`, `isAccount`, `start`, `loginWithLastFm`, `logout`), guard verso `/welcome`, interceptor dei 401 (`SESSION_EXPIRED`), `dateTimeLabel` ("domani alle 15:40") |
+
+**Attribuzione Last.fm:** le pagine di un account mostrano "powered by AudioScrobbler" con il link a Last.fm e il link al profilo dell'utente. È richiesto dai termini di Last.fm: non va tolto.
 
 ## Regole utili
 

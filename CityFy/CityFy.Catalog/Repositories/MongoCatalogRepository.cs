@@ -44,7 +44,7 @@ public sealed class MongoCatalogRepository : ICatalogRepository
         if (playedAt.ElementCount > 0)
             match.Add(nameof(ListeningEvent.PlayedAt), playedAt);
 
-        // -1 marks "duration unknown" (API plays): it counts as qualified
+        // -1 marks "duration unknown" (Last.fm scrobbles, already real plays): it counts as qualified
         var msOrUnknown = new BsonDocument("$ifNull", new BsonArray { "$MsPlayed", -1 });
 
         var pipeline = new[]
@@ -54,6 +54,7 @@ public sealed class MongoCatalogRepository : ICatalogRepository
             {
                 { "_id", "$ArtistName" },
                 { "ArtistUri", new BsonDocument("$max", "$ArtistUri") },
+                { "ArtistMbid", new BsonDocument("$max", "$ArtistMbid") },
                 { "Plays", new BsonDocument("$sum", 1L) },
                 { "QualifiedPlays", new BsonDocument("$sum", new BsonDocument("$cond", new BsonArray
                     {

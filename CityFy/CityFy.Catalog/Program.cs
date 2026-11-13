@@ -29,6 +29,8 @@ builder.Services.AddOptions<MusicBrainzServiceOptions>()
 // Reads 'listening_events', writes 'user_catalogs', 'user_artist_placements'
 builder.AddCityFyMongo();
 builder.Services.AddSingleton<ICatalogRepository, MongoCatalogRepository>();
+// Change of owner of the plays (anonymous session -> account): Catalog owns their deletion, and their moves
+builder.Services.AddListeningEventTransfer();
 
 // Service-to-service call: standard resilience (retry, circuit breaker, timeouts) is appropriate here
 builder.Services.AddHttpClient<IMusicBrainzClient, MusicBrainzClient>((sp, c) =>
@@ -45,6 +47,7 @@ builder.Services.AddSingleton<ICityBuildSubService, CityBuildSubService>();
 builder.Services.AddSingleton<ICatalogRefreshErrorSubService, CatalogRefreshErrorSubService>();
 builder.Services.AddSingleton<IListeningAggregationSubService, ListeningAggregationSubService>();
 builder.Services.AddSingleton<IUserDataDeletionSubService, UserDataDeletionSubService>();
+builder.Services.AddSingleton<IUserDataTransferSubService, UserDataTransferSubService>();
 builder.Services.AddSingleton<IArtistPlacementSubService, ArtistPlacementSubService>();
 builder.Services.AddSingleton<IUserCatalogStoreSubService, UserCatalogStoreSubService>();
 builder.Services.AddSingleton<IDateRangeSubService, DateRangeSubService>();

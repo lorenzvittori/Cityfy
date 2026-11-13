@@ -13,12 +13,16 @@ public static class ErrorCodes
     public const string ServiceUnavailable = "SERVICE_UNAVAILABLE";
     /// <summary>Unknown endpoint/resource without a more specific code.</summary>
     public const string NotFound = "NOT_FOUND";
-    /// <summary>No session (or expired): log in with Spotify.</summary>
+    /// <summary>No session (or its cookie expired): start again from the welcome page.</summary>
     public const string Unauthenticated = "UNAUTHENTICATED";
+    /// <summary>The anonymous session still had a cookie but expired (or its data was deleted): its data is gone.</summary>
+    public const string SessionExpired = "SESSION_EXPIRED";
     /// <summary>Logged in, but without the required role (e.g. admin pages as a normal user).</summary>
     public const string Forbidden = "FORBIDDEN";
     /// <summary>Other 4xx without a more specific code (e.g. method not allowed).</summary>
     public const string RequestRejected = "REQUEST_REJECTED";
+    /// <summary>Too many requests from this network (or uploads by this user / on the server): retry after "retryAfterSeconds".</summary>
+    public const string RateLimited = "RATE_LIMITED";
 
     // --- Upload of the Spotify export (Retrieve.Dump.Spotify) -------------
     public const string UploadFileMissing = "UPLOAD_FILE_MISSING";
@@ -32,17 +36,25 @@ public static class ErrorCodes
     public const string UploadUnreadableFiles = "UPLOAD_UNREADABLE_FILES";
     public const string UploadProcessingFailed = "UPLOAD_PROCESSING_FAILED";
 
-    // --- Spotify account and retrieve (Retrieve.Spotify) ------------------
-    public const string SpotifyAuthDenied = "SPOTIFY_AUTH_DENIED";
-    public const string SpotifyLoginExpired = "SPOTIFY_LOGIN_EXPIRED";
-    public const string SpotifyTokenExchangeFailed = "SPOTIFY_TOKEN_EXCHANGE_FAILED";
-    public const string SpotifyAccountNotLinked = "SPOTIFY_ACCOUNT_NOT_LINKED";
-    /// <summary>Access revoked, token expired for good or no longer decryptable: log in again.</summary>
-    public const string SpotifyReauthRequired = "SPOTIFY_REAUTH_REQUIRED";
-    public const string SpotifyRateLimited = "SPOTIFY_RATE_LIMITED";
-    public const string SpotifyUnavailable = "SPOTIFY_UNAVAILABLE";
-    public const string SpotifyRetrieveFailed = "SPOTIFY_RETRIEVE_FAILED";
-    public const string RetrieveJobNotFound = "RETRIEVE_JOB_NOT_FOUND";
+    // --- Last.fm account, history import and reading (Retrieve.LastFm) ----
+    /// <summary>No Last.fm account linked to this user.</summary>
+    public const string LastFmNotLinked = "LASTFM_NOT_LINKED";
+    /// <summary>Authorization refused or expired (token older than 60 minutes, or used twice), or access revoked on Last.fm: link again.</summary>
+    public const string LastFmAuthFailed = "LASTFM_AUTH_FAILED";
+    /// <summary>Last.fm does not answer or failed temporarily (also a problem with the API key of CityFy).</summary>
+    public const string LastFmUnavailable = "LASTFM_UNAVAILABLE";
+    /// <summary>Last.fm limits the requests of CityFy (error 29): reading pauses and resumes on its own.</summary>
+    public const string LastFmRateLimited = "LASTFM_RATE_LIMITED";
+    /// <summary>The user's plays are hidden on Last.fm (private profile).</summary>
+    public const string LastFmUserPrivate = "LASTFM_USER_PRIVATE";
+    public const string LastFmImportNotFound = "LASTFM_IMPORT_NOT_FOUND";
+    /// <summary>
+    /// Not an error, a hint on the account: no new scrobble for days. Spotify may no longer send the
+    /// plays to Last.fm (connection to check in the Last.fm settings).
+    /// </summary>
+    public const string LastFmSpotifyNotScrobbling = "LASTFM_SPOTIFY_NOT_SCROBBLING";
+    /// <summary>The import of the Last.fm history stopped because of an unexpected error.</summary>
+    public const string LastFmImportFailed = "LASTFM_IMPORT_FAILED";
 
     // --- City (Catalog) -----------------------------------------------
     /// <summary>The catalog refresh or the generation of a city failed (unexpected error).</summary>
@@ -82,7 +94,7 @@ public static class ErrorCodes
     public const string MbGenreNotFound = "MB_GENRE_NOT_FOUND";
 
     // --- Cancellation (admin) ------------------------------------------------
-    /// <summary>Status code of an upload / Spotify sync / city build / import stopped by an administrator.</summary>
+    /// <summary>Status code of an upload / Last.fm history import / city build / import stopped by an administrator.</summary>
     public const string ProcessCancelled = "PROCESS_CANCELLED";
     /// <summary>Cancel requested for something already finished (or not running).</summary>
     public const string ProcessNotCancellable = "PROCESS_NOT_CANCELLABLE";

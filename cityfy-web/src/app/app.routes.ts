@@ -5,7 +5,9 @@ import { authGuard } from './core/auth/auth.guard';
 export const routes: Routes = [
   { path: '', pathMatch: 'full', redirectTo: 'cities' },
 
-  { path: 'login', loadComponent: () => import('./features/login/login.page').then((m) => m.LoginPage), title: 'Cityfy · Accedi' },
+  { path: 'welcome', loadComponent: () => import('./features/welcome/welcome.page').then((m) => m.WelcomePage), title: 'Cityfy' },
+  // old address of the login page (bookmarks)
+  { path: 'login', redirectTo: 'welcome' },
   {
     path: 'cities',
     canActivate: [authGuard],
@@ -36,7 +38,7 @@ export const routes: Routes = [
     path: 'account',
     canActivate: [authGuard],
     loadComponent: () => import('./features/account/account.page').then((m) => m.AccountPage),
-    title: 'Cityfy · Il tuo account',
+    title: 'Cityfy · I tuoi dati',
   },
   {
     path: 'admin/login',

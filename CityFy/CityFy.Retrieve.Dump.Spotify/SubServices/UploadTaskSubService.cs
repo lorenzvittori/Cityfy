@@ -88,5 +88,12 @@ public sealed class UploadTaskSubService(IStreamingRepository repo, Cancellation
 
     public Task<long> DeleteAllAsync(string userId, CancellationToken ct) => repo.DeleteTasksByUserAsync(userId, ct);
 
+    public async Task<(long Moved, int StillImporting)> TransferAsync(string fromUserId, string toUserId, CancellationToken ct)
+    {
+        var moved = await repo.TransferFinishedTasksAsync(fromUserId, toUserId, ct);
+        var importing = (await repo.GetTasksByUserAsync(fromUserId, ct)).Count(t => !IsFinished(t));
+        return (moved, importing);
+    }
+
     public Task DropLegacyAsync(string uploadId, CancellationToken ct) => repo.DropLegacyUploadAsync(uploadId, ct);
 }

@@ -5,7 +5,8 @@ import { catchError, throwError } from 'rxjs';
 import { AuthService } from './auth.service';
 
 /**
- * A 401 means the session expired: back to the right login page.
+ * A 401 means there is no session any more: back to the welcome page with the reason
+ * (SESSION_EXPIRED: the anonymous session expired and its data was deleted), or to the admin login.
  * Excluded: the calls used to probe a session (/me) and the admin login itself.
  */
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
@@ -20,7 +21,8 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
           router.navigate(['/admin/login']);
         } else {
           auth.clear();
-          router.navigate(['/login'], { queryParams: { returnUrl: router.url, error: 'UNAUTHENTICATED' } });
+          const code = typeof error.error?.code === 'string' ? error.error.code : 'UNAUTHENTICATED';
+          router.navigate(['/welcome'], { queryParams: { returnUrl: router.url, error: code } });
         }
       }
       return throwError(() => error);

@@ -45,6 +45,12 @@ public interface IUploadTaskSubService
     /// <summary>Every upload task of the user. Returns how many.</summary>
     Task<long> DeleteAllAsync(string userId, CancellationToken ct);
 
+    /// <summary>
+    /// Finished uploads → new owner. Uploads still importing stay (they write plays for the old
+    /// owner): the count of those is returned, and the transfer has to be repeated once they end.
+    /// </summary>
+    Task<(long Moved, int StillImporting)> TransferAsync(string fromUserId, string toUserId, CancellationToken ct);
+
     /// <summary>Drops the legacy per-upload collection, if any.</summary>
     Task DropLegacyAsync(string uploadId, CancellationToken ct);
 }

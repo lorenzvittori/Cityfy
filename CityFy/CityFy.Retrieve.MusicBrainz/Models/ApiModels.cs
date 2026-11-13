@@ -5,6 +5,9 @@ public static class ArtistMatchTypes
     /// <summary>Matched through the Spotify artist link stored in MusicBrainz (reliable).</summary>
     public const string SpotifyUrl = "spotify-url";
 
+    /// <summary>Matched by MusicBrainz artist id, given by the source (Last.fm): exact.</summary>
+    public const string Mbid = "mbid";
+
     /// <summary>Matched by name (case-insensitive); among homonyms the one with most genre votes wins.</summary>
     public const string Name = "name";
 
@@ -18,6 +21,9 @@ public sealed class ResolveArtistsRequest
 
     /// <summary>Artist names, used when the Spotify id is unknown (plays from the export).</summary>
     public List<string>? Names { get; set; }
+
+    /// <summary>MusicBrainz artist ids (gid), when the source of the plays gives them (Last.fm).</summary>
+    public List<string>? Mbids { get; set; }
 }
 
 public sealed record ResolvedGenre(int Id, string Name, int Votes);
@@ -35,7 +41,8 @@ public sealed record ResolvedArtist(
 
 public sealed record ResolveArtistsResponse(
     IReadOnlyList<ResolvedArtist> BySpotifyId,
-    IReadOnlyList<ResolvedArtist> ByName);
+    IReadOnlyList<ResolvedArtist> ByName,
+    IReadOnlyList<ResolvedArtist>? ByMbid = null);
 
 public sealed record GenreNode(int Id, string Gid, string Name);
 

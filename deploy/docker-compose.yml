@@ -57,10 +57,10 @@ services:
   # The .NET images run as the non-root user 1654: give it the data volumes once
   init-volumes:
     image: busybox
-    command: chown -R 1654:1654 /keys-api /keys-spotify /uploads /mb-dumps
+    command: chown -R 1654:1654 /keys-api /keys-lastfm /uploads /mb-dumps
     volumes:
       - api-keys:/keys-api
-      - spotify-keys:/keys-spotify
+      - lastfm-keys:/keys-lastfm
       - uploads:/uploads
       - mb-dumps:/mb-dumps
 
@@ -73,11 +73,15 @@ services:
       <<: *env
       Frontend__BaseUrl: https://${DOMAIN}
       DataProtection__KeysPath: /data/keys # session cookie keys: survive deploys
+      # Caddy (web) is on a Docker network: its X-Forwarded-For gives the real client address,
+      # which the rate limits count on (otherwise every user would share Caddy's address)
+      Proxy__KnownNetworks__0: 172.16.0.0/12
+      Proxy__KnownNetworks__1: 192.168.0.0/16
       services__Catalog__http__0: http://catalog:8080
       services__CityGenerator__http__0: http://city-generator:8080
       services__Orchestrator__http__0: http://orchestrator:8080
-      services__RetrieveSpotify__http__0: http://retrieve-spotify:8080
       services__RetrieveDumpSpotify__http__0: http://retrieve-dump-spotify:8080
+      services__RetrieveLastFm__http__0: http://retrieve-lastfm:8080
       services__RetrieveMusicBrainz__http__0: http://retrieve-musicbrainz:8080
     volumes: [api-keys:/data/keys]
 
@@ -100,16 +104,6 @@ services:
     image: ${REGISTRY}/cityfy-orchestrator:${TAG}
     environment: *env
 
-  retrieve-spotify:
-    <<: *dotnet
-    image: ${REGISTRY}/cityfy-retrieve-spotify:${TAG}
-    environment:
-      <<: *env
-      Spotify__ClientSecret: ${SPOTIFY_CLIENT_SECRET}
-      Spotify__RedirectUri: https://${DOMAIN}/api/v1/auth/callback
-      DataProtection__KeysPath: /data/keys # encrypts the stored refresh tokens: must never be lost
-    volumes: [spotify-keys:/data/keys]
-
   retrieve-dump-spotify:
     <<: *dotnet
     image: ${REGISTRY}/cityfy-retrieve-dump-spotify:${TAG}
@@ -117,6 +111,17 @@ services:
       <<: *env
       Upload__RootPath: /data/uploads
     volumes: [uploads:/data/uploads]
+
+  retrieve-lastfm:
+    <<: *dotnet
+    image: ${REGISTRY}/cityfy-retrieve-lastfm:${TAG}
+    environment:
+      <<: *env
+      LastFm__ApiKey: ${LASTFM_API_KEY}
+      LastFm__SharedSecret: ${LASTFM_SHARED_SECRET}
+      LastFm__CallbackUrl: https://${DOMAIN}/api/v1/auth/lastfm/callback
+      DataProtection__KeysPath: /data/keys # encrypts the stored session keys: must never be lost
+    volumes: [lastfm-keys:/data/keys]
 
   retrieve-musicbrainz:
     <<: *dotnet
@@ -153,7 +158,7 @@ volumes:
   mongo-data:
   rabbitmq-data:
   api-keys:
-  spotify-keys:
+  lastfm-keys:
   uploads:
   mb-dumps:
   caddy-data:

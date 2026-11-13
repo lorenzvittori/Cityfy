@@ -46,4 +46,13 @@ public sealed class UserDataService(
             ["uploadFoldersNotRemoved"] = foldersLeft,
         });
     }
+
+    public async Task<UserDataTransfer> TransferAsync(string fromUserId, string toUserId, CancellationToken ct)
+    {
+        var (moved, importing) = await tasks.TransferAsync(fromUserId, toUserId, ct);
+        logger.LogInformation("Uploads of user {From} moved to {To}: {Moved} ({Importing} still importing)", fromUserId, toUserId, moved, importing);
+        return new UserDataTransfer(ServiceName,
+            new Dictionary<string, long> { ["uploads"] = moved, ["uploadsStillImporting"] = importing },
+            Complete: importing == 0);
+    }
 }

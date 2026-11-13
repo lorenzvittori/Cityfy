@@ -15,14 +15,19 @@ const MESSAGES: Record<string, ErrorMessage> = {
   INTERNAL_ERROR: { message: 'Qualcosa è andato storto. Riprova tra poco.', action: 'retry' },
   SERVICE_UNAVAILABLE: { message: 'Il servizio non è raggiungibile in questo momento. Riprova tra qualche minuto.', action: 'retry' },
   VALIDATION_FAILED: { message: 'Alcuni dati non sono validi. Controlla e riprova.', action: 'none' },
-  UNAUTHENTICATED: { message: 'Accedi con Spotify per vedere la tua città.', action: 'login' },
+  UNAUTHENTICATED: { message: 'Inizia per creare la tua città.', action: 'login' },
+  SESSION_EXPIRED: {
+    message: 'La tua sessione è scaduta e i dati collegati sono stati cancellati. Puoi ricominciare quando vuoi.',
+    action: 'login',
+  },
   FORBIDDEN: { message: 'Non hai i permessi per questa pagina.', action: 'home' },
   NOT_FOUND: { message: 'Non abbiamo trovato quello che cercavi.', action: 'home' },
   REQUEST_REJECTED: { message: 'Operazione non consentita.', action: 'none' },
+  RATE_LIMITED: { message: 'Troppe richieste in poco tempo: riprova tra qualche minuto.', action: 'retry' },
 
   // --- Upload of the export
   UPLOAD_FILE_MISSING: { message: 'Seleziona il file zip scaricato da Spotify.', action: 'none' },
-  UPLOAD_USER_MISSING: { message: 'Collega prima il tuo account Spotify.', action: 'login' },
+  UPLOAD_USER_MISSING: { message: 'Per caricare l\'export inizia una sessione o accedi con Last.fm.', action: 'login' },
   UPLOAD_NOT_ZIP: { message: 'Il file deve essere uno .zip, così come lo invia Spotify. Non estrarlo prima di caricarlo.', action: 'none' },
   UPLOAD_TOO_LARGE: { message: 'Il file è troppo grande (massimo 200 MB).', action: 'export-guide' },
   UPLOAD_INVALID_ZIP: { message: 'Il file sembra danneggiato. Scaricalo di nuovo da Spotify e riprova.', action: 'export-guide' },
@@ -34,19 +39,21 @@ const MESSAGES: Record<string, ErrorMessage> = {
   UPLOAD_PROCESSING_FAILED: { message: 'Non siamo riusciti a importare i tuoi ascolti. Riprova più tardi.', action: 'retry' },
   UPLOAD_NOT_FOUND: { message: 'Non troviamo questo caricamento.', action: 'upload' },
 
-  // --- Spotify account
-  SPOTIFY_AUTH_DENIED: { message: 'Senza il permesso di Spotify non possiamo leggere i tuoi ascolti recenti.', action: 'login' },
-  SPOTIFY_LOGIN_EXPIRED: { message: 'Il collegamento è scaduto. Riprova.', action: 'login' },
-  SPOTIFY_TOKEN_EXCHANGE_FAILED: { message: 'Spotify non ha completato il collegamento. Riprova tra poco.', action: 'login' },
-  SPOTIFY_ACCOUNT_NOT_LINKED: { message: 'Il tuo account Spotify non è collegato.', action: 'login' },
-  SPOTIFY_REAUTH_REQUIRED: {
-    message: 'Il collegamento con Spotify non è più attivo. Ricollega l\'account per continuare ad aggiornare la città.',
+  // --- Last.fm account ('relink': log in with Last.fm again)
+  LASTFM_NOT_LINKED: { message: 'Il tuo account Last.fm non è collegato.', action: 'relink' },
+  LASTFM_AUTH_FAILED: { message: 'Il collegamento con Last.fm non è riuscito o non è più attivo. Ricollega l\'account.', action: 'relink' },
+  LASTFM_UNAVAILABLE: { message: 'Last.fm non risponde in questo momento. Riproveremo più tardi.', action: 'retry' },
+  LASTFM_RATE_LIMITED: { message: 'Last.fm è momentaneamente occupato: gli ascolti arriveranno con un po\' di ritardo.', action: 'none' },
+  LASTFM_USER_PRIVATE: {
+    message: 'I tuoi ascolti su Last.fm sono privati: rendili visibili nelle impostazioni di Last.fm, poi ricollega l\'account.',
     action: 'relink',
   },
-  SPOTIFY_RATE_LIMITED: { message: 'Spotify è momentaneamente occupato. Riproveremo in automatico.', action: 'none' },
-  SPOTIFY_UNAVAILABLE: { message: 'Spotify non risponde in questo momento. Riproveremo più tardi.', action: 'none' },
-  SPOTIFY_RETRIEVE_FAILED: { message: 'Non siamo riusciti ad aggiornare i tuoi ascolti.', action: 'retry' },
-  RETRIEVE_JOB_NOT_FOUND: { message: 'Non troviamo questo aggiornamento.', action: 'none' },
+  LASTFM_SPOTIFY_NOT_SCROBBLING: {
+    message: 'Da qualche giorno non riceviamo ascolti nuovi da Last.fm. Se hai ascoltato musica su Spotify, controlla che Spotify sia ancora collegato a Last.fm.',
+    action: 'none',
+  },
+  LASTFM_IMPORT_NOT_FOUND: { message: 'Non troviamo questa importazione.', action: 'none' },
+  LASTFM_IMPORT_FAILED: { message: 'Non siamo riusciti a importare tutto lo storico di Last.fm. Riprova più tardi.', action: 'retry' },
 
   // --- City
   CITY_INVALID_RANGE: {

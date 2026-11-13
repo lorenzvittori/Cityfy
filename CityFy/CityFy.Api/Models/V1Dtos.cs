@@ -5,7 +5,73 @@ namespace CityFy.Api.Models;
 // Public contract of the API (v1). Kept separate from the internal documents (CityModel, ...)
 // so that internal changes do not break the frontend. Errors: ProblemDetails with "code" (ERRORI_UI.md).
 
-public sealed record MeDto(string UserId, string? DisplayName, DateTime? LinkedAt, DateTime? LastSyncAt);
+/// <summary>Values of <see cref="MeDto.Kind"/> and <see cref="SessionDto.Kind"/>.</summary>
+public static class SessionKinds
+{
+    /// <summary>No account: the data is deleted at ExpiresAt unless the user comes back before.</summary>
+    public const string Anonymous = "anonymous";
+    /// <summary>CityFy account, logged in with Last.fm: the data stays until the user deletes it.</summary>
+    public const string LastFm = "lastfm";
+}
+
+/// <summary>
+/// Who is using the app. Anonymous: DisplayName/LinkedAt/LastSyncAt null, ExpiresAt set (moves forward
+/// with every visit). Last.fm: DisplayName = Last.fm user name, LastSyncAt = last reading, LastFm set.
+/// </summary>
+public sealed record MeDto(
+    string Kind,
+    string UserId,
+    string? DisplayName,
+    DateTime? LinkedAt,
+    DateTime? LastSyncAt,
+    DateTime? ExpiresAt,
+    LastFmStatusDto? LastFm = null);
+
+/// <summary>
+/// Reading of the Last.fm account. Status: Active | Suspended (ErrorCode LASTFM_AUTH_FAILED or
+/// LASTFM_USER_PRIVATE: log in again). LastScrobbleAt: newest play received. HistoryImportId: the
+/// import of the history (GET api/v1/lastfm/imports/{id}). Warning: a hint, not an error
+/// (LASTFM_SPOTIFY_NOT_SCROBBLING: no new play for days, check the Spotify connection on Last.fm).
+/// </summary>
+public sealed record LastFmStatusDto(
+    string Username,
+    string ProfileUrl,
+    string Status,
+    string? ErrorCode,
+    DateTime LastScrobbleAt,
+    DateTime? LastPolledAt,
+    string? HistoryImportId,
+    string? Warning = null);
+
+/// <summary>
+/// Event "now-playing" of api/v1/live. Playing false: nothing is playing (the other fields null).
+/// ArtistMbid matches the ArtistId of the buildings; TrackUrl: page of the track on Last.fm (attribution).
+/// </summary>
+public sealed record NowPlayingDto(
+    bool Playing,
+    string? Artist,
+    string? Track,
+    string? Album,
+    string? ArtistMbid,
+    DateTime? StartedAt,
+    string? TrackUrl)
+{
+    public static readonly NowPlayingDto Nothing = new(false, null, null, null, null, null, null);
+}
+
+/// <summary>Import of the Last.fm history: Pending, InProgress (progress), Done, Failed, Cancelled (+ errorCode).</summary>
+public sealed record LastFmImportDto(
+    string Id,
+    string Status,
+    int NewPlays,
+    double? ProgressPercent,
+    string? ProgressDetail,
+    DateTime StartedAt,
+    DateTime? CompletedAt,
+    string? ErrorCode);
+
+/// <summary>Session started (or already open). ExpiresAt: only for anonymous sessions.</summary>
+public sealed record SessionDto(string Kind, DateTime? ExpiresAt);
 
 // --- City -------------------------------------------------------------------
 
@@ -102,9 +168,7 @@ public sealed record SubgenreOptionDto(int GenreId, string Name, long QualifiedP
 
 public sealed record UploadAcceptedDto(string UploadId);
 
-public sealed record SyncAcceptedDto(string JobId);
-
-/// <summary>Status of an upload or of a Spotify sync: Pending, InProgress, Done, Failed, Cancelled (+ errorCode).</summary>
+/// <summary>Status of an upload: Pending, InProgress, Done, Failed, Cancelled (+ errorCode).</summary>
 public sealed record ImportStatusDto(string Id, string Status, int NewPlays, DateTime StartedAt, DateTime? CompletedAt, string? ErrorCode);
 
 /// <summary>City build: Pending, Building, Done, Failed (+ errorCode).</summary>

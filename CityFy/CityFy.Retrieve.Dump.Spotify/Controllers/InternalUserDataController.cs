@@ -14,4 +14,10 @@ public sealed class InternalUserDataController(IUserDataService userData) : Cont
     [HttpDelete("{userId}/data")]
     public async Task<ActionResult<UserDataDeletion>> Delete(string userId, CancellationToken ct) =>
         Ok(await userData.DeleteAsync(userId, ct));
+
+    // POST internal/users/{userId}/transfer { toUserId } — the finished uploads change owner
+    // (complete: false while an import is still running)
+    [HttpPost("{userId}/transfer")]
+    public async Task<ActionResult<UserDataTransfer>> Transfer(string userId, [FromBody] UserDataTransferRequest request, CancellationToken ct) =>
+        Ok(await userData.TransferAsync(userId, request.ToUserId, ct));
 }

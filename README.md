@@ -19,13 +19,14 @@ L’obiettivo è costruire una “città dell’ascolto” partendo da dati prov
 - Docker Desktop **avviato**: MongoDB, SQL Server e RabbitMQ girano come container gestiti da Aspire.
 
 ### Configurazione (una volta sola)
-Lo Spotify Client Secret è un parametro dell'AppHost. Si imposta con:
+Servono la API key e lo shared secret di un'applicazione Last.fm (gratuita, da creare su https://www.last.fm/api/account/create con callback `http://127.0.0.1:4200/api/v1/auth/lastfm/callback`):
 
 ```powershell
-dotnet user-secrets set "Parameters:spotify-client-secret" "<client secret>" --project CityFy\CityFy.AppHost
+dotnet user-secrets set "Parameters:lastfm-api-key" "<api key>" --project CityFy\CityFy.AppHost
+dotnet user-secrets set "Parameters:lastfm-shared-secret" "<shared secret>" --project CityFy\CityFy.AppHost
 ```
 
-In alternativa, la dashboard di Aspire lo chiede al primo avvio. Le password di Mongo, SQL Server e RabbitMQ le genera Aspire e le salva negli user-secrets dell'AppHost: non vanno configurate a mano.
+In alternativa, la dashboard di Aspire li chiede al primo avvio. Le password di Mongo, SQL Server e RabbitMQ le genera Aspire e le salva negli user-secrets dell'AppHost: non vanno configurate a mano.
 
 ### Avvio
 ```powershell
@@ -45,10 +46,14 @@ Il frontend parla solo con **Api** (`https://localhost:7300`, Swagger su `/swagg
 
 | Endpoint | Descrizione |
 |---|---|
-| `GET /api/v1/auth/login?returnUrl=/...` | Accesso con Spotify (navigazione del browser, non fetch) |
-| `GET /api/v1/auth/callback` | Redirect URI di Spotify: apre la sessione (cookie `cityfy.auth`) |
-| `POST /api/v1/auth/logout` | Chiude la sessione |
-| `GET /api/v1/me` | Utente corrente e ultimo aggiornamento da Spotify |
+| `POST /api/v1/session` | "Inizia senza account": apre una sessione anonima (cookie `cityfy.auth`) o restituisce quella già aperta |
+| `GET /api/v1/auth/lastfm/login?returnUrl=/...` | "Accedi con Last.fm" (navigazione del browser, non fetch) |
+| `GET /api/v1/auth/lastfm/callback?token=` | Callback dell'applicazione Last.fm: crea o ritrova l'account, sposta i dati della sessione anonima e apre la sessione dell'account (30 giorni, rinnovata a ogni visita) |
+| `POST /api/v1/auth/logout` | Chiude la sessione di un account |
+| `GET /api/v1/me` | Chi sta usando l'app: sessione anonima con la sua scadenza (`kind: anonymous`, `expiresAt`) o account (`kind: lastfm`, `lastFm` con lo stato della lettura) |
+| `GET /api/v1/lastfm/imports/{id}` | Avanzamento dell'import dello storico Last.fm |
+| `GET /api/v1/live` | Server-Sent Events (solo account): `now-playing` con il brano in ascolto adesso, `ping` ogni 25 s |
+| `DELETE /api/v1/me/data` | Cancella subito tutti i dati e chiude la sessione |
 | `GET /api/v1/cities?page=&pageSize=` | Città salvate (paginate) |
 | `POST /api/v1/cities` | Genera una città (date, mappa, generi; 202) |
 | `GET /api/v1/cities/{id}`, `DELETE`, `POST .../cancel` | Città (dati + mappa), cancellazione, annullamento |
@@ -56,22 +61,45 @@ Il frontend parla solo con **Api** (`https://localhost:7300`, Swagger su `/swagg
 | `GET /api/v1/city/genres?from=&to=` | Generi e sottogeneri ascoltati, per il form |
 | `POST /api/v1/city/rebuild` | Aggiorna subito il catalogo artisti |
 | `POST /api/v1/uploads`, `GET /api/v1/uploads/{id}` | Caricamento dell'export e suo stato |
-| `POST /api/v1/spotify/sync`, `GET /api/v1/spotify/sync/{id}` | Aggiornamento immediato da Spotify |
 | `GET /api/v1/pipeline/runs` | Stato degli aggiornamenti del catalogo artisti |
 
-**Configurazione del login Spotify.** Registrare sulla dashboard Spotify la redirect URI `http://127.0.0.1:4200/api/v1/auth/callback`. È già il valore di `Spotify:RedirectUri` negli appsettings di Retrieve.Spotify, e ngrok non serve. Spotify accetta `http` solo sull'indirizzo di loopback `127.0.0.1`, non su `localhost`.
+**Last.fm (servizio RetrieveLastFm).** Collega un account Last.fm a un utente (`POST internal/lastfm/link` con il token del callback), importa tutto lo storico a pagine da 200 (job annullabile che riprende dopo un riavvio) e legge gli ascolti nuovi con una cadenza che si adatta: 15 s mentre l'utente ascolta, 2 min se ha ascoltato nell'ultima ora, 15 min altrimenti. Tutte le richieste a Last.fm passano da un unico limitatore (`LastFm:MaxRequestsPerSecond`, default 4); con l'errore 29 la lettura si ferma, con una pausa che raddoppia fino a 10 minuti. Pannello admin: scheda **Last.fm e upload** (API `api/admin/lastfm/accounts`, `lastfm/imports`, `lastfm/accounts/{userId}/import`, `.../poll`, `lastfm/imports/{id}/cancel`).
+
+**Brano in corso.** Per gli account la barra in alto mostra "♪ Artista – Brano", con il link alla pagina del brano su Last.fm. Nel dettaglio di una città, se l'artista c'è, il suo edificio ha un contorno dorato e la legenda lo segna.
+- Il dato arriva da Retrieve.LastFm (`NowPlayingChanged`) al gateway, che lo manda in SSE su `api/v1/live`.
+- Finché una pagina è aperta, il gateway manda `UserActive` ogni minuto e l'utente viene letto ogni 15 s.
+
+**Ascolti da più fonti.** Lo stesso ascolto arrivato dall'export di Spotify e da Last.fm resta un solo documento in `listening_events`. Due ascolti si considerano lo stesso se hanno stesso artista e brano normalizzati e un inizio entro 2 minuti. Il documento tiene le due sorgenti, la durata dell'export e l'MBID dell'artista di Last.fm, che Catalog usa per trovare l'artista su MusicBrainz prima di provare col nome.
+
+**Limiti di richieste.** Sezione `RateLimits` di Api, con i limiti per rete (IPv4 o IPv6 /64) su `api/v1`:
+- sessioni nuove, upload e login Last.fm per ora;
+- tutte le richieste per minuto;
+- upload per utente al giorno e upload in corso sul server.
+
+Oltre il limite la risposta è `429 RATE_LIMITED` con `Retry-After`. In locale le richieste arrivano tutte da `127.0.0.1`, quindi condividono un solo contatore.
+
+**Account (Accedi con Last.fm).** L'account Last.fm è l'identità: lo stesso account Last.fm ritrova sempre lo stesso utente CityFy (`users`, id `u_…`). Se nel browser c'è una sessione anonima ancora valida, al login i suoi dati passano all'account:
+- upload e ascolti cambiano proprietario (`POST internal/users/{from}/transfer` su RetrieveDumpSpotify e Catalog);
+- run della pipeline e città della sessione si cancellano;
+- il catalogo dell'account si ricalcola, e la prima città arriva da sola.
+
+Se un servizio non risponde, o un import della sessione è ancora in corso, il login riesce comunque e il passaggio si ritenta ogni 10 minuti.
+
+**Sessioni senza account.** Non serve registrarsi: "Inizia senza account" apre una sessione anonima. Verso i servizi interni il proprietario dei dati è `anon_{sessionId}`. La sessione scade **1 giorno dopo l'ultima visita** (ogni visita la rinnova, al massimo una volta l'ora). Alla scadenza un job del gateway cancella i dati su tutti i servizi, ogni 10 minuti, e ritenta se un servizio non risponde. Configurazione nella sezione `Sessions` di Api (`Lifetime`, `RenewAfter`, `CleanupIntervalMinutes`, `CleanupBatchSize`); collection `anonymous_sessions`.
+
+**Callback di Last.fm.** Nell'applicazione Last.fm la callback è `http://127.0.0.1:4200/api/v1/auth/lastfm/callback`, cioè il valore di `LastFm:CallbackUrl` negli appsettings di Retrieve.LastFm.
 
 **Accesso pubblico con ngrok (opzionale).** Se in `CityFy.AppHost/appsettings.json` è valorizzato `Ngrok:Url` (per esempio `https://<nome>.ngrok-free.dev`), l'AppHost avvia anche la risorsa **Ngrok**. È la CLI `ngrok` locale, con il tuo authtoken, e apre un tunnel verso il **frontend** (porta 4200). In questo caso:
-- la redirect URI di Spotify e l'indirizzo del frontend passano automaticamente all'URL ngrok;
-- sulla dashboard Spotify va registrato anche `<Ngrok:Url>/api/v1/auth/callback`;
-- l'app va aperta dall'URL ngrok: il login da `127.0.0.1` non funziona più, perché Spotify rimanderebbe all'URL ngrok.
+- la callback di Last.fm e l'indirizzo del frontend passano automaticamente all'URL ngrok;
+- nell'applicazione Last.fm la callback va cambiata in `<Ngrok:Url>/api/v1/auth/lastfm/callback`;
+- l'app va aperta dall'URL ngrok: il login da `127.0.0.1` non funziona più, perché Last.fm rimanderebbe all'URL ngrok.
 
 Lasciando `Ngrok:Url` vuoto si torna al funzionamento solo locale su `127.0.0.1`.
 
 ### Frontend (cityfy-web)
-L'app Angular (`cityfy-web/`, nella root del repo) parte insieme al resto con l'AppHost (risorsa **Web**). L'indirizzo è **http://127.0.0.1:4200**: va usato proprio `127.0.0.1`, non `localhost`, altrimenti il login Spotify non torna sulla stessa origine.
+L'app Angular (`cityfy-web/`, nella root del repo) parte insieme al resto con l'AppHost (risorsa **Web**). L'indirizzo è **http://127.0.0.1:4200**: va usato proprio `127.0.0.1`, non `localhost`, altrimenti la callback di Last.fm non torna sulla stessa origine del cookie.
 
-Il dev server inoltra `/api` all'API (`proxy.conf.mjs`). In questo modo browser, callback di Spotify e cookie di sessione stanno sulla stessa origine e non serve configurare CORS.
+Il dev server inoltra `/api` all'API (`proxy.conf.mjs`). In questo modo browser, callback di Last.fm e cookie di sessione stanno sulla stessa origine e non serve configurare CORS.
 
 Per avviarlo da solo, con l'API già in esecuzione:
 ```powershell
@@ -94,14 +122,14 @@ Il pannello è attivo solo in Development (`appsettings.Development.json` dell'A
 | Servizi e log | Stato `/health` di ogni servizio, link a log strutturati e tracce (dashboard Aspire) e a RabbitMQ (code e DLQ) |
 | MusicBrainz | Avvio dell'import del catalogo generi e avanzamento |
 | Pipeline | Esecuzioni dell'orchestratore di tutti gli utenti, aggiornamento manuale del catalogo artisti di un utente |
-| Spotify e upload | Account collegati con sincronizzazione su richiesta, elenco degli upload con stato e codice d'errore, **cancellazione di tutti i dati di un utente** (anche indicando lo userId a mano) |
+| Last.fm e upload | Account Last.fm collegati (stato, ultima lettura, brano in ascolto) con **Leggi ora** e **Reimporta storico**, import dello storico, upload con stato e codice d'errore, **cancellazione di tutti i dati di un utente** (anche indicando a mano un id `u_…` o `anon_…`) |
 | Database | Sola lettura con paginazione: collection Mongo (`cityfy`) e tabelle SQL Server (`musicbrainz`). I campi sensibili (token, secret, password) sono oscurati |
 
 ### Primo giro completo
 1. **Generi:** `POST /api/retrieve` su **RetrieveMusicBrainz**. Scarica e importa il dump MusicBrainz. Dura a lungo; lo stato si legge su `GET /api/retrieve/status`.
-2. **Ascolti:** si possono caricare in due modi:
-   - `POST /internal/uploads` su **RetrieveDumpSpotify**, con il file dell'export e lo `userId`;
-   - login su `/debug/spotify/login` di **RetrieveSpotify**, poi `POST /debug/spotify/start/{userId}`.
+2. **Ascolti:** arrivano in due modi:
+   - l'export di Spotify, caricato da `/upload` (o `POST /internal/uploads` su **RetrieveDumpSpotify**, con il file e lo `userId`);
+   - Last.fm, con "Accedi con Last.fm": import dello storico e poi ascolti nuovi in quasi tempo reale.
 3. **Catalogo artisti:** si aggiorna da solo. Circa 30 secondi dopo l'ultimo import con nuovi ascolti, l'**Orchestrator** chiede a **Catalog** di ricalcolarlo (`RefreshCatalogRequested`); la run si chiude con `UserCatalogUpdated` o `CatalogRefreshFailed`.
    - Avanzamento: `GET /api/pipeline/runs?userId=...` su **Orchestrator**.
    - Aggiornamento senza nuovi import: dal pulsante **Aggiorna i dati** nella lista delle città (`POST /api/v1/city/rebuild`, usa tutti gli ascolti importati da qualunque fonte), oppure `POST /internal/pipeline/trigger/{userId}` su **Orchestrator**; in debug `POST /debug/catalog/refresh/{userId}` su **Catalog**.
@@ -127,8 +155,8 @@ Il pannello è attivo solo in Development (`appsettings.Development.json` dell'A
    Le strade sono ricavate dalla geometria: il bordo condiviso tra due celle è l'asse di una strada (`Models/Layout/StreetPlan.cs`). I golden test (`CityFy.CityGenerator.Tests/Golden`) fissano le mappe di alcune città di esempio.
 
    **Nel browser:** `/cities` è la lista delle città salvate, `/cities/new` il form (nome facoltativo, date con scorciatoie, tipo di mappa, generi e sottogeneri), `/cities/{id}` la città con legenda e dettaglio dell'artista.
-   **Cancellazione dei dati:** cliccando il proprio nome nella barra si apre "Il tuo account" con **Cancella i miei dati** (`DELETE /api/v1/me/data`); l'admin fa lo stesso dal pannello (`DELETE /api/admin/users/{userId}/data`). L'Api chiama `DELETE .../users/{userId}/data` su ogni servizio che possiede dati dell'utente, in quest'ordine:
-   1. **RetrieveSpotify:** ferma i retrieve, cancella i job e l'account collegato con il refresh token;
+   **Cancellazione dei dati:** cliccando il proprio nome nella barra si apre "I tuoi dati" con **Cancella i miei dati** (`DELETE /api/v1/me/data`); l'admin fa lo stesso dal pannello (`DELETE /api/admin/users/{userId}/data`). L'Api chiama `DELETE .../users/{userId}/data` su ogni servizio che possiede dati dell'utente, in quest'ordine:
+   1. **RetrieveLastFm:** ferma gli import dello storico, cancella gli import e l'account collegato con la chiave di sessione;
    2. **RetrieveDumpSpotify:** ferma gli import, cancella gli upload, gli zip e i file estratti su disco;
    3. **Orchestrator:** cancella le esecuzioni della pipeline;
    4. **CityGenerator:** ferma le generazioni e cancella le città salvate;
@@ -142,12 +170,10 @@ Il pannello è attivo solo in Development (`appsettings.Development.json` dell'A
 
    Navigazione da mappa: trascinare per spostarsi, tasto destro per ruotare, rotella per lo zoom verso il cursore, WASD/frecce e Q/E, doppio clic per avvicinarsi, minimappa cliccabile in basso a sinistra.
 
-   Il retrieve Spotify parte da solo ogni 30 minuti per tutti gli account collegati (`Spotify:ScheduledRetrieveMinutes`).
-
 ### Pipeline a eventi (RabbitMQ)
 ```
 Dump.Spotify   upload ──► UploadReceived ──► import ──► ListeningImported ─┐
-Spotify        retrieve (manuale o programmato) ───────► ListeningImported ─┤
+LastFm         import storico / lettura periodica ─────► ListeningImported ─┤
 MusicBrainz    import finito ──► CatalogUpdated (aggiorna tutti i cataloghi)│
 Orchestrator   ListeningImported ──► debounce ──► RefreshCatalogRequested ─►│
 Catalog        RefreshCatalogRequested ──► UserCatalogUpdated | CatalogRefreshFailed
@@ -168,7 +194,7 @@ Tutti i servizi rispondono agli errori con `application/problem+json`, cioè Pro
 - `code`: codice stabile, definito in `ServiceDefault/Errors/ErrorCodes.cs`;
 - `traceId`: identificativo per ritrovare la richiesta nei log.
 
-Anche upload, job Spotify ed esecuzioni della pipeline espongono un `errorCode` quando falliscono. La città espone `warnings`.
+Anche upload, import dello storico Last.fm ed esecuzioni della pipeline espongono un `errorCode` quando falliscono. La città espone `warnings`.
 
 Il catalogo per la grafica e il frontend è in [ERRORI_UI.md](ERRORI_UI.md). Un test fallisce se un codice del backend non vi è documentato.
 

@@ -116,6 +116,8 @@ const LAYER_LABELS = 2; // district names, only in the main view
 export class CityScene implements AfterViewInit {
   readonly map = input.required<CityMap>();
   readonly selected = input<string | null>(null);
+  /** Artist playing now (from Last.fm): its building glows. */
+  readonly playing = input<string | null>(null);
   readonly artistSelected = output<string>();
 
   protected readonly hovered = signal<{ building: PlacedBuilding; x: number; y: number } | null>(null);
@@ -143,6 +145,11 @@ export class CityScene implements AfterViewInit {
     new THREE.BoxGeometry(1, 1, 1),
     new THREE.MeshBasicMaterial({ color: '#ffffff', side: THREE.BackSide }),
   );
+  /** Gold shell, a little larger than the selection outline: both can show on the same building. */
+  private readonly playingGlow = new THREE.Mesh(
+    new THREE.BoxGeometry(1, 1, 1),
+    new THREE.MeshBasicMaterial({ color: '#f2b705', side: THREE.BackSide, transparent: true, opacity: 0.85 }),
+  );
   private readonly marker = new THREE.Mesh(
     new THREE.ConeGeometry(0.5, 1.4, 3).rotateX(-Math.PI / 2), // points to -z = "forward" once rotated
     new THREE.MeshBasicMaterial({ color: '#d1495b', depthTest: false }),
@@ -162,6 +169,7 @@ export class CityScene implements AfterViewInit {
       if (this.renderer) this.buildCity(map, palette);
     });
     effect(() => this.updateHighlight(this.selected()));
+    effect(() => this.updatePlaying(this.playing()));
   }
 
   ngAfterViewInit(): void {
@@ -174,6 +182,8 @@ export class CityScene implements AfterViewInit {
     this.scene.add(this.hemi, this.sun);
     this.highlight.visible = false;
     this.scene.add(this.highlight);
+    this.playingGlow.visible = false;
+    this.scene.add(this.playingGlow);
     this.marker.layers.set(LAYER_MINIMAP);
     this.marker.renderOrder = 20;
     this.scene.add(this.marker);
@@ -409,6 +419,7 @@ export class CityScene implements AfterViewInit {
     (this.scene.fog as THREE.Fog).far = this.extent * 3;
     if (relayout) this.frameCity(false);
     this.updateHighlight(this.selected());
+    this.updatePlaying(this.playing());
   }
 
   /** Whole city in view (button "Vista intera"). */
@@ -634,6 +645,17 @@ export class CityScene implements AfterViewInit {
       this.highlight.position.set(b.x, b.height / 2 + CURB, b.z);
       this.highlight.rotation.set(0, b.rotation, 0);
       this.highlight.scale.set(b.width * 1.08, b.height * 1.04, b.width * 1.08);
+    }
+  }
+
+  /** Gold shell around the building of the artist playing now. */
+  private updatePlaying(artistId: string | null): void {
+    const b = artistId ? this.layout?.buildings.find((x) => x.artistId === artistId) : undefined;
+    this.playingGlow.visible = !!b;
+    if (b) {
+      this.playingGlow.position.set(b.x, b.height / 2 + CURB, b.z);
+      this.playingGlow.rotation.set(0, b.rotation, 0);
+      this.playingGlow.scale.set(b.width * 1.22, b.height * 1.08, b.width * 1.22);
     }
   }
 

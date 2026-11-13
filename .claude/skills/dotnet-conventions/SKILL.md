@@ -71,6 +71,8 @@ builder.Services.AddOptions<XOptions>()
 
 - Validazione con DataAnnotations (`[Required]`, `[Range]`, `[Url]`): una configurazione sbagliata ferma l'avvio.
 - Segreti mai in `appsettings`: user-secrets in sviluppo, variabili d'ambiente / parametri altrove.
+- Un nome che collide con un tipo del framework già importato (es. `SessionOptions` di ASP.NET Core) si qualifica con l'area: `AnonymousSessionOptions`.
+- `TimeSpan` nelle Options si valida con `[Range(typeof(TimeSpan), "00:05:00", "30.00:00:00")]`.
 
 ## Errori
 
@@ -154,6 +156,16 @@ Per ottenere gli stessi numeri (golden test con tolleranza relativa 1e-6):
 - Membri `internal` testati con `<InternalsVisibleTo Include="<Progetto>.Tests" />`.
 - Nome test: `<Scenario>_<RisultatoAtteso>` (es. `TooManyRequests_IsRetriedAfterRetryAfter`).
 - Ogni bug corretto ha un test di regressione.
+- **Test di un rifiuto** (cookie, token, permesso): costruisci anche un **controllo positivo** con lo stesso meccanismo, che deve passare. Altrimenti il test può passare per il motivo sbagliato (es. un cookie che non si decifra dà 401 comunque). Un cookie di autenticazione si fabbrica con `IOptionsMonitor<CookieAuthenticationOptions>.Get(scheme).TicketDataFormat.Protect(ticket)`.
+- **`WebApplicationFactory` senza infrastruttura:**
+  - repository in memoria al posto del database;
+  - un publisher che registra i messaggi al posto del broker;
+  - i consumer (hosted service) tolti dalla collection dei servizi;
+  - una connection string fittizia e gli health check della libreria client disattivati (Aspire: `Aspire:<Integrazione>:Client:DisableHealthChecks`);
+  - i limiti di richieste alti di default, abbassati solo nei test che li verificano.
+- **Indirizzo del client nei test:** il test server non ne ha uno. Uno `IStartupFilter` che imposta loopback, cioè un proxy considerato attendibile, permette di scegliere la rete con `X-Forwarded-For`.
+- **Stream (SSE) nei test:** leggi la risposta con `HttpCompletionOption.ResponseHeadersRead` e uno `StreamReader`, riga per riga (`event:` / `data:`).
+- **Date nei test:** quelle fisse devono stare nel passato rispetto a oggi, se il codice confronta con `DateTime.UtcNow` (es. "è già il momento di leggere").
 
 ## Anti-pattern
 

@@ -27,8 +27,9 @@ describe('errorMessage', () => {
     expect(errorMessage(null).message.length).toBeGreaterThan(0);
   });
 
-  it('offers re-linking for SPOTIFY_REAUTH_REQUIRED and the guide for a wrong export', () => {
-    expect(errorMessage('SPOTIFY_REAUTH_REQUIRED').action).toBe('relink');
+  it('offers to log in with Last.fm again when its reading stopped, and the guide for a wrong export', () => {
+    expect(errorMessage('LASTFM_AUTH_FAILED').action).toBe('relink');
+    expect(errorMessage('LASTFM_USER_PRIVATE').action).toBe('relink');
     expect(errorMessage('UPLOAD_NO_STREAMING_FILES').action).toBe('export-guide');
   });
 });

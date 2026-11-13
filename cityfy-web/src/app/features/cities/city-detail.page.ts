@@ -6,6 +6,8 @@ import { ApiService } from '../../core/api/api.service';
 import { Block, Building, District, GeneratedCity, GeneratedCityDetail } from '../../core/api/api.models';
 import { ApiError } from '../../core/errors/api-error';
 import { errorMessage } from '../../core/errors/error-messages';
+import { LiveService } from '../../core/live/live.service';
+import { playingArtistId } from '../../core/live/now-playing';
 import { ErrorMessage } from '../../shared/error-message/error-message';
 import { CityScene } from './city-scene/city-scene';
 import { cityTitle, isActive, layoutLabel, periodLabel, statusLabel } from './city-labels';
@@ -19,7 +21,7 @@ const ARTISTS_SHOWN = 25;
   selector: 'app-city-detail-page',
   imports: [CityScene, ErrorMessage, RouterLink],
   templateUrl: './city-detail.page.html',
-  styleUrl: './city-detail.page.scss',
+  styleUrls: ['./city-detail.page.scss', './now-playing.scss'],
 })
 export class CityDetailPage {
   /** Route parameter. */
@@ -52,6 +54,10 @@ export class CityDetailPage {
     const i = this.detail()?.info;
     return i ? `${periodLabel(i.from, i.to)} · mappa ${layoutLabel(i.layout).toLowerCase()}` : '';
   });
+
+  /** Track playing now (accounts, from Last.fm) and its building in this city, if any. */
+  protected readonly nowPlaying = inject(LiveService).nowPlaying;
+  protected readonly playingArtistId = computed(() => playingArtistId(this.detail()?.city, this.nowPlaying()));
 
   protected readonly selected = computed(() => {
     const city = this.detail()?.city;
@@ -123,6 +129,14 @@ export class CityDetailPage {
     const closing = this.openBlockId() === b.blockId;
     this.openBlockId.set(closing ? null : b.blockId);
     if (!closing) this.scene()?.focusBlock(b.blockId);
+  }
+
+  /** "Mostra" on the track playing: select its building, open its genre and fly there. */
+  protected showPlaying(): void {
+    const id = this.playingArtistId();
+    if (!id) return;
+    if (this.selectedArtistId() !== id) this.select(id);
+    this.scene()?.focusArtist(id);
   }
 
   /** Artist clicked in the legend: selected (outline on the map) and the camera flies to it. */

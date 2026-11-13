@@ -10,6 +10,13 @@ public sealed class DumpClient(HttpClient http) : DownstreamClient(http, "Retrie
     public Task<UserDataDeletion> DeleteUserDataAsync(string userId, CancellationToken ct) =>
         SendAsync<UserDataDeletion>(new HttpRequestMessage(HttpMethod.Delete, $"internal/users/{Uri.EscapeDataString(userId)}/data"), ct);
 
+    /// <summary>The finished uploads change owner (Complete false while an import is still running).</summary>
+    public Task<UserDataTransfer> TransferUserDataAsync(string fromUserId, string toUserId, CancellationToken ct) =>
+        SendAsync<UserDataTransfer>(new HttpRequestMessage(HttpMethod.Post, $"internal/users/{Uri.EscapeDataString(fromUserId)}/transfer")
+        {
+            Content = System.Net.Http.Json.JsonContent.Create(new UserDataTransferRequest(toUserId), options: JsonOptions)
+        }, ct);
+
     public Task<UploadAccepted> UploadAsync(Stream zip, string fileName, string userId, CancellationToken ct)
     {
         var form = new MultipartFormDataContent

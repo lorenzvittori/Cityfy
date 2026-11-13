@@ -55,16 +55,25 @@ export interface AdminRun {
   errorCode: string | null;
 }
 
-export interface AdminAccount {
+/** A linked Last.fm account (Retrieve.LastFm), without the session key. */
+export interface AdminLastFmAccount {
   userId: string;
-  displayName: string | null;
+  username: string;
+  /** Active | Suspended (errorCode LASTFM_AUTH_FAILED, LASTFM_USER_PRIVATE). */
+  status: string;
+  errorCode: string | null;
   linkedAt: string;
-  lastRetrieveAt: string | null;
-  lastPlayedAt: string | null;
+  lastScrobbleAt: string;
+  lastListeningAt: string | null;
+  lastPolledAt: string | null;
+  nextPollAt: string;
+  historyImportId: string | null;
+  nowPlaying: { artist: string; track: string } | null;
 }
 
-export interface AdminUpload extends Progress {
-  uploadId: string;
+/** Import of the Last.fm history of a user. */
+export interface AdminLastFmImport extends Progress {
+  importId: string;
   userId: string | null;
   status: string;
   inserted: number;
@@ -73,8 +82,8 @@ export interface AdminUpload extends Progress {
   errorCode: string | null;
 }
 
-export interface AdminSpotifyJob extends Progress {
-  jobId: string;
+export interface AdminUpload extends Progress {
+  uploadId: string;
   userId: string | null;
   status: string;
   inserted: number;
@@ -130,14 +139,23 @@ export class AdminService {
     return this.wrap(this.http.post<AdminRun>(`${this.base}/pipeline/rebuild/${encodeURIComponent(userId)}`, null));
   }
 
-  accounts() {
-    return this.wrap(this.http.get<AdminAccount[]>(`${this.base}/spotify/accounts`));
+  lastFmAccounts() {
+    return this.wrap(this.http.get<AdminLastFmAccount[]>(`${this.base}/lastfm/accounts`));
   }
-  sync(userId: string) {
-    return this.wrap(this.http.post<{ jobId: string }>(`${this.base}/spotify/accounts/${encodeURIComponent(userId)}/sync`, null));
+  lastFmImports(limit = 30) {
+    return this.wrap(this.http.get<AdminLastFmImport[]>(`${this.base}/lastfm/imports`, { params: new HttpParams().set('limit', limit) }));
   }
-  spotifyJobs(limit = 30) {
-    return this.wrap(this.http.get<AdminSpotifyJob[]>(`${this.base}/spotify/jobs`, { params: new HttpParams().set('limit', limit) }));
+  /** Imports the whole history again (stops an import still running). */
+  lastFmReimport(userId: string) {
+    return this.wrap(this.http.post<{ importId: string }>(`${this.base}/lastfm/accounts/${encodeURIComponent(userId)}/import`, null));
+  }
+  /** End of the Last.fm licence: every Last.fm account and all the data of every account. confirm = "DELETE ALL LASTFM DATA". */
+  lastFmPurge(confirm: string) {
+    return this.wrap(this.http.post<{ deletedAccounts: number }>(`${this.base}/lastfm/purge`, { confirm }));
+  }
+  /** Reads the new scrobbles at the next polling tick. */
+  lastFmPoll(userId: string) {
+    return this.wrap(this.http.post<void>(`${this.base}/lastfm/accounts/${encodeURIComponent(userId)}/poll`, null));
   }
   uploads(page = 1) {
     return this.wrap(this.http.get<AdminUpload[]>(`${this.base}/uploads`, { params: new HttpParams().set('page', page) }));
@@ -168,8 +186,8 @@ export class AdminService {
   cancelUpload(uploadId: string) {
     return this.wrap(this.http.post<unknown>(`${this.base}/uploads/${encodeURIComponent(uploadId)}/cancel`, null));
   }
-  cancelSpotifyJob(jobId: string) {
-    return this.wrap(this.http.post<unknown>(`${this.base}/spotify/jobs/${encodeURIComponent(jobId)}/cancel`, null));
+  cancelLastFmImport(importId: string) {
+    return this.wrap(this.http.post<unknown>(`${this.base}/lastfm/imports/${encodeURIComponent(importId)}/cancel`, null));
   }
   cancelRun(runId: string) {
     return this.wrap(this.http.post<unknown>(`${this.base}/pipeline/runs/${encodeURIComponent(runId)}/cancel`, null));

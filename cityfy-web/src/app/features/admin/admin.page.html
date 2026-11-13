@@ -67,17 +67,20 @@
         </section>
       }
 
-      <!-- Spotify retrieve jobs -->
-      @for (j of activeJobs(); track j.jobId) {
+      <!-- Last.fm history imports -->
+      @for (j of activeImports(); track j.importId) {
         <section class="activity">
           <header>
-            <strong>Retrieve Spotify</strong> <code>{{ j.jobId.slice(0, 8) }}</code>
+            <strong>Storico Last.fm</strong> <code>{{ j.importId.slice(0, 8) }}</code>
             <span class="muted">utente {{ j.userId }}</span>
             <span class="badge" [class]="j.status">{{ j.status }}</span>
-            <button type="button" class="small cancel" (click)="cancel('spotify', j.jobId)">Annulla</button>
+            <button type="button" class="small cancel" (click)="cancel('lastfm', j.importId)">Annulla</button>
           </header>
-          <app-progress-bar [percent]="j.progressPercent" />
+          <app-progress-bar [percent]="j.status === 'Pending' ? null : j.progressPercent" />
           <div class="detail">{{ j.status === 'Pending' ? 'In coda' : j.progressDetail }}</div>
+          @if (silentMinutes(j.updatedAt) >= 5) {
+            <div class="stuck">Nessun aggiornamento da {{ silentMinutes(j.updatedAt) }} minuti (forse in pausa per il limite di Last.fm)</div>
+          }
         </section>
       }
 
@@ -107,8 +110,8 @@
               <td><span class="badge" [class]="u.status">{{ u.status }}</span></td><td>{{ u.inserted | number }}</td>
               <td>{{ u.completedAt | date: 'short' }}</td><td><code>{{ u.errorCode }}</code></td></tr>
           }
-          @for (j of recentJobs(); track j.jobId) {
-            <tr><td>Spotify</td><td><code>{{ j.jobId.slice(0, 8) }}</code></td><td>{{ j.userId }}</td>
+          @for (j of recentImports(); track j.importId) {
+            <tr><td>Last.fm</td><td><code>{{ j.importId.slice(0, 8) }}</code></td><td>{{ j.userId }}</td>
               <td><span class="badge" [class]="j.status">{{ j.status }}</span></td><td>{{ j.inserted | number }}</td>
               <td>{{ j.completedAt | date: 'short' }}</td><td><code>{{ j.errorCode }}</code></td></tr>
           }
@@ -191,7 +194,7 @@
     @case ('pipeline') {
       <h2>Aggiorna il catalogo artisti di un utente</h2>
       <form class="inline" (ngSubmit)="rebuild(rebuildUserId)">
-        <input name="userId" [(ngModel)]="rebuildUserId" placeholder="Spotify user id" />
+        <input name="userId" [(ngModel)]="rebuildUserId" placeholder="id utente (u_… o anon_…)" />
         <button type="submit" class="primary">Aggiorna</button>
       </form>
 
@@ -219,34 +222,58 @@
       <button type="button" (click)="show('pipeline')">Aggiorna</button>
     }
 
-    <!-- ================================================= SPOTIFY E UPLOAD -->
-    @case ('spotify') {
-      <h2>Account Spotify collegati</h2>
+    <!-- ================================================= LAST.FM E UPLOAD -->
+    @case ('lastfm') {
+      <h2>Account Last.fm collegati</h2>
       <table>
-        <thead><tr><th>Utente</th><th>Nome</th><th>Collegato</th><th>Ultima sincronizzazione</th><th>Ultimo ascolto importato</th><th></th></tr></thead>
+        <thead><tr><th>Utente</th><th>Last.fm</th><th>Stato</th><th>Ultimo ascolto</th><th>Ultima lettura</th><th>Prossima</th><th>In ascolto</th><th></th></tr></thead>
         <tbody>
           @for (a of accounts(); track a.userId) {
             <tr>
-              <td>{{ a.userId }}</td>
-              <td>{{ a.displayName }}</td>
-              <td>{{ a.linkedAt | date: 'short' }}</td>
-              <td>{{ a.lastRetrieveAt | date: 'short' }}</td>
-              <td>{{ a.lastPlayedAt | date: 'short' }}</td>
+              <td><code>{{ a.userId }}</code></td>
+              <td>{{ a.username }}</td>
+              <td><span class="badge" [class]="a.status">{{ a.status }}</span> <code>{{ a.errorCode }}</code></td>
+              <td>{{ a.lastScrobbleAt | date: 'short' }}</td>
+              <td>{{ a.lastPolledAt | date: 'short' }}</td>
+              <td>{{ a.nextPollAt | date: 'HH:mm:ss' }}</td>
+              <td>{{ a.nowPlaying ? a.nowPlaying.artist + ' – ' + a.nowPlaying.track : '' }}</td>
               <td class="actions-cell">
-                <button type="button" class="small" (click)="sync(a.userId)">Sincronizza ora</button>
+                <button type="button" class="small" (click)="lastFmPoll(a.userId)">Leggi ora</button>
+                <button type="button" class="small" (click)="lastFmReimport(a.userId)">Reimporta storico</button>
                 <button type="button" class="small cancel" (click)="deleteUserData(a.userId)">Cancella dati</button>
               </td>
             </tr>
           } @empty {
-            <tr><td colspan="6" class="muted">Nessun account collegato.</td></tr>
+            <tr><td colspan="8" class="muted">Nessun account collegato.</td></tr>
+          }
+        </tbody>
+      </table>
+
+      <h2>Import dello storico</h2>
+      <table>
+        <thead><tr><th>Import</th><th>Utente</th><th>Stato</th><th>Nuovi ascolti</th><th>Avanzamento</th><th>Avviato</th><th>Errore</th><th></th></tr></thead>
+        <tbody>
+          @for (j of lastFmImports(); track j.importId) {
+            <tr>
+              <td><code>{{ j.importId.slice(0, 8) }}</code></td>
+              <td><code>{{ j.userId }}</code></td>
+              <td><span class="badge" [class]="j.status">{{ j.status }}</span></td>
+              <td>{{ j.inserted | number }}</td>
+              <td class="muted">{{ j.progressDetail }}</td>
+              <td>{{ j.startedAt | date: 'short' }}</td>
+              <td><code>{{ j.errorCode }}</code></td>
+              <td>@if (j.status === 'Pending' || j.status === 'InProgress') { <button type="button" class="small cancel" (click)="cancel('lastfm', j.importId)">Annulla</button> }</td>
+            </tr>
+          } @empty {
+            <tr><td colspan="8" class="muted">Nessun import.</td></tr>
           }
         </tbody>
       </table>
 
       <h2>Cancella i dati di un utente</h2>
-      <p class="muted small">Anche per utenti senza account collegato (per esempio con dati rimasti da una cancellazione non completata).</p>
+      <p class="muted small">Anche per sessioni anonime (<code>anon_…</code>) o utenti con dati rimasti da una cancellazione non completata.</p>
       <form class="inline" (ngSubmit)="deleteUserData(deleteUserId)">
-        <input name="deleteUserId" [(ngModel)]="deleteUserId" placeholder="Spotify user id" />
+        <input name="deleteUserId" [(ngModel)]="deleteUserId" placeholder="id utente (u_… o anon_…)" />
         <button type="submit" class="cancel">Cancella tutti i dati</button>
       </form>
 
@@ -269,7 +296,14 @@
           }
         </tbody>
       </table>
-      <button type="button" (click)="show('spotify')">Aggiorna</button>
+      <button type="button" (click)="show('lastfm')">Aggiorna</button>
+
+      <h2>Fine della licenza Last.fm</h2>
+      <p class="muted small">
+        Se Last.fm revoca la licenza i suoi dati vanno cancellati tutti (termini, clausola 9.3). Cancella ogni account Last.fm e
+        tutti i dati di ogni account; le sessioni anonime restano. Togli anche la API key, altrimenti si potrà accedere di nuovo.
+      </p>
+      <button type="button" class="cancel" (click)="purgeLastFm()">Cancella tutti i dati Last.fm…</button>
     }
 
     <!-- ================================================= DATABASE -->

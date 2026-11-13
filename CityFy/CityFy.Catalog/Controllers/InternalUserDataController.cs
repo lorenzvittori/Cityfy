@@ -14,4 +14,10 @@ public sealed class InternalUserDataController(IUserDataService userData) : Cont
     [HttpDelete("{userId}/data")]
     public async Task<ActionResult<UserDataDeletion>> Delete(string userId, CancellationToken ct) =>
         Ok(await userData.DeleteAsync(userId, ct));
+
+    // POST internal/users/{userId}/transfer { toUserId } — the plays change owner (anonymous session ->
+    // account); the old owner's catalog is deleted, the new one is rebuilt by the pipeline
+    [HttpPost("{userId}/transfer")]
+    public async Task<ActionResult<UserDataTransfer>> Transfer(string userId, [FromBody] UserDataTransferRequest request, CancellationToken ct) =>
+        Ok(await userData.TransferAsync(userId, request.ToUserId, ct));
 }

@@ -14,23 +14,33 @@ namespace CityFy.Api.Controllers;
 [Authorize]
 [ApiExplorerSettings(GroupName = "v1")]
 [Route("api/v1/me")]
-public sealed class MeController(ISpotifyServiceClient spotify, IUserDataEraser eraser) : ControllerBase
+public sealed class MeController(
+    ILastFmServiceClient lastFm,
+    IUserDataEraser eraser,
+    IAnonymousSessionService sessions) : ControllerBase
 {
-    // GET api/v1/me — who is logged in and when Spotify was last synced
+    // GET api/v1/me — who is using the app: anonymous session (with its expiry) or Last.fm account
+    // (with the state of the reading)
     [HttpGet]
     public async Task<ActionResult<MeDto>> Get(CancellationToken ct)
     {
-        try
+        if (User.LastFmUsername() is { } username)
         {
-            var account = await spotify.GetAccountAsync(User.UserId(), ct);
-            return Ok(new MeDto(account.UserId, account.DisplayName, account.LinkedAt, account.LastRetrieveAt));
+            var account = await lastFm.GetAccountAsync(User.UserId(), ct);
+            return Ok(new MeDto(SessionKinds.LastFm, User.UserId(), username, account.LinkedAt, account.LastPolledAt, null, account.ToDto()));
         }
-        catch (CityFyException ex) when (ex.Code == ErrorCodes.SpotifyAccountNotLinked)
+
+        if (User.SessionId() is { } sessionId)
         {
-            // Session for an account that no longer exists: close it
-            await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-            throw new CityFyException(ErrorCodes.Unauthenticated, "Account no longer linked", StatusCodes.Status401Unauthorized);
+            // The cookie was validated a moment ago: ExpiresAt is set (null only if it expired in between)
+            var check = await sessions.CheckAsync(sessionId, ct);
+            if (check.ExpiresAt is not { } expiresAt)
+                throw new CityFyException(ErrorCodes.SessionExpired, "The anonymous session expired", StatusCodes.Status401Unauthorized);
+            return Ok(new MeDto(SessionKinds.Anonymous, User.UserId(), null, null, null, expiresAt));
         }
+
+        // Admin session: not a user of the app
+        throw new CityFyException(ErrorCodes.Unauthenticated, "No user session", StatusCodes.Status401Unauthorized);
     }
 
     // DELETE api/v1/me/data — the user deletes everything CityFy keeps about them, then is logged out.

@@ -53,10 +53,12 @@ La città contiene una lista `warnings`, di solito vuota. Ogni avviso è un codi
 | `INTERNAL_ERROR` | Errore imprevisto del server | "Qualcosa è andato storto. Riprova tra poco." | Pulsante **Riprova**; "Dettagli" con il `traceId` |
 | `SERVICE_UNAVAILABLE` | Un servizio è momentaneamente irraggiungibile | "Il servizio non è raggiungibile in questo momento. Riprova tra qualche minuto." | **Riprova**, eventualmente automatico con attesa crescente |
 | `VALIDATION_FAILED` | Dati della richiesta mancanti o non validi | "Alcuni dati non sono validi. Controlla e riprova." | Evidenziare i campi, se il form li ha |
-| `UNAUTHENTICATED` | L'utente non ha effettuato l'accesso, oppure la sessione è scaduta (dopo 14 giorni di inattività) | "Accedi con Spotify per vedere la tua città." | Pulsante **Accedi con Spotify**; dopo l'accesso si torna alla pagina di partenza |
+| `UNAUTHENTICATED` | Nessuna sessione: l'utente non ha ancora iniziato, oppure il cookie è scaduto e il browser l'ha già tolto | "Inizia per creare la tua città." | Pagina di benvenuto con **Inizia senza account** |
+| `SESSION_EXPIRED` | La sessione senza account è scaduta (nessuna visita per 1 giorno) oppure i suoi dati sono stati cancellati, ma il browser manda ancora il cookie | "La tua sessione è scaduta e i dati collegati sono stati cancellati. Puoi ricominciare quando vuoi." | Pagina di benvenuto con **Inizia senza account** |
 | `FORBIDDEN` | Utente autenticato ma senza i permessi necessari (per esempio un utente normale sulle pagine admin) | "Non hai i permessi per questa pagina." | Link alla home |
 | `NOT_FOUND` | Risorsa o pagina inesistente | "Non abbiamo trovato quello che cercavi." | Link alla home |
 | `REQUEST_REJECTED` | Richiesta non accettata (altri casi) | "Operazione non consentita." | Nessuna azione specifica |
+| `RATE_LIMITED` | Troppe richieste dalla stessa rete (sessioni nuove, upload, login Last.fm, o richieste in generale), troppi upload dello stesso utente in un giorno, o troppi upload in corso sul server. Status 429, con `Retry-After` ed estensione `retryAfterSeconds` quando il tempo è noto. Un login respinto torna a `/welcome?error=RATE_LIMITED` | "Troppe richieste in poco tempo: riprova tra qualche minuto." | **Riprova** più tardi; se c'è `retryAfterSeconds` si può mostrare l'attesa |
 
 ---
 
@@ -67,7 +69,7 @@ Riguarda la pagina in cui l'utente carica lo zip scaricato da Spotify.
 | Codice | Quando succede | Messaggio suggerito | Cosa mostrare / azione |
 |---|---|---|---|
 | `UPLOAD_FILE_MISSING` | Invio senza file | "Seleziona il file zip scaricato da Spotify." | Area di caricamento evidenziata |
-| `UPLOAD_USER_MISSING` | Manca l'utente proprietario dell'export | "Collega prima il tuo account Spotify." | Pulsante **Collega Spotify** |
+| `UPLOAD_USER_MISSING` | Manca l'utente proprietario dell'export (sessione non valida) | "Per caricare l'export inizia una sessione o accedi con Last.fm." | Pagina di benvenuto |
 | `UPLOAD_NOT_ZIP` | Il file non è un .zip | "Il file deve essere uno .zip, così come lo invia Spotify. Non estrarlo prima di caricarlo." | Riprova il caricamento |
 | `UPLOAD_TOO_LARGE` | Il file supera il limite (oggi 200 MB) | "Il file è troppo grande (massimo 200 MB)." | Riprova; link alla guida |
 | `UPLOAD_INVALID_ZIP` | Zip danneggiato o incompleto | "Il file sembra danneggiato. Scaricalo di nuovo da Spotify e riprova." | Link alla guida per l'export |
@@ -83,23 +85,24 @@ Riguarda la pagina in cui l'utente carica lo zip scaricato da Spotify.
 
 ---
 
-## 4. Account Spotify
+## 4. Account Last.fm
+
+Riguardano "Accedi con Last.fm". Gli errori di accesso tornano al frontend come `/welcome?error=CODICE`, per esempio `/welcome?error=LASTFM_AUTH_FAILED` quando l'utente arriva alla callback senza un token valido. Quelli della lettura degli ascolti si vedono nella pagina "I tuoi dati": l'account sospeso mostra il codice con **Accedi di nuovo con Last.fm**.
 
 | Codice | Quando succede | Messaggio suggerito | Cosa mostrare / azione |
 |---|---|---|---|
-| `SPOTIFY_AUTH_DENIED` | L'utente ha rifiutato l'accesso nella pagina di Spotify | "Senza il permesso di Spotify non possiamo leggere i tuoi ascolti recenti." | **Riprova a collegare**; in alternativa **Carica l'export** |
-| `SPOTIFY_LOGIN_EXPIRED` | Il login è scaduto (oltre 10 minuti) o è stato aperto due volte | "Il collegamento è scaduto. Riprova." | **Collega Spotify** |
-| `SPOTIFY_TOKEN_EXCHANGE_FAILED` | Spotify non ha completato il collegamento | "Spotify non ha completato il collegamento. Riprova tra poco." | **Riprova** |
-| `SPOTIFY_ACCOUNT_NOT_LINKED` | Si chiede un aggiornamento per un account non collegato | "Il tuo account Spotify non è collegato." | **Collega Spotify** |
-| `SPOTIFY_REAUTH_REQUIRED` | L'accesso è stato revocato o non è più valido | "Il collegamento con Spotify non è più attivo. Ricollega l'account per continuare ad aggiornare la città." | **Ricollega Spotify**. Conviene un banner persistente, non solo un avviso temporaneo |
-| `SPOTIFY_RATE_LIMITED` | Spotify limita temporaneamente le richieste | "Spotify è momentaneamente occupato. Riproveremo in automatico." | Nessuna azione: si risolve da solo |
-| `SPOTIFY_UNAVAILABLE` | Spotify non risponde | "Spotify non risponde in questo momento. Riproveremo più tardi." | Nessuna azione obbligatoria |
-| `SPOTIFY_RETRIEVE_FAILED` | Altro errore nella lettura degli ascolti | "Non siamo riusciti ad aggiornare i tuoi ascolti." | **Riprova** |
-| `RETRIEVE_JOB_NOT_FOUND` | Aggiornamento inesistente | "Non troviamo questo aggiornamento." | Nessuna azione |
+| `LASTFM_NOT_LINKED` | Si chiede qualcosa di Last.fm per un utente senza account collegato | "Il tuo account Last.fm non è collegato." | **Accedi con Last.fm** |
+| `LASTFM_AUTH_FAILED` | L'autorizzazione è stata rifiutata o è scaduta (oltre 60 minuti, o link aperto due volte), oppure l'accesso è stato revocato dalle impostazioni di Last.fm | "Il collegamento con Last.fm non è riuscito o non è più attivo. Ricollega l'account." | **Ricollega Last.fm**; banner persistente se la lettura si è fermata |
+| `LASTFM_UNAVAILABLE` | Last.fm non risponde o ha un problema temporaneo (anche un problema con la chiave di Cityfy, che vede l'amministratore) | "Last.fm non risponde in questo momento. Riproveremo più tardi." | **Riprova** dove ha senso; la lettura riprova da sola |
+| `LASTFM_RATE_LIMITED` | Last.fm limita le richieste di Cityfy (errore 29): la lettura si ferma e riparte da sola | "Last.fm è momentaneamente occupato: gli ascolti arriveranno con un po' di ritardo." | Nessuna azione: si risolve da solo |
+| `LASTFM_USER_PRIVATE` | Gli ascolti sono nascosti nelle impostazioni di privacy di Last.fm | "I tuoi ascolti su Last.fm sono privati: rendili visibili nelle impostazioni di Last.fm, poi ricollega l'account." | Link alle impostazioni di privacy di Last.fm; **Ricollega Last.fm** |
+| `LASTFM_SPOTIFY_NOT_SCROBBLING` | **Non è un errore**, è un suggerimento nel campo `lastFm.warning` di `me`. L'account è attivo, ma da più di 3 giorni (`LastFm:NotScrobblingDays`) non arriva nessun ascolto nuovo: forse Spotify non invia più gli ascolti a Last.fm | "Da qualche giorno non riceviamo ascolti nuovi da Last.fm. Se hai ascoltato musica su Spotify, controlla che Spotify sia ancora collegato a Last.fm." | Link alle impostazioni di Last.fm (Applicazioni); il messaggio sparisce da solo quando arriva un ascolto |
+| `LASTFM_IMPORT_NOT_FOUND` | Import dello storico inesistente (link vecchio o errato) | "Non troviamo questa importazione." | Nessuna azione |
+| `LASTFM_IMPORT_FAILED` | L'import dello storico si è fermato per un errore imprevisto | "Non siamo riusciti a importare tutto lo storico di Last.fm. Riprova più tardi." | **Riprova**; `traceId`. Gli ascolti già importati restano |
 
-**Errori durante l'accesso.** Se l'accesso con Spotify non va a buon fine, l'utente viene riportato all'interfaccia con il codice nell'indirizzo, per esempio `/login?error=SPOTIFY_AUTH_DENIED`. La pagina di accesso legge `error` e mostra il messaggio corrispondente.
+**Eventi in diretta (`GET api/v1/live`).** Una sessione anonima riceve `LASTFM_NOT_LINKED` (404): il frontend apre lo stream solo per gli account. Più di 5 pagine aperte dallo stesso utente danno `RATE_LIMITED` (429). In entrambi i casi la barra "Stai ascoltando" semplicemente non compare: nessun messaggio.
 
-Gli aggiornamenti da Spotify partono anche **in automatico** ogni 30 minuti. Se uno di questi fallisce, non serve interrompere l'utente: basta un indicatore discreto (per esempio "Ultimo aggiornamento non riuscito"). Fa eccezione `SPOTIFY_REAUTH_REQUIRED`, che richiede un'azione dell'utente.
+**Stati dell'import dello storico** (non sono errori): `Pending` "In coda…", `InProgress` "Importazione dello storico: pagina 12 di 340" (`progressPercent` e `progressDetail`), `Done` "Storico importato: N ascolti". Un import interrotto da un riavvio riprende da solo dalla pagina a cui era arrivato.
 
 ---
 
@@ -146,7 +149,7 @@ La città si mostra, con un messaggio sopra o accanto.
 
 ### Cancellazione dei dati
 
-Dal menu dell'utente, **Cancella i miei dati** elimina ascolti, catalogo artisti, città salvate, caricamenti (anche i file), aggiornamenti e collegamento con Spotify, poi esce dall'app. L'amministratore può fare lo stesso per un utente dal pannello.
+Dal menu dell'utente, **Cancella i miei dati** elimina ascolti, catalogo artisti, città salvate, caricamenti (anche i file) e, per un account, il collegamento con Last.fm, poi esce dall'app. L'amministratore può fare lo stesso per un utente dal pannello.
 
 | Codice | Quando succede | Messaggio suggerito | Cosa mostrare / azione |
 |---|---|---|---|
@@ -174,10 +177,10 @@ In sintesi, per la grafica:
 
 1. **Messaggio di errore generico** con "Riprova" e "Dettagli" (`traceId`), riutilizzabile ovunque.
 2. **Guida all'export Spotify corretto.** Serve per `UPLOAD_NO_STREAMING_FILES` ed è probabilmente l'errore più comune.
-3. **Banner "Ricollega Spotify"**, persistente, per `SPOTIFY_REAUTH_REQUIRED`.
+3. **Avviso "Accedi di nuovo con Last.fm"** nella pagina dei dati, per un account sospeso (`LASTFM_AUTH_FAILED`, `LASTFM_USER_PRIVATE`).
 4. **Avanzamento del caricamento** (in coda → lettura → aggiornamento del catalogo).
 5. **Città in costruzione**, per `Pending` e `InProgress`.
 6. **Stato vuoto di benvenuto**, quando non c'è ancora nessuna città salvata.
 7. **Città vuota per periodo e generi** (`CITY_NO_PLAYS`) e **generi non riconosciuti** (`CITY_GENRES_UNAVAILABLE`).
 8. **Avviso discreto di copertura parziale** (`CITY_LOW_COVERAGE`).
-9. **Indicatore "ultimo aggiornamento non riuscito"** per gli aggiornamenti automatici da Spotify.
+9. **"Ultimo ascolto ricevuto"** e avanzamento dell'import dello storico Last.fm nella pagina dei dati.

@@ -6,7 +6,7 @@ namespace CityFy.Api.Clients;
 /// Retrieve.Dump.Spotify: uploads of the Spotify export. Registered without the standard resilience
 /// handler: uploads are large and must not be retried or time out at 30 s.
 /// </summary>
-public interface IDumpClient : IUserDataOwner
+public interface IDumpClient : IUserDataOwner, IUserDataHolder
 {
     Task<UploadAccepted> UploadAsync(Stream zip, string fileName, string userId, CancellationToken ct);
 

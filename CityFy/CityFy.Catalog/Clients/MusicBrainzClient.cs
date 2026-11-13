@@ -12,17 +12,18 @@ public sealed class MusicBrainzClient(HttpClient http) : IMusicBrainzClient
     {
         var bySpotify = new List<ResolvedArtist>();
         var byName = new List<ResolvedArtist>();
+        var byMbid = new List<ResolvedArtist>();
 
-        var batches = Math.Max(
-            (request.SpotifyArtistIds.Count + BatchSize - 1) / BatchSize,
-            (request.Names.Count + BatchSize - 1) / BatchSize);
+        var batches = new[] { request.SpotifyArtistIds.Count, request.Names.Count, request.Mbids.Count }
+            .Max(count => (count + BatchSize - 1) / BatchSize);
 
         for (var i = 0; i < batches; i++)
         {
             var batch = new ResolveArtistsRequest
             {
                 SpotifyArtistIds = request.SpotifyArtistIds.Skip(i * BatchSize).Take(BatchSize).ToList(),
-                Names = request.Names.Skip(i * BatchSize).Take(BatchSize).ToList()
+                Names = request.Names.Skip(i * BatchSize).Take(BatchSize).ToList(),
+                Mbids = request.Mbids.Skip(i * BatchSize).Take(BatchSize).ToList()
             };
 
             using var resp = await http.PostAsJsonAsync("api/artists/resolve", batch, ct);
@@ -32,9 +33,10 @@ public sealed class MusicBrainzClient(HttpClient http) : IMusicBrainzClient
 
             bySpotify.AddRange(result.BySpotifyId);
             byName.AddRange(result.ByName);
+            byMbid.AddRange(result.ByMbid ?? []);
         }
 
-        return new ResolveArtistsResponse(bySpotify, byName);
+        return new ResolveArtistsResponse(bySpotify, byName, byMbid);
     }
 
     public async Task<GenreGraph> GetGenreGraphAsync(CancellationToken ct) =>

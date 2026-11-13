@@ -32,6 +32,7 @@ public sealed class StreamingMapperTests
         Assert.True(e.Skipped);
         Assert.Equal("upload1", e.SourceRef);
         Assert.Equal(DateTimeKind.Utc, e.PlayedAt.Kind);
+        Assert.Equal(e.PlayedAt.AddMilliseconds(-185000), e.StartedAt); // 'ts' is the end of the play
         Assert.Null(e.ArtistUri); // the export has no artist id
     }
 

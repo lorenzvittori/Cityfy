@@ -29,6 +29,8 @@ public interface IStreamingRepository
     // Data deletion
     Task<IReadOnlyList<ServiceDefault.Models.ProcessingTask>> GetTasksByUserAsync(string userId, CancellationToken ct);
     Task<long> DeleteTasksByUserAsync(string userId, CancellationToken ct);
+    /// <summary>The finished uploads of <paramref name="fromUserId"/> change owner.</summary>
+    Task<long> TransferFinishedTasksAsync(string fromUserId, string toUserId, CancellationToken ct);
     /// <summary>Drops the legacy per-upload collection, if any.</summary>
     Task DropLegacyUploadAsync(string uploadId, CancellationToken ct);
 }

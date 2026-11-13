@@ -8,13 +8,33 @@ public static class AuthSetup
 {
     public const string ReturnUrlCookie = "cityfy.returnUrl";
 
+    /// <summary>Claim with the id of an anonymous session (absent for the other kinds of session).</summary>
+    public const string SessionIdClaim = "cityfy:session";
+
+    /// <summary>Prefix of the owner id of an anonymous session, as the internal services receive it.</summary>
+    public const string AnonymousUserIdPrefix = "anon_";
+
+    /// <summary>Claim present on the session of a CityFy account (login with Last.fm): its user name.</summary>
+    public const string LastFmUsernameClaim = "cityfy:lastfm";
+
+    /// <summary>Prefix of the id of a CityFy account ('users').</summary>
+    public const string AccountUserIdPrefix = "u_";
+
+    /// <summary>Cookie of an account: valid this long after the last renewal.</summary>
+    public static readonly TimeSpan AccountCookieLifetime = TimeSpan.FromDays(30);
+
+    /// <summary>An account cookie older than this is issued again (sliding, at most once a day).</summary>
+    public static readonly TimeSpan AccountCookieRenewAfter = TimeSpan.FromDays(1);
+
     /// <summary>
-    /// Session cookie created after the Spotify login (the Spotify user id is the CityFy user id).
-    /// HttpOnly + SameSite=Lax: the frontend calls the API through its own origin (dev-server proxy).
-    /// Unauthenticated API calls answer 401 UNAUTHENTICATED instead of redirecting.
+    /// Session cookie: an anonymous session (no account), a CityFy account (login with Last.fm) or the
+    /// admin panel. HttpOnly + SameSite=Lax: the frontend calls the API through its own origin
+    /// (dev-server proxy). Unauthenticated API calls answer 401 UNAUTHENTICATED (SESSION_EXPIRED for an
+    /// anonymous session that is no longer valid) instead of redirecting; see <see cref="CityFyCookieEvents"/>.
     /// </summary>
     public static IServiceCollection AddCityFyAuth(this IServiceCollection services, IHostEnvironment environment)
     {
+        services.AddScoped<CityFyCookieEvents>();
         services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
             .AddCookie(o =>
             {
@@ -25,9 +45,10 @@ public static class AuthSetup
                 // cookie is not reliably accepted. Everywhere else the cookie is HTTPS-only.
                 o.Cookie.SecurePolicy = environment.IsDevelopment() ? CookieSecurePolicy.None : CookieSecurePolicy.Always;
                 o.ExpireTimeSpan = TimeSpan.FromDays(14);
-                o.SlidingExpiration = true;
-                o.Events.OnRedirectToLogin = ctx => WriteStatus(ctx.Response, StatusCodes.Status401Unauthorized);
-                o.Events.OnRedirectToAccessDenied = ctx => WriteStatus(ctx.Response, StatusCodes.Status403Forbidden);
+                // No automatic sliding: an anonymous cookie must not outlive its session (14 days). Anonymous
+                // sessions are renewed by CityFyCookieEvents, on the server-side expiry.
+                o.SlidingExpiration = false;
+                o.EventsType = typeof(CityFyCookieEvents);
             });
         services.AddAuthorization(o => o.AddPolicy(AdminPolicy, p => p.RequireRole(AdminRole)));
         return services;
@@ -35,6 +56,33 @@ public static class AuthSetup
 
     public const string AdminRole = "Admin";
     public const string AdminPolicy = "Admin";
+
+    public static string AnonymousUserId(string sessionId) => AnonymousUserIdPrefix + sessionId;
+
+    /// <summary>Session id of an owner id of an anonymous session ("anon_{id}"), otherwise null.</summary>
+    public static string? SessionIdOf(string userId) =>
+        userId.StartsWith(AnonymousUserIdPrefix, StringComparison.Ordinal) ? userId[AnonymousUserIdPrefix.Length..] : null;
+
+    public static ClaimsPrincipal CreateAnonymousPrincipal(string sessionId) =>
+        new(new ClaimsIdentity(
+        [
+            new Claim(ClaimTypes.NameIdentifier, AnonymousUserId(sessionId)),
+            new Claim(SessionIdClaim, sessionId)
+        ], CookieAuthenticationDefaults.AuthenticationScheme));
+
+    /// <summary>Id of the anonymous session of the request, null for the other kinds of session.</summary>
+    public static string? SessionId(this ClaimsPrincipal user) => user.FindFirstValue(SessionIdClaim);
+
+    public static ClaimsPrincipal CreateAccountPrincipal(string userId, string lastFmUsername) =>
+        new(new ClaimsIdentity(
+        [
+            new Claim(ClaimTypes.NameIdentifier, userId),
+            new Claim(ClaimTypes.Name, lastFmUsername),
+            new Claim(LastFmUsernameClaim, lastFmUsername)
+        ], CookieAuthenticationDefaults.AuthenticationScheme));
+
+    /// <summary>Last.fm user name of a CityFy account session, null for the other kinds of session.</summary>
+    public static string? LastFmUsername(this ClaimsPrincipal user) => user.FindFirstValue(LastFmUsernameClaim);
 
     public static ClaimsPrincipal CreateAdminPrincipal(string username) =>
         new(new ClaimsIdentity(
@@ -44,21 +92,7 @@ public static class AuthSetup
             new Claim(ClaimTypes.Role, AdminRole)
         ], CookieAuthenticationDefaults.AuthenticationScheme));
 
-    // Empty status: UseStatusCodePages turns it into ProblemDetails (401 -> UNAUTHENTICATED)
-    private static Task WriteStatus(HttpResponse response, int status)
-    {
-        response.StatusCode = status;
-        return Task.CompletedTask;
-    }
-
-    public static ClaimsPrincipal CreatePrincipal(string userId, string? displayName) =>
-        new(new ClaimsIdentity(
-        [
-            new Claim(ClaimTypes.NameIdentifier, userId),
-            new Claim(ClaimTypes.Name, displayName ?? userId)
-        ], CookieAuthenticationDefaults.AuthenticationScheme));
-
-    /// <summary>Spotify user id of the session (endpoints are [Authorize], so it is always present).</summary>
+    /// <summary>Owner id of the session: "anon_{sessionId}" or "u_…" of an account (endpoints are [Authorize], so it is always present).</summary>
     public static string UserId(this ClaimsPrincipal user) =>
         user.FindFirstValue(ClaimTypes.NameIdentifier)
         ?? throw new CityFyException(ErrorCodes.Unauthenticated, "No user in session", StatusCodes.Status401Unauthorized);

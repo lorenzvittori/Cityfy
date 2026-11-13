@@ -104,6 +104,12 @@ public sealed class MongoStreamingRepository(IMongoDatabase database, MongoOptio
     public async Task<long> DeleteTasksByUserAsync(string userId, CancellationToken ct) =>
         (await Tasks.DeleteManyAsync(t => t.UserId == userId, ct)).DeletedCount;
 
+    public async Task<long> TransferFinishedTasksAsync(string fromUserId, string toUserId, CancellationToken ct) =>
+        (await Tasks.UpdateManyAsync(
+            t => t.UserId == fromUserId && t.Status != ProcessingStatus.Pending && t.Status != ProcessingStatus.InProgress,
+            Builders<ProcessingTask>.Update.Set(t => t.UserId, toUserId),
+            cancellationToken: ct)).ModifiedCount;
+
     public async Task DropLegacyUploadAsync(string uploadId, CancellationToken ct)
     {
         var name = options.CollectionPrefix + uploadId;

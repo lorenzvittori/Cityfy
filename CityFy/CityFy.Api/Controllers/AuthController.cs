@@ -1,6 +1,10 @@
 using CityFy.Api.Auth;
 using CityFy.Api.Clients;
+using CityFy.Api.Models;
 using CityFy.Api.Options;
+using CityFy.Api.RateLimiting;
+using CityFy.Api.Services;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc;
@@ -10,15 +14,17 @@ using ServiceDefault.Errors;
 namespace CityFy.Api.Controllers;
 
 /// <summary>
-/// Spotify login. The browser goes: GET auth/login -> Spotify consent -> GET auth/callback (this API,
-/// it is the redirect URI registered on the Spotify dashboard) -> session cookie -> frontend.
-/// Login errors go back to the frontend login page as ?error=CODE (ERRORI_UI.md §4).
+/// Login with Last.fm, as browser navigations (not fetch):
+/// GET auth/lastfm/login -> Last.fm authorization -> GET auth/lastfm/callback?token= (the
+///   callback of the Last.fm application) -> account cookie -> frontend. The data of an anonymous
+///   session open in the same browser moves to the account.
+/// Login errors go back to the frontend welcome page as ?error=CODE (ERRORI_UI.md §4).
 /// </summary>
 [ApiController]
 [ApiExplorerSettings(GroupName = "v1")]
 [Route("api/v1/auth")]
 public sealed class AuthController(
-    ISpotifyServiceClient spotify,
+    IAccountService accounts,
     IOptions<FrontendOptions> frontend,
     IWebHostEnvironment environment,
     ILogger<AuthController> logger) : ControllerBase
@@ -27,47 +33,49 @@ public sealed class AuthController(
 
     private readonly FrontendOptions _frontend = frontend.Value;
 
-    // GET api/v1/auth/login?returnUrl=/city — browser navigation (not fetch)
-    [HttpGet("login")]
-    public async Task<IActionResult> Login([FromQuery] string? returnUrl, CancellationToken ct)
+    // GET api/v1/auth/lastfm/login?returnUrl=/cities
+    [HttpGet("lastfm/login")]
+    [EnableRateLimiting(RateLimitSetup.LastFmLoginPolicy)]
+    public async Task<IActionResult> LastFmLogin([FromQuery] string? returnUrl, CancellationToken ct)
     {
-        var url = await spotify.GetAuthorizeUrlAsync(ct);
-
-        Response.Cookies.Append(AuthSetup.ReturnUrlCookie, AuthSetup.SafeReturnUrl(returnUrl), new CookieOptions
-        {
-            HttpOnly = true,
-            Secure = !environment.IsDevelopment(),
-            SameSite = SameSiteMode.Lax,
-            MaxAge = ReturnUrlLifetime
-        });
-        return Redirect(url);
-    }
-
-    // GET api/v1/auth/callback?code=...&state=... (or ?error=access_denied)
-    [HttpGet("callback")]
-    public async Task<IActionResult> Callback([FromQuery] string? code, [FromQuery] string? state, [FromQuery] string? error, CancellationToken ct)
-    {
-        if (!string.IsNullOrEmpty(error) || string.IsNullOrEmpty(code))
-            return RedirectToLoginError(ErrorCodes.SpotifyAuthDenied);
-
-        SpotifyLinkResult linked;
+        string url;
         try
         {
-            linked = await spotify.LinkAsync(code, state, ct);
+            url = await accounts.GetLastFmLoginUrlAsync(ct);
         }
         catch (CityFyException ex)
         {
-            logger.LogWarning("Spotify login failed: {Code} {Detail}", ex.Code, ex.Message);
+            return RedirectToLoginError(ex.Code);
+        }
+        RememberReturnUrl(returnUrl);
+        return Redirect(url);
+    }
+
+    // GET api/v1/auth/lastfm/callback?token=... (the user refused: Last.fm does not come back)
+    [HttpGet("lastfm/callback")]
+    [EnableRateLimiting(RateLimitSetup.LastFmLoginPolicy)]
+    public async Task<IActionResult> LastFmCallback([FromQuery] string? token, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(token))
+            return RedirectToLoginError(ErrorCodes.LastFmAuthFailed);
+
+        AccountLoginResult login;
+        try
+        {
+            // An anonymous session still valid in this browser: its data moves to the account
+            login = await accounts.LoginWithLastFmAsync(token, User.SessionId(), ct);
+        }
+        catch (CityFyException ex)
+        {
+            logger.LogWarning("Last.fm login failed: {Code} {Detail}", ex.Code, ex.Message);
             return RedirectToLoginError(ex.Code);
         }
 
+        var now = DateTimeOffset.UtcNow;
         await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme,
-            AuthSetup.CreatePrincipal(linked.UserId, linked.DisplayName),
-            new AuthenticationProperties { IsPersistent = true });
-
-        var returnUrl = AuthSetup.SafeReturnUrl(Request.Cookies[AuthSetup.ReturnUrlCookie]);
-        Response.Cookies.Delete(AuthSetup.ReturnUrlCookie);
-        return Redirect(_frontend.BaseUrl.TrimEnd('/') + returnUrl);
+            AuthSetup.CreateAccountPrincipal(login.UserId, login.Username),
+            new AuthenticationProperties { IsPersistent = true, IssuedUtc = now, ExpiresUtc = now + AuthSetup.AccountCookieLifetime });
+        return RedirectToReturnUrl();
     }
 
     // POST api/v1/auth/logout
@@ -76,6 +84,22 @@ public sealed class AuthController(
     {
         await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
         return NoContent();
+    }
+
+    private void RememberReturnUrl(string? returnUrl) =>
+        Response.Cookies.Append(AuthSetup.ReturnUrlCookie, AuthSetup.SafeReturnUrl(returnUrl), new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = !environment.IsDevelopment(),
+            SameSite = SameSiteMode.Lax,
+            MaxAge = ReturnUrlLifetime
+        });
+
+    private RedirectResult RedirectToReturnUrl()
+    {
+        var returnUrl = AuthSetup.SafeReturnUrl(Request.Cookies[AuthSetup.ReturnUrlCookie]);
+        Response.Cookies.Delete(AuthSetup.ReturnUrlCookie);
+        return Redirect(_frontend.BaseUrl.TrimEnd('/') + returnUrl);
     }
 
     private RedirectResult RedirectToLoginError(string code) =>

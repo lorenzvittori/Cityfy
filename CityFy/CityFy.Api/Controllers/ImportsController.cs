@@ -1,18 +1,23 @@
 using CityFy.Api.Auth;
 using CityFy.Api.Clients;
 using CityFy.Api.Models;
+using CityFy.Api.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Mvc;
 using ServiceDefault.Errors;
 
 namespace CityFy.Api.Controllers;
 
-/// <summary>Ways to bring plays in: upload of the Spotify export, manual Spotify sync, pipeline status.</summary>
+/// <summary>Ways to bring plays in: upload of the Spotify export, Last.fm history import, pipeline status.</summary>
 [ApiController]
 [Authorize]
 [ApiExplorerSettings(GroupName = "v1")]
 [Route("api/v1")]
-public sealed class ImportsController(IDumpClient dump, ISpotifyServiceClient spotify, IOrchestratorClient orchestrator) : ControllerBase
+public sealed class ImportsController(
+    IDumpClient dump,
+    ILastFmServiceClient lastFm,
+    IOrchestratorClient orchestrator) : ControllerBase
 {
     /// <summary>Upload limit of the API; Retrieve.Dump.Spotify enforces its own (200 MB, UPLOAD_TOO_LARGE).</summary>
     public const long MaxUploadBytes = 220_000_000;
@@ -21,6 +26,7 @@ public sealed class ImportsController(IDumpClient dump, ISpotifyServiceClient sp
 
     // POST api/v1/uploads (multipart, field "file") — Spotify extended streaming history zip
     [HttpPost("uploads")]
+    [EnableRateLimiting(RateLimitSetup.UploadPolicy)]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(MaxUploadBytes)]
     [RequestFormLimits(MultipartBodyLengthLimit = MaxUploadBytes)]
@@ -45,22 +51,14 @@ public sealed class ImportsController(IDumpClient dump, ISpotifyServiceClient sp
             : this.CityFyProblem(ErrorCodes.UploadNotFound, $"Upload '{uploadId}' not found", StatusCodes.Status404NotFound);
     }
 
-    // POST api/v1/spotify/sync — read the latest plays from Spotify now (it also runs every 30 min)
-    [HttpPost("spotify/sync")]
-    public async Task<ActionResult<SyncAcceptedDto>> Sync(CancellationToken ct)
+    // GET api/v1/lastfm/imports/{importId} — import of the Last.fm history (progress)
+    [HttpGet("lastfm/imports/{importId}")]
+    public async Task<ActionResult<LastFmImportDto>> GetLastFmImport(string importId, CancellationToken ct)
     {
-        var job = await spotify.StartRetrieveAsync(User.UserId(), ct);
-        return AcceptedAtAction(nameof(GetSync), new { jobId = job.JobId }, new SyncAcceptedDto(job.JobId));
-    }
-
-    // GET api/v1/spotify/sync/{jobId}
-    [HttpGet("spotify/sync/{jobId}")]
-    public async Task<ActionResult<ImportStatusDto>> GetSync(string jobId, CancellationToken ct)
-    {
-        var job = await spotify.GetJobAsync(jobId, ct);
-        return job.UserId == User.UserId()
-            ? Ok(job.ToDto())
-            : this.CityFyProblem(ErrorCodes.RetrieveJobNotFound, $"Sync '{jobId}' not found", StatusCodes.Status404NotFound);
+        var import = await lastFm.GetImportAsync(importId, ct);
+        return import.UserId == User.UserId()
+            ? Ok(import.ToDto())
+            : this.CityFyProblem(ErrorCodes.LastFmImportNotFound, $"Last.fm import '{importId}' not found", StatusCodes.Status404NotFound);
     }
 
     // GET api/v1/pipeline/runs?limit=10 — the user's city builds, most recent first

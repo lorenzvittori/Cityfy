@@ -3,11 +3,66 @@
 
 import { CityMap } from './city-map.models';
 
+/**
+ * anonymous: no account, the data is deleted at expiresAt unless the user comes back before.
+ * lastfm: account (login with Last.fm), the data stays until the user deletes it.
+ */
+export type SessionKind = 'anonymous' | 'lastfm';
+
 export interface Me {
+  kind: SessionKind;
   userId: string;
+  /** Last.fm user name for an account. */
   displayName: string | null;
   linkedAt: string | null;
   lastSyncAt: string | null;
+  /** Only anonymous sessions; moves forward with every visit. */
+  expiresAt: string | null;
+  /** Only accounts. */
+  lastFm?: LastFmStatus | null;
+}
+
+/** Reading of the Last.fm account. Suspended: errorCode LASTFM_AUTH_FAILED or LASTFM_USER_PRIVATE (log in again). */
+export interface LastFmStatus {
+  username: string;
+  profileUrl: string;
+  status: 'Active' | 'Suspended';
+  errorCode: string | null;
+  /** Newest play received. */
+  lastScrobbleAt: string;
+  lastPolledAt: string | null;
+  historyImportId: string | null;
+  /** Hint, not an error: LASTFM_SPOTIFY_NOT_SCROBBLING (no new play for days). */
+  warning?: string | null;
+}
+
+/** Event "now-playing" of api/v1/live. artistMbid matches the artistId of the buildings. */
+export interface NowPlaying {
+  playing: boolean;
+  artist: string | null;
+  track: string | null;
+  album: string | null;
+  artistMbid: string | null;
+  startedAt: string | null;
+  /** Page of the track on Last.fm (attribution). */
+  trackUrl: string | null;
+}
+
+/** Import of the Last.fm history. */
+export interface LastFmImport {
+  id: string;
+  status: 'Pending' | 'InProgress' | 'Done' | 'Failed' | 'Cancelled';
+  newPlays: number;
+  progressPercent: number | null;
+  progressDetail: string | null;
+  startedAt: string;
+  completedAt: string | null;
+  errorCode: string | null;
+}
+
+export interface Session {
+  kind: SessionKind;
+  expiresAt: string | null;
 }
 
 /** Data of a generated city (districts > blocks > buildings); to is exclusive. */

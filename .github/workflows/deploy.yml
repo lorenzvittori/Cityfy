@@ -58,8 +58,8 @@ jobs:
             catalog:CityFy.Catalog \
             city-generator:CityFy.CityGenerator \
             orchestrator:CityFy.Orchestrator \
-            retrieve-spotify:CityFy.Retrieve.Spotify \
-            retrieve-dump-spotify:CityFy.Retrieve.Dump.Spotify
+            retrieve-dump-spotify:CityFy.Retrieve.Dump.Spotify \
+            retrieve-lastfm:CityFy.Retrieve.LastFm
           do
             name="${pair%%:*}"; project="${pair#*:}"
             echo "::group::$name"
@@ -114,10 +114,11 @@ jobs:
           MONGO_PASSWORD: ${{ secrets.MONGO_PASSWORD }}
           RABBITMQ_PASSWORD: ${{ secrets.RABBITMQ_PASSWORD }}
           MUSICBRAINZ_SQL_CONNECTION: ${{ secrets.MUSICBRAINZ_SQL_CONNECTION }}
-          SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
+          LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
+          LASTFM_SHARED_SECRET: ${{ secrets.LASTFM_SHARED_SECRET }}
         run: |
           missing=0
-          for v in HOST USER_NAME DOMAIN SSH_KEY MONGO_PASSWORD RABBITMQ_PASSWORD MUSICBRAINZ_SQL_CONNECTION SPOTIFY_CLIENT_SECRET; do
+          for v in HOST USER_NAME DOMAIN SSH_KEY MONGO_PASSWORD RABBITMQ_PASSWORD MUSICBRAINZ_SQL_CONNECTION LASTFM_API_KEY LASTFM_SHARED_SECRET; do
             if [ -z "${!v}" ]; then echo "::error::$v is not set (see DEPLOY.md)"; missing=1; fi
           done
           exit $missing
@@ -129,7 +130,8 @@ jobs:
           MONGO_PASSWORD: ${{ secrets.MONGO_PASSWORD }}
           RABBITMQ_PASSWORD: ${{ secrets.RABBITMQ_PASSWORD }}
           MUSICBRAINZ_SQL_CONNECTION: ${{ secrets.MUSICBRAINZ_SQL_CONNECTION }}
-          SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
+          LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
+          LASTFM_SHARED_SECRET: ${{ secrets.LASTFM_SHARED_SECRET }}
         run: |
           umask 077
           {
@@ -139,7 +141,8 @@ jobs:
             printf "MONGO_PASSWORD='%s'\n" "$MONGO_PASSWORD"
             printf "RABBITMQ_PASSWORD='%s'\n" "$RABBITMQ_PASSWORD"
             printf "MUSICBRAINZ_SQL_CONNECTION='%s'\n" "$MUSICBRAINZ_SQL_CONNECTION"
-            printf "SPOTIFY_CLIENT_SECRET='%s'\n" "$SPOTIFY_CLIENT_SECRET"
+            printf "LASTFM_API_KEY='%s'\n" "$LASTFM_API_KEY"
+            printf "LASTFM_SHARED_SECRET='%s'\n" "$LASTFM_SHARED_SECRET"
           } > deploy/.env
 
       - name: SSH key

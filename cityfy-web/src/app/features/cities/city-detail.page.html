@@ -30,10 +30,21 @@
                 @if (w === 'CITY_LOW_COVERAGE') { <span class="muted">({{ d.city.summary.coveragePercent }}% degli ascolti)</span> }
               </div>
             }
-            <app-city-scene [map]="d.map" [selected]="selectedArtistId()" (artistSelected)="select($event)" />
+            <app-city-scene [map]="d.map" [selected]="selectedArtistId()" [playing]="playingArtistId()" (artistSelected)="select($event)" />
           </div>
 
           <aside class="panel">
+            @if (playingArtistId() && nowPlaying(); as p) {
+              <section class="playing" role="status">
+                <span class="note" aria-hidden="true">♪</span>
+                <div>
+                  <strong>Stai ascoltando {{ p.artist }}</strong>
+                  <span class="muted small">{{ p.track }} · è nella tua città, l'edificio è illuminato</span>
+                </div>
+                <button type="button" (click)="showPlaying()">Mostra</button>
+              </section>
+            }
+
             @if (selected(); as sel) {
               <section class="artist">
                 <button type="button" class="close" aria-label="Chiudi" (click)="selectedArtistId.set(null)">×</button>
@@ -95,9 +106,10 @@
                                       type="button"
                                       class="row"
                                       [class.selected]="selectedArtistId() === artist.artistId"
+                                      [class.playing]="playingArtistId() === artist.artistId"
                                       (click)="openArtist(artist)"
                                     >
-                                      <span class="name">{{ artist.name }}</span>
+                                      <span class="name">@if (playingArtistId() === artist.artistId) {<span class="note" aria-label="in ascolto">♪ </span>}{{ artist.name }}</span>
                                       <span class="value">{{ artist.qualifiedPlays }}</span>
                                     </button>
                                   </li>
