@@ -111,9 +111,11 @@ PostgreSQL 17 (`postgres:17-alpine`): leggero (~100 MB di RAM), senza limiti di 
 `cityfy-access.yaml` crea il namespace, con l'etichetta che dà accesso a PostgreSQL, e il ServiceAccount `cityfy-deployer`. Questo può gestire deployment, servizi, segreti, volumi e ingress **solo** in `cityfy`: nessun diritto sul cluster, sugli altri namespace o sui permessi.
 
 ```powershell
-kubectl apply --dry-run=server -f deploy/cluster/cityfy-access.yaml
+kubectl apply --dry-run=server -f deploy/cluster/cityfy-access.yaml   # 4 errori "namespaces cityfy not found": normali
 kubectl apply -f deploy/cluster/cityfy-access.yaml
 ```
+
+Il dry-run non crea davvero il namespace, quindi le risorse che ci stanno dentro non lo trovano. L'`apply` vero crea prima il namespace e poi il resto.
 
 Crea il kubeconfig del ServiceAccount, che contiene un token: trattalo come una password.
 
