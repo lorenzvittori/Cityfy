@@ -122,6 +122,9 @@ Cartelle: `Controllers/`, `Services/`, `Repositories/`, `Clients/`, `Mappers/`, 
 - Il gateway orchestra la cancellazione su tutti i servizi.
 - Prima di salvare un risultato derivato, verifica che i dati di origine esistano ancora (cancellazione arrivata mentre un job era in coda).
 - Un job che sta girando quando l'utente cancella i suoi dati non deve ricreare nulla: l'update finale filtra sullo stato atteso (es. `InProgress`), quindi un documento cancellato o annullato non viene riscritto.
+- **Passaggio di proprietario** (es. da una sessione anonima a un account): stessa forma della cancellazione, `POST internal/.../users/{fromUserId}/transfer` con body `{ toUserId }`, idempotente, orchestrato dal gateway. Si spostano solo i **dati di origine**; i derivati del vecchio proprietario si cancellano e si ricalcolano per il nuovo con l'evento della pipeline.
+- **Proprietari temporanei** (sessioni con scadenza): la verità sulla scadenza è un documento nel gateway, non il cookie. Alla scadenza un job del gateway chiama la cancellazione su tutti i servizi e ritenta finché non è completa. Un indice TTL non basta: toglierebbe solo il documento della sessione.
+- **Dati da fonti esterne con licenza** (es. Last.fm): ogni dato salvato porta la sua sorgente, così si può cancellare tutto ciò che viene da una fonte se la licenza termina.
 
 ## Dati derivati e risultati salvati
 

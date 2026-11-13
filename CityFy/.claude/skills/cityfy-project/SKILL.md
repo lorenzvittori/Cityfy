@@ -104,14 +104,30 @@ Il gateway inoltra con `DownstreamClient` (in `ServiceDefault/Clients`), che con
 
 - **Spotify Web API in modalità sviluppo:** al massimo 5 utenti autorizzati e sviluppatore Premium; gli altri ricevono 403 dopo il login. Nessun webhook. La quota estesa è riservata ad app affermate. Il login Spotify attuale quindi non scala.
 - **Last.fm:** l'utente collega Spotify a Last.fm dalle impostazioni di Last.fm, e Spotify invia gli ascolti lato server da ogni dispositivo. `user.getRecentTracks` dà anche il brano in corso (`nowplaying`). Nessun push verso terzi.
+- **Termini Last.fm (verificati il 2026-11-13, dettagli in `PIANO_LASTFM.md`):**
+  - solo uso **non commerciale**; per un uso commerciale serve un accordo;
+  - le pagine pubbliche che usano Last.fm vanno **approvate per iscritto** da Last.fm prima di aprirle al pubblico;
+  - attribuzione con il pulsante "powered by AudioScrobbler" che porta a Last.fm, e link al profilo Last.fm dell'utente; niente logo Last.fm né pubblicità senza consenso;
+  - immagini e artwork di Last.fm esclusi: non si usano;
+  - limite di richieste non dichiarato, per IP (errore 29); alla fine della licenza vanno cancellati tutti i dati Last.fm.
+
+## Identità e sessioni (da `PIANO_LASTFM.md`)
+
+- Il `userId` che i servizi interni ricevono è **opaco**: `anon_{sessionId}` per una sessione anonima, l'id CityFy per un utente Last.fm. I servizi non distinguono i due casi.
+- Sessione anonima: 1 giorno, si rinnova a ogni visita; alla scadenza il gateway cancella i dati su tutti i servizi. Passando a Last.fm i dati di origine passano all'account.
+- `anonymous_sessions` e `users` stanno nel **gateway** (Api), che quindi ha un suo database Mongo.
+- Gli ascolti in `listening_events` portano già le sorgenti (`Sources`, valori in `ListeningSources`: oggi `dump` e `api`; si aggiunge `lastfm`).
+- L'`_id` di un ascolto contiene lo `userId` (`ListeningEvent.BuildId`): il passaggio di proprietario non può fare un semplice update, deve reinserire con l'id nuovo e cancellare il vecchio.
 - **ListenBrainz:** API aperta compatibile Last.fm, ascolti con MBID, endpoint `playing-now`. Il suo import da Spotify può restare indietro di ore.
 
 ## Piani
 
 - **`PIANO_GENERAZIONE_CITTA.md`:** completato (fasi 0–6). Rimasto aperto: arrotondamento e compressione della risposta del dettaglio città (circa 280 KB per una città grande).
-- **`PIANO_LASTFM.md`:** approvato, **non iniziato**. Prevede:
+- **`PIANO_LASTFM.md`:** rivisto e confermato il 2026-11-13, **fase 0 completata, prossima la fase 1** (sessioni anonime). Prevede:
+  - nessun login obbligatorio: sessione anonima (`sessionId`) da 1 giorno che si rinnova a ogni visita, con i dati cancellati su tutti i servizi alla scadenza;
+  - "Accedi con Last.fm" come unico login, con un account persistente; i dati della sessione anonima passano all'account;
+  - nessuna migrazione degli utenti di oggi: i database si ricreano;
   - un servizio `Retrieve.LastFm` con lettura a cadenza adattiva e import dello storico;
-  - deduplica tra fonti;
-  - identità CityFy con "Accedi con Last.fm";
+  - deduplica tra Last.fm ed export;
   - brano in corso nel browser via SSE;
-  - ritiro del retrieve Spotify.
+  - rimozione del login Spotify e del retrieve Spotify.
