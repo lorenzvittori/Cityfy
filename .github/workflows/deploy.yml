@@ -175,6 +175,39 @@ jobs:
 
           install -m 700 -d ~/.ssh
 
+          echo "SSH key diagnostics"
+          echo "Length: ${#SSH_KEY}"
+          echo "Line count: $(printf '%s' "$SSH_KEY" | awk 'END {print NR}')"
+
+          if [[ "$SSH_KEY" == *'\n'* ]]; then
+            echo "FORMAT: literal backslash-n detected"
+          else
+            echo "FORMAT: no literal backslash-n"
+          fi
+
+          if [[ "$SSH_KEY" == *$'\r'* ]]; then
+            echo "FORMAT: CR characters detected"
+          else
+            echo "FORMAT: no CR characters"
+          fi
+
+          if [[ "$SSH_KEY" == "-----BEGIN OPENSSH PRIVATE KEY-----"* ]]; then
+            echo "HEADER: correct"
+          else
+            echo "::error::HEADER: incorrect"
+            exit 1
+          fi
+
+          if [[ "$SSH_KEY" == *"-----END OPENSSH PRIVATE KEY-----" ]]; then
+            echo "FOOTER: correct"
+          else
+            echo "::error::FOOTER: incorrect"
+            exit 1
+          fi
+
+          # Normalize Windows CRLF line endings.
+          SSH_KEY="${SSH_KEY//$'\r'/}"
+
           printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
 
@@ -193,6 +226,8 @@ jobs:
             echo "::error::known_hosts is empty"
             exit 1
           fi
+
+          echo "SSH configuration prepared"
 
       - name: Tunnel to Kubernetes API
         shell: bash
