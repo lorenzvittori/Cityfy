@@ -54,8 +54,10 @@ public sealed class MongoPipelineRunRepository : IPipelineRunRepository
             .Project(r => r.UserId).ToListAsync(ct)).ToHashSet();
 
         var claimed = new List<PipelineRun>();
-        foreach (var run in due.Where(r => !busyUsers.Contains(r.UserId)))
+        foreach (var run in due)
         {
+            if (busyUsers.Contains(run.UserId))
+                continue;
             var started = await _runs.FindOneAndUpdateAsync<PipelineRun>(
                 r => r.RunId == run.RunId && r.Status == PipelineStatus.Pending,
                 Builders<PipelineRun>.Update.Set(r => r.Status, PipelineStatus.Building).Set(r => r.StartedAt, now),

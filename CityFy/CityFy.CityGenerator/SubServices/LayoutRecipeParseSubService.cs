@@ -36,8 +36,17 @@ public sealed class LayoutRecipeParseSubService : ILayoutRecipeParseSubService
         [CityRequest.Grid] = LayoutRecipe.Grid,
     };
 
-    private static readonly IReadOnlyDictionary<string, CityShape> Shapes = Enum.GetValues<CityShape>().ToDictionary(s => s.ToString().ToLowerInvariant());
-    private static readonly IReadOnlyDictionary<string, HeightScale> HeightScales = Enum.GetValues<HeightScale>().ToDictionary(s => s.ToString().ToLowerInvariant());
+    private static readonly IReadOnlyDictionary<string, CityShape> Shapes = ByName<CityShape>();
+    private static readonly IReadOnlyDictionary<string, HeightScale> HeightScales = ByName<HeightScale>();
+
+    /// <summary>Enum values by their lower-case name (the value written in the string).</summary>
+    private static Dictionary<string, T> ByName<T>() where T : struct, Enum
+    {
+        var byName = new Dictionary<string, T>();
+        foreach (var value in Enum.GetValues<T>())
+            byName.Add(value.ToString().ToLowerInvariant(), value);
+        return byName;
+    }
 
     /// <summary>Canonical order.</summary>
     private static readonly RecipeKey[] Keys =
@@ -164,11 +173,15 @@ public sealed class LayoutRecipeParseSubService : ILayoutRecipeParseSubService
         return recipe;
     }
 
+    /// <summary>"key code" for the log; a problem of the whole string has no key.</summary>
+    private static string Describe(RecipeProblem problem) =>
+        $"{(problem.Key.Length > 0 ? problem.Key : "(string)")} {problem.Code}";
+
     private static string Format(double value) => value.ToString("0.##", CultureInfo.InvariantCulture);
 
     private static CityFyException Invalid(IReadOnlyList<RecipeProblem> problems) =>
         new(ErrorCodes.CityInvalidRecipe,
-            $"Invalid map parameters: {string.Join(", ", problems.Select(p => $"{(p.Key.Length > 0 ? p.Key : "(string)")} {p.Code}"))}",
+            $"Invalid map parameters: {string.Join(", ", problems.Select(Describe))}",
             StatusCodes.Status400BadRequest)
         {
             Extensions = new Dictionary<string, object?> { [ProblemsExtension] = problems }

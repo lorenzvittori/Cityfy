@@ -71,8 +71,13 @@ public sealed class ArtistPlacementSubService(IOptions<CityOptions> cityOptions)
     }
 
     // Most voted genre of the artist that belongs to the chosen macro-genre (Genres are sorted by votes)
-    private static int ChooseBlock(ResolvedArtist artist, int macro, GenreHierarchy hierarchy) =>
-        artist.Genres.FirstOrDefault(g => hierarchy.GetRoots(g.Id).Contains(macro))?.Id ?? macro;
+    private static int ChooseBlock(ResolvedArtist artist, int macro, GenreHierarchy hierarchy)
+    {
+        foreach (var g in artist.Genres)
+            if (hierarchy.GetRoots(g.Id).Contains(macro))
+                return g.Id;
+        return macro;
+    }
 
     private string ColorFor(string macroName)
     {

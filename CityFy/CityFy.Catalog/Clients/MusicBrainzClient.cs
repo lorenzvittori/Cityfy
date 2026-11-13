@@ -14,8 +14,7 @@ public sealed class MusicBrainzClient(HttpClient http) : IMusicBrainzClient
         var byName = new List<ResolvedArtist>();
         var byMbid = new List<ResolvedArtist>();
 
-        var batches = new[] { request.SpotifyArtistIds.Count, request.Names.Count, request.Mbids.Count }
-            .Max(count => (count + BatchSize - 1) / BatchSize);
+        var batches = new[] { request.SpotifyArtistIds.Count, request.Names.Count, request.Mbids.Count }.Max(BatchesFor);
 
         for (var i = 0; i < batches; i++)
         {
@@ -38,6 +37,9 @@ public sealed class MusicBrainzClient(HttpClient http) : IMusicBrainzClient
 
         return new ResolveArtistsResponse(bySpotify, byName, byMbid);
     }
+
+    /// <summary>Requests needed for <paramref name="count"/> items (rounded up).</summary>
+    private static int BatchesFor(int count) => (count + BatchSize - 1) / BatchSize;
 
     public async Task<GenreGraph> GetGenreGraphAsync(CancellationToken ct) =>
         await http.GetFromJsonAsync<GenreGraph>("api/genres/graph", ct)

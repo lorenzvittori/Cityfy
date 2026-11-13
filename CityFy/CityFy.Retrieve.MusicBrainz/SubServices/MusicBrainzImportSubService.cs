@@ -56,13 +56,15 @@ public sealed partial class MusicBrainzImportSubService(
         }
 
         // Sizes up front: also fails fast if a table is missing, before reading GBs of the others
-        var sizes = ReadOrder.ToDictionary(t => t, t => new FileInfo(Table(t)).Length);
+        var sizes = new Dictionary<string, long>();
+        foreach (var t in ReadOrder)
+            sizes[t] = new FileInfo(Table(t)).Length;
         var totalBytes = Math.Max(1, sizes.Values.Sum());
 
         IEnumerable<string[]> Rows(string name)
         {
             var index = Array.IndexOf(ReadOrder, name) + 1;
-            var before = ReadOrder.TakeWhile(t => t != name).Sum(t => sizes[t]);
+            var before = ReadOrder.Take(index - 1).Sum(t => sizes[t]);
             var label = $"{name} ({index}/{ReadOrder.Length})";
             _progress.Report("Reading tables", 100.0 * before / totalBytes, label);
             return DumpTableReader.ReadRows(Table(name), ct, position =>
@@ -136,7 +138,9 @@ public sealed partial class MusicBrainzImportSubService(
         foreach (var ((artistId, genreId), count) in votes)
             data.ArtistGenres.Add(new ArtistGenre { ArtistId = artistId, GenreId = genreId, Votes = count });
 
-        var votesByArtist = data.ArtistGenres.GroupBy(ag => ag.ArtistId).ToDictionary(g => g.Key, g => g.Sum(x => x.Votes));
+        var votesByArtist = new Dictionary<int, int>();
+        foreach (var ag in data.ArtistGenres)
+            votesByArtist[ag.ArtistId] = votesByArtist.GetValueOrDefault(ag.ArtistId) + ag.Votes;
         logger.LogInformation("Artist genres: {Count} for {Artists} artists", data.ArtistGenres.Count, votesByArtist.Count);
 
         // artist: id | gid | name | sort_name | ...  (only artists with at least one genre)
@@ -149,7 +153,8 @@ public sealed partial class MusicBrainzImportSubService(
 
         // Every ArtistGenre must point to an imported artist (FK)
         var artistIds = data.Artists.Select(a => a.Id).ToHashSet();
-        data.ArtistGenres.RemoveAll(ag => !artistIds.Contains(ag.ArtistId));
+        bool IsOrphan(ArtistGenre ag) => !artistIds.Contains(ag.ArtistId);
+        data.ArtistGenres.RemoveAll(IsOrphan);
         logger.LogInformation("Artists: {Count}", data.Artists.Count);
 
         // l_artist_url: id | link | entity0 (artist) | entity1 (url) | ...

@@ -2,6 +2,7 @@ using CityFy.Api.Auth;
 using CityFy.Api.Models;
 using CityFy.Api.SubServices;
 using ServiceDefault.Errors;
+using ServiceDefault.Models;
 
 namespace CityFy.Api.Services;
 
@@ -33,7 +34,9 @@ public sealed class UserDataEraser(
             await users.DeleteAsync(userId, ct);
 
         logger.LogInformation("Data of user {UserId} deleted (requested by {RequestedBy}): {Summary}", userId, requestedBy,
-            string.Join("; ", deleted.Select(d => $"{d.Service} {string.Join(", ", d.Deleted.Select(kv => $"{kv.Key}={kv.Value}"))}")));
+            string.Join("; ", deleted.Select(Describe)));
         return new UserDataDeletionResult(userId, deleted);
     }
+
+    private static string Describe(UserDataDeletion deletion) => deletion.Describe();
 }

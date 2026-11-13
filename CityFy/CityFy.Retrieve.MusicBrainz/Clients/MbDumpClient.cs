@@ -58,15 +58,14 @@ public sealed class MbDumpClient : IMbDumpClient
         var html = await _http.GetStringAsync("", cancellationToken);
         var dirs = Regex.Matches(html, "href=[\"'](?<dir>\\d{8}-\\d{6})/[\"']", RegexOptions.IgnoreCase)
             .Select(m => m.Groups["dir"].Value)
-            .Where(d => DateTime.TryParseExact(d, "yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out _))
+            .Where(IsDumpDirectoryName)
             .Distinct()
-            .OrderByDescending(d => d, StringComparer.Ordinal);
+            .OrderDescending(StringComparer.Ordinal);
 
         foreach (var dir in dirs.Take(3))
         {
             var dirHtml = await _http.GetStringAsync(dir + "/", cancellationToken);
-            if (requiredFiles.All(f => dirHtml.Contains($"\"{f}\"", StringComparison.OrdinalIgnoreCase) ||
-                                       dirHtml.Contains($"'{f}'", StringComparison.OrdinalIgnoreCase)))
+            if (requiredFiles.All(f => Lists(dirHtml, f)))
                 return dir;
 
             _logger.LogInformation("Dump directory {Dir} is incomplete, trying the previous one", dir);
@@ -74,6 +73,14 @@ public sealed class MbDumpClient : IMbDumpClient
 
         return null;
     }
+
+    private static bool IsDumpDirectoryName(string dir) =>
+        DateTime.TryParseExact(dir, "yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out _);
+
+    /// <summary>The directory listing links the file (href quoted with " or ').</summary>
+    private static bool Lists(string dirHtml, string file) =>
+        dirHtml.Contains($"\"{file}\"", StringComparison.OrdinalIgnoreCase) ||
+        dirHtml.Contains($"'{file}'", StringComparison.OrdinalIgnoreCase);
 
     // Streams the file from the base URL to disk, reporting progress (percent)
     public async Task DownloadAsync(string fileNameOrUrl, string destinationPath, IProgress<double>? progress = null, CancellationToken cancellationToken = default)

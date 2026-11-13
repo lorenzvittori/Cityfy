@@ -19,10 +19,18 @@ public sealed class CatalogClient(HttpClient http) : DownstreamClient(http, "Cat
 
     public async Task<IReadOnlyList<GenreOption>> GetGenresAsync(string userId, DateTime? from, DateTime? to, CancellationToken ct)
     {
-        var query = string.Join('&', new[] { ("from", from), ("to", to) }
-            .Where(p => p.Item2.HasValue)
-            .Select(p => $"{p.Item1}={Uri.EscapeDataString(p.Item2!.Value.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture))}"));
+        var query = new List<string>();
+        AddDate(query, "from", from);
+        AddDate(query, "to", to);
+        var queryString = query.Count > 0 ? "?" + string.Join('&', query) : "";
         return await SendAsync<List<GenreOption>>(new HttpRequestMessage(HttpMethod.Get,
-            $"api/catalog/genres/{Uri.EscapeDataString(userId)}{(query.Length > 0 ? "?" + query : "")}"), ct);
+            $"api/catalog/genres/{Uri.EscapeDataString(userId)}{queryString}"), ct);
+    }
+
+    /// <summary>"name=2026-01-01T00:00:00.0000000Z" (UTC, round-trip), only when the date is set.</summary>
+    private static void AddDate(List<string> query, string name, DateTime? value)
+    {
+        if (value is { } date)
+            query.Add($"{name}={Uri.EscapeDataString(date.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture))}");
     }
 }

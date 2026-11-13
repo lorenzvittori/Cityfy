@@ -22,11 +22,16 @@ public sealed class StreamingHistoryImportSubService(
 
     private static readonly JsonSerializerOptions JsonOptions = new() { Converters = { new NullableDateTimeJsonConverter() } };
 
+    private static bool IsStreamingFile(string path) =>
+        Path.GetFileName(path).StartsWith(StreamingFilePrefix, StringComparison.OrdinalIgnoreCase);
+
+    private static long SizeOf(string path) => new FileInfo(path).Length;
+
     public async Task<int> ImportAsync(string uploadId, string userId, string extractDir, CancellationToken ct)
     {
         var jsonFiles = Directory.EnumerateFiles(extractDir, "*.json", SearchOption.AllDirectories)
-            .Where(f => Path.GetFileName(f).StartsWith(StreamingFilePrefix, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(n => n)
+            .Where(IsStreamingFile)
+            .Order()
             .ToArray();
 
         if (jsonFiles.Length == 0)
@@ -37,7 +42,7 @@ public sealed class StreamingHistoryImportSubService(
         var failedFiles = 0;
 
         // Progress by bytes: files of different years have very different sizes
-        var totalBytes = Math.Max(1, jsonFiles.Sum(f => new FileInfo(f).Length));
+        var totalBytes = Math.Max(1, jsonFiles.Sum(SizeOf));
         long doneBytes = 0;
 
         for (var index = 0; index < jsonFiles.Length; index++)

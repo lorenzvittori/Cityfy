@@ -15,7 +15,7 @@ public sealed class DumpExtractSubService(IArchiveExtractor extractor, ImportPro
 
         foreach (var (archive, tables) in DumpFiles.TablesByArchive)
         {
-            var missing = tables.Where(t => !File.Exists(Path.Combine(extractDir, t))).ToList();
+            var missing = tables.Where(t => IsMissing(extractDir, t)).ToList();
             if (missing.Count == 0) continue;
 
             logger.LogInformation("Extracting {Count} tables from {Archive}", missing.Count, archive);
@@ -26,4 +26,6 @@ public sealed class DumpExtractSubService(IArchiveExtractor extractor, ImportPro
 
         return Path.Combine(extractDir, TablesFolder);
     }
+
+    private static bool IsMissing(string extractDir, string table) => !File.Exists(Path.Combine(extractDir, table));
 }

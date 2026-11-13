@@ -1,6 +1,6 @@
 ---
 name: dotnet-conventions
-description: Convenzioni di codice .NET valide in ogni progetto — gestione dei casi fuori standard (chiedere e poi aggiornare le skill), lingua, file, namespace, interfacce, classi sealed/primary constructor, naming, DI, Options, errori con codici stabili (anche per campo), logica pura, modelli con metodi e delegate, parametri da stringa, porting numerico da JS, persistenza Mongo, test. Usala prima di creare, rinominare o spostare classi, interfacce, DTO, Options o registrazioni DI.
+description: Convenzioni di codice .NET valide in ogni progetto — gestione dei casi fuori standard (chiedere e poi aggiornare le skill), lingua, file, namespace, interfacce, classi sealed/primary constructor, naming, DI, Options, errori con codici stabili (anche per campo), logica pura, modelli con metodi e delegate, LINQ senza logica e oggetti creati con factory, parametri da stringa, porting numerico da JS, persistenza Mongo, test. Usala prima di creare, rinominare o spostare classi, interfacce, DTO, Options o registrazioni DI, e prima di scrivere query LINQ.
 ---
 
 # Convenzioni .NET (tutti i progetti)
@@ -134,6 +134,40 @@ Per ottenere gli stessi numeri (golden test con tolleranza relativa 1e-6):
 - **`x || 1`**: zero e NaN diventano 1.
 - **Seno, coseno, atan2**: differiscono all'ultimo bit tra runtime. Ogni **pareggio** (distanze uguali, lati uguali, massimi uguali) va rotto con una tolleranza (`> best + 1e-9`, distanza arrotondata a 1e-6) **in entrambe le implementazioni**, poi si rigenerano i golden.
 
+## LINQ e creazione degli oggetti
+
+Regola dell'utente, valida per tutto il codice .NET di produzione, nuovo o toccato. Sono esclusi i progetti di test (fake e test) e il frontend.
+
+- **Niente logica dentro le lambda di LINQ.** Una lambda contiene al massimo:
+  - l'accesso a un membro (`x => x.Score`, `x => x.Plays.Count`);
+  - **una sola chiamata** a un metodo o a una factory (`b => NewBuilding(b, color, max)`).
+  
+  Meglio ancora un **method group** (`.Select(ArtistTotals.From)`, `.OrderByDescending(ScoreOf)`).
+- **Vietati nelle lambda:**
+  - `new`, inizializzatori di oggetto, tipi anonimi;
+  - ternari, `??` con logica, interpolazioni con calcoli, operazioni aritmetiche e confronti;
+  - lambda con blocco `{ }`;
+  - LINQ annidate dentro una lambda.
+- **Le condizioni hanno un nome:** un predicato diventa un metodo o una proprietà (`.Where(IsPlaced)`, `artist.IsPlaced`); se serve più di una condizione, meglio un `foreach` con `if`/`continue`.
+- **Gli oggetti si creano con le factory:**
+  - un metodo statico `From`/`Create` sul tipo, quando il tipo ha i dati per farlo e non è un contratto condiviso;
+  - altrimenti un metodo factory privato della classe che li costruisce (`NewDistrict`, `NewBuilding`) oppure un Mapper;
+  - `new` e gli inizializzatori stanno solo dentro le factory, o in una costruzione diretta fuori da LINQ.
+- **Tipi intermedi:** al posto di un tipo anonimo, un `private sealed record` con la sua factory (`ArtistTotals.From(group)`).
+- **I selettori ricorrenti** (chiave, ordinamento, somma) diventano piccoli metodi statici con un nome (`ScoreOf`, `QualifiedOf`), raccolti in fondo alla classe, così le catene LINQ si leggono come frasi.
+- **Quando una lambda non basta**, un `foreach`/`for` con `if`/`continue` è sempre ammesso: un filtro con confronti, una somma in ordine fisso, una costruzione con `new`.
+- **Eccezioni:**
+  - **query tradotte dal database**: filtri e update di MongoDB (`Find(x => ...)`, `Builders<T>.Filter.Where`, `Update.Set(x => x.Campo, ...)`) e le query EF (`Where`/`Select`/`OrderBy` prima di `ToListAsync`). Sono espressioni che il driver traduce in query, non codice che gira in memoria, e una proiezione EF verso un record o un tipo anonimo evita di caricare colonne inutili. Dopo la materializzazione valgono di nuovo le regole;
+  - **delegate di strategia** restituiti da un metodo (es. una famiglia di tagli `s => new HalfPlane(...)`): non sono LINQ. Se il delegate è un campo statico, usa un method group (`Template = Run;`).
+
+```csharp
+// No
+var buildings = placements.GroupBy(x => x.Artist.Mbid!).Select(g => new { Qualified = g.Sum(x => x.Plays.QualifiedPlays), ... });
+// Sì
+var buildings = placements.GroupBy(ArtistMbid).Select(ArtistTotals.From).ToList();
+var districts = buildings.GroupBy(DistrictGenreIdOf).Select(d => NewDistrict(d, maxQualified)).OrderByDescending(ScoreOf).ToList();
+```
+
 ## Persistenza (MongoDB)
 
 - I documenti salvati hanno `[BsonIgnoreExtraElements]` quando un campo potrebbe sparire: togliere una proprietà non deve rompere la lettura dei documenti vecchi.
@@ -175,3 +209,4 @@ Per ottenere gli stessi numeri (golden test con tolleranza relativa 1e-6):
 - `DateTime.Now` (usa `DateTime.UtcNow` e passa `now` alla logica pura).
 - Logica di dominio in controller, consumer o `Program.cs`.
 - Nuove classi `static` di utilità che contengono logica (usa modelli con metodi o un SubService).
+- Logica, `new`, inizializzatori o tipi anonimi dentro le lambda di LINQ (vedi "LINQ e creazione degli oggetti").

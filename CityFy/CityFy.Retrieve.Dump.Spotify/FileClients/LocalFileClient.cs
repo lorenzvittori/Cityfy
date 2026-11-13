@@ -37,7 +37,7 @@ public sealed class LocalFileClient : IFileClient
 
         return Directory.EnumerateFiles(rootPath, "*", SearchOption.AllDirectories)
             .Select(p => Path.GetRelativePath(rootPath, p))
-            .OrderBy(n => n)
+            .Order()
             .ToArray();
     }
 }

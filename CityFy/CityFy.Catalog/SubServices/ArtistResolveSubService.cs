@@ -41,9 +41,11 @@ public sealed class ArtistResolveSubService(IMusicBrainzClient musicBrainz) : IA
     }
 
     private static Dictionary<string, ResolvedArtist> Matched(IEnumerable<ResolvedArtist> resolved, StringComparer comparer) =>
-        resolved.Where(r => r.MatchType != NoMatch)
+        resolved.Where(IsMatched)
             .GroupBy(r => r.Input, comparer)
             .ToDictionary(g => g.Key, g => g.First(), comparer);
+
+    private static bool IsMatched(ResolvedArtist artist) => artist.MatchType != NoMatch;
 
     private static string? SpotifyId(string? artistUri) =>
         artistUri != null && artistUri.StartsWith(SpotifyArtistUriPrefix, StringComparison.Ordinal)

@@ -33,20 +33,18 @@ public sealed class ArtistResolveSubService(MusicBrainzContext db) : IArtistReso
         // Spotify id -> best artist id
         var spotifyIds = spotifyInputs.ToDictionary(i => i, NormalizeSpotifyId);
         var wantedSpotify = spotifyIds.Values.Distinct().ToList();
-        var bySpotify = (await db.ArtistSpotifyLinks
+        var bySpotify = BestByKey(await db.ArtistSpotifyLinks
                 .Where(l => wantedSpotify.Contains(l.SpotifyArtistId))
-                .Select(l => new { l.SpotifyArtistId, l.ArtistId, l.Artist.TotalGenreVotes })
-                .ToListAsync(ct))
-            .GroupBy(x => x.SpotifyArtistId)
-            .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.TotalGenreVotes).First().ArtistId);
+                .Select(l => new Candidate(l.SpotifyArtistId, l.ArtistId, l.Artist.TotalGenreVotes))
+                .ToListAsync(ct),
+            StringComparer.Ordinal);
 
         // Name -> best artist id (SQL comparison is case-insensitive with the default collation)
-        var byName = (await db.Artists
+        var byName = BestByKey(await db.Artists
                 .Where(a => nameInputs.Contains(a.Name))
-                .Select(a => new { a.Name, a.Id, a.TotalGenreVotes })
-                .ToListAsync(ct))
-            .GroupBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.TotalGenreVotes).First().Id, StringComparer.OrdinalIgnoreCase);
+                .Select(a => new Candidate(a.Name, a.Id, a.TotalGenreVotes))
+                .ToListAsync(ct),
+            StringComparer.OrdinalIgnoreCase);
 
         var artistIds = bySpotify.Values.Concat(byName.Values).Concat(byMbid.Values).Distinct().ToList();
         var artists = await db.Artists
@@ -75,14 +73,42 @@ public sealed class ArtistResolveSubService(MusicBrainzContext db) : IArtistReso
             return new ResolvedArtist(input, ArtistMatchTypes.None, null, null, null, []);
         }
 
+        ResolvedArtist BySpotify(string input) => Build(input, IdOf(bySpotify, spotifyIds[input]), ArtistMatchTypes.SpotifyUrl);
+        ResolvedArtist ByName(string input) => Build(input, IdOf(byName, input), ArtistMatchTypes.Name);
+        ResolvedArtist ByMbid(string input) => Build(input, IdOf(byMbid, input), ArtistMatchTypes.Mbid);
+
         return new ResolveArtistsResponse(
-            spotifyInputs.Select(i => Build(i, bySpotify.TryGetValue(spotifyIds[i], out var id) ? id : null, ArtistMatchTypes.SpotifyUrl)).ToList(),
-            nameInputs.Select(n => Build(n, byName.TryGetValue(n, out var id) ? id : null, ArtistMatchTypes.Name)).ToList(),
-            mbidInputs.Select(m => Build(m, byMbid.TryGetValue(m, out var id) ? id : null, ArtistMatchTypes.Mbid)).ToList());
+            spotifyInputs.Select(BySpotify).ToList(),
+            nameInputs.Select(ByName).ToList(),
+            mbidInputs.Select(ByMbid).ToList());
     }
 
+    /// <summary>An artist found for a key (Spotify id or name), with its genre votes to rank homonyms.</summary>
+    private sealed record Candidate(string Key, int ArtistId, int Votes);
+
+    /// <summary>Per key, the candidate with most votes (the first one on ties).</summary>
+    private static Dictionary<string, int> BestByKey(IEnumerable<Candidate> candidates, StringComparer comparer)
+    {
+        var best = new Dictionary<string, Candidate>(comparer);
+        foreach (var c in candidates)
+            if (!best.TryGetValue(c.Key, out var current) || c.Votes > current.Votes)
+                best[c.Key] = c;
+
+        var ids = new Dictionary<string, int>(comparer);
+        foreach (var (key, c) in best)
+            ids[key] = c.ArtistId;
+        return ids;
+    }
+
+    private static int? IdOf(IReadOnlyDictionary<string, int> ids, string key) =>
+        ids.TryGetValue(key, out var id) ? id : null;
+
+    private static bool HasText(string? value) => !string.IsNullOrWhiteSpace(value);
+
+    private static string Trimmed(string value) => value.Trim();
+
     private static List<string> Distinct(List<string>? values) =>
-        (values ?? []).Where(v => !string.IsNullOrWhiteSpace(v)).Select(v => v.Trim())
+        (values ?? []).Where(HasText).Select(Trimmed)
             .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
     private static string NormalizeSpotifyId(string value) =>

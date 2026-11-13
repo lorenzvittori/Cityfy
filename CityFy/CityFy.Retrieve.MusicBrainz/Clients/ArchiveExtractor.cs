@@ -8,6 +8,8 @@ public sealed class ArchiveExtractor(ILogger<ArchiveExtractor> logger) : IArchiv
     // Extracts a .tar.bz2 archive into destinationDirectory with the external 'tar' command.
     // Requires 'tar' on the system (Windows 10+ ships bsdtar); otherwise use a compatible library.
     // members: optional list of archive entries to extract (e.g. "mbdump/genre"); all when empty.
+    private static string Quoted(string member) => $"\"{member}\"";
+
     public async Task ExtractAsync(string archivePath, string destinationDirectory, IReadOnlyCollection<string>? members = null, CancellationToken cancellationToken = default)
     {
         if (!File.Exists(archivePath))
@@ -15,7 +17,7 @@ public sealed class ArchiveExtractor(ILogger<ArchiveExtractor> logger) : IArchiv
 
         Directory.CreateDirectory(destinationDirectory);
 
-        var memberArgs = members is { Count: > 0 } ? " " + string.Join(" ", members.Select(m => $"\"{m}\"")) : "";
+        var memberArgs = members is { Count: > 0 } ? " " + string.Join(" ", members.Select(Quoted)) : "";
         var psi = new ProcessStartInfo
         {
             FileName = "tar",

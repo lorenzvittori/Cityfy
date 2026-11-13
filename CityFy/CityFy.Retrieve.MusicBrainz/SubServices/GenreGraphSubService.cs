@@ -5,7 +5,8 @@ using Microsoft.EntityFrameworkCore;
 namespace CityFy.Retrieve.MusicBrainz.SubServices;
 
 public sealed class GenreGraphSubService(MusicBrainzContext db) : IGenreGraphSubService
-{    public async Task<GenreGraph> GetGraphAsync(CancellationToken ct)
+{
+    public async Task<GenreGraph> GetGraphAsync(CancellationToken ct)
     {
         var genres = await db.Genres.OrderBy(g => g.Name)
             .Select(g => new GenreNode(g.Id, g.Gid, g.Name)).ToListAsync(ct);

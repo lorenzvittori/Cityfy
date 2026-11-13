@@ -37,8 +37,11 @@ public sealed class MongoBrowseSubService(IMongoDatabase mongo) : IMongoBrowseSu
             .Skip((page - 1) * pageSize).Limit(pageSize)
             .ToListAsync(ct);
 
-        var rows = new JsonArray(docs.Select(d => JsonNode.Parse(d.ToJson(JsonSettings))).ToArray());
+        var rows = new JsonArray(docs.Select(ToJsonNode).ToArray());
         var columns = docs.SelectMany(d => d.Names).Distinct().ToList();
         return new TablePage(name, total, page, pageSize, columns, rows);
     }
+
+    /// <summary>Relaxed extended JSON (dates and ids readable), as a node of the page.</summary>
+    private static JsonNode? ToJsonNode(BsonDocument document) => JsonNode.Parse(document.ToJson(JsonSettings));
 }

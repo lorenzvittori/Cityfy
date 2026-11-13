@@ -24,14 +24,7 @@ public sealed class CityLayoutSubService : ICityLayoutSubService
     public CityLayout Compute(CityModel city, LayoutRecipe recipe)
     {
         // Only blocks with buildings, only districts with blocks
-        var districts = city.Districts
-            .Select(d => new CityDistrict
-            {
-                DistrictId = d.DistrictId, Name = d.Name, GenreId = d.GenreId, Color = d.Color,
-                Blocks = d.Blocks.Where(b => b.Buildings.Count > 0).ToList()
-            })
-            .Where(d => d.Blocks.Count > 0)
-            .ToList();
+        var districts = city.Districts.Select(WithBuiltBlocks).Where(HasBlocks).ToList();
         if (districts.Count == 0)
             return new CityLayout(recipe.Name, [], [], [], [], new Streets([], [], [], [], [], []), new LayoutBounds(0, 0, 0, 0), 0, 0);
 
@@ -57,18 +50,21 @@ public sealed class CityLayoutSubService : ICityLayoutSubService
             if (!groups.TryGetValue(tb.Bound, out var group)) groups[tb.Bound] = group = groups.Count;
             var k = ctx.SubBlocks(tb.Source.Buildings.Count);
             var raws = k > 1 ? tb.Cell.SplitByAreas(Enumerable.Repeat(1.0, k).ToList(), Polygon.LongestCuts) : [tb.Cell];
-            streetCells.AddRange(raws.Select(poly => new RoadCell(poly, group)));
+            foreach (var raw in raws) streetCells.Add(new RoadCell(raw, group));
 
             var parts = raws.Select(raw => BlockPart(raw, tb.Bound, recipe)).ToList();
             allParts.AddRange(parts);
             blocks.Add(new PlacedBlock(tb.Source.BlockId, tb.DistrictId, tb.Source.Name, tb.Color, tb.Cell.Points,
-                parts.Select(p => new BlockPart(p.Outline.Points, p.Plate.Points)).ToList()));
+                parts.Select(ToBlockPart).ToList()));
             buildings.AddRange(PlaceBuildings(tb.Source, tb.DistrictId, tb.Cell, parts, pitch, maxWidth, heightOf));
         }
 
         // Roads: main roads between districts (+ template avenues), streets between blocks
         var plan = new StreetPlan(recipe);
-        var mainCells = shape.Districts.SelectMany(d => d.Outlines.Select(o => new RoadCell(new Polygon(o), 0))).ToList();
+        var mainCells = new List<RoadCell>();
+        foreach (var d in shape.Districts)
+            foreach (var o in d.Outlines)
+                mainCells.Add(new RoadCell(new Polygon(o), 0));
         List<RoadSegment> roads =
         [
             .. plan.SharedEdges(mainCells, recipe.MainRoad, RoadKinds.Main),
@@ -78,11 +74,25 @@ public sealed class CityLayoutSubService : ICityLayoutSubService
         var streets = plan.Furnish(roads, allParts);
 
         // Bounds (camera framing, minimap, navigation limits)
-        var points = shape.Districts.SelectMany(d => d.Outlines.SelectMany(o => o)).ToList();
+        var points = shape.Districts.SelectMany(d => d.Outlines).SelectMany(o => o).ToList();
         var box = new LayoutBounds(points.Min(p => p.X), points.Max(p => p.X), points.Min(p => p.Z), points.Max(p => p.Z));
         return new CityLayout(recipe.Name, buildings, shape.Districts, blocks, shape.Plazas, streets, box,
             box.MaxX - box.MinX, box.MaxZ - box.MinZ);
     }
+
+    /// <summary>The district with only its blocks that have buildings.</summary>
+    private static CityDistrict WithBuiltBlocks(CityDistrict d) => new()
+    {
+        DistrictId = d.DistrictId, Name = d.Name, GenreId = d.GenreId, Color = d.Color,
+        Blocks = d.Blocks.Where(HasBuildings).ToList()
+    };
+
+    private static bool HasBuildings(CityBlock block) => block.Buildings.Count > 0;
+    private static bool HasBlocks(CityDistrict district) => district.Blocks.Count > 0;
+
+    private static BlockPart ToBlockPart((Polygon Outline, Polygon Plate) part) => new(part.Outline.Points, part.Plate.Points);
+
+    private static double Distance(Point a, Point b) => Vector.Hypot(a.X - b.X, a.Z - b.Z);
 
     /// <summary>Sub-block: half a street off the center lines, inside the district bound; sidewalk ring inside.</summary>
     private static (Polygon Outline, Polygon Plate) BlockPart(Polygon raw, Polygon bound, LayoutRecipe recipe)
@@ -102,11 +112,7 @@ public sealed class CityLayoutSubService : ICityLayoutSubService
         var counts = Apportion(n, parts.Select(p => p.Plate.Area).ToList());
         var c = cell.Centroid;
         var order = Enumerable.Range(0, parts.Count)
-            .OrderBy(i =>
-            {
-                var a = parts[i].Plate.Centroid;
-                return Vector.Hypot(a.X - c.X, a.Z - c.Z);
-            })
+            .OrderBy(i => Distance(parts[i].Plate.Centroid, c))
             .ToList();
 
         var output = new List<PlacedBuilding>();
@@ -138,22 +144,36 @@ public sealed class CityLayoutSubService : ICityLayoutSubService
     /// </summary>
     private static Func<CityBuilding, double> HeightScaleOf(IReadOnlyList<CityDistrict> districts, HeightScale scale)
     {
-        if (scale == HeightScale.Log) return b => b.Height;
+        if (scale == HeightScale.Log) return CatalogHeight;
         var all = districts.SelectMany(d => d.Blocks).SelectMany(b => b.Buildings).ToList();
-        var (min, max) = (all.Min(b => b.Height), all.Max(b => b.Height));
-        var maxPlays = Math.Max(1, all.Max(b => b.QualifiedPlays));
-        return b => min + (max - min) * b.QualifiedPlays / maxPlays;
+        var (min, max) = (all.Min(CatalogHeight), all.Max(CatalogHeight));
+        var maxPlays = Math.Max(1, all.Max(QualifiedPlaysOf));
+        double Linear(CityBuilding b) => min + (max - min) * b.QualifiedPlays / maxPlays;
+        return Linear;
     }
+
+    private static double CatalogHeight(CityBuilding building) => building.Height;
+    private static long QualifiedPlaysOf(CityBuilding building) => building.QualifiedPlays;
 
     /// <summary>n items split proportionally to the weights (largest remainders), sum exactly n.</summary>
     internal static int[] Apportion(int n, IReadOnlyList<double> weights)
     {
         var total = 0.0;
         foreach (var w in weights) total += w;
-        if (total <= 0) return weights.Select((_, i) => i == 0 ? n : 0).ToArray();
-        var exact = weights.Select(w => n * w / total).ToArray();
-        var counts = exact.Select(e => (int)Math.Floor(e)).ToArray();
-        var order = Enumerable.Range(0, exact.Length).OrderByDescending(i => exact[i] - counts[i]).ToArray();
+        var counts = new int[weights.Count];
+        if (total <= 0)
+        {
+            if (counts.Length > 0) counts[0] = n;
+            return counts;
+        }
+        var exact = new double[weights.Count];
+        for (var i = 0; i < exact.Length; i++)
+        {
+            exact[i] = n * weights[i] / total;
+            counts[i] = (int)Math.Floor(exact[i]);
+        }
+        double Remainder(int i) => exact[i] - counts[i];
+        var order = Enumerable.Range(0, exact.Length).OrderByDescending(Remainder).ToArray();
         var left = n - counts.Sum();
         for (var k = 0; k < left; k++) counts[order[k % order.Length]]++;
         return counts;

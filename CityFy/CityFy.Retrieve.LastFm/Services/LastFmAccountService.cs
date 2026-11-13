@@ -30,14 +30,17 @@ public sealed class LastFmAccountService(
     public async Task<LastFmAccountResponse> GetAsync(string userId, CancellationToken ct)
     {
         var account = await accounts.GetRequiredAsync(userId, ct);
-        return LastFmAccountResponse.From(account, nowPlaying.Get(userId), hints.WarningOf(account, DateTime.UtcNow));
+        return ResponseOf(account, DateTime.UtcNow);
     }
 
     public async Task<IReadOnlyList<LastFmAccountResponse>> ListAsync(CancellationToken ct)
     {
         var now = DateTime.UtcNow;
-        return (await accounts.ListAsync(ct)).Select(a => LastFmAccountResponse.From(a, nowPlaying.Get(a.UserId), hints.WarningOf(a, now))).ToList();
+        return (await accounts.ListAsync(ct)).Select(a => ResponseOf(a, now)).ToList();
     }
+
+    private LastFmAccountResponse ResponseOf(LastFmAccount account, DateTime now) =>
+        LastFmAccountResponse.From(account, nowPlaying.Get(account.UserId), hints.WarningOf(account, now));
 
     public async Task<string> StartImportAsync(string userId, CancellationToken ct)
     {

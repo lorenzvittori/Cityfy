@@ -28,11 +28,15 @@ public sealed class UploadTaskSubService(IStreamingRepository repo, Cancellation
     public async Task<IReadOnlyList<ProcessingTask>> ListUnfinishedAsync() =>
         (await repo.GetTasksByStatusAsync(ProcessingStatus.Pending))
             .Concat(await repo.GetTasksByStatusAsync(ProcessingStatus.InProgress))
-            .Where(t => !string.IsNullOrWhiteSpace(t.UserId))
+            .Where(HasUser)
             .ToList();
+
+    private static bool HasUser(ProcessingTask task) => !string.IsNullOrWhiteSpace(task.UserId);
 
     public bool IsFinished(ProcessingTask task) =>
         task.Status is ProcessingStatus.Done or ProcessingStatus.Failed or ProcessingStatus.Cancelled;
+
+    private bool IsUnfinished(ProcessingTask task) => !IsFinished(task);
 
     public async Task<CancellationTokenSource?> TryStartAsync(string uploadId, CancellationToken ct)
     {
@@ -91,7 +95,7 @@ public sealed class UploadTaskSubService(IStreamingRepository repo, Cancellation
     public async Task<(long Moved, int StillImporting)> TransferAsync(string fromUserId, string toUserId, CancellationToken ct)
     {
         var moved = await repo.TransferFinishedTasksAsync(fromUserId, toUserId, ct);
-        var importing = (await repo.GetTasksByUserAsync(fromUserId, ct)).Count(t => !IsFinished(t));
+        var importing = (await repo.GetTasksByUserAsync(fromUserId, ct)).Count(IsUnfinished);
         return (moved, importing);
     }
 

@@ -179,10 +179,11 @@ public sealed class Polygon
     public static Polygon Regular(double area, int sides)
     {
         var r = Math.Sqrt(area / (sides / 2.0 * Math.Sin(2 * Math.PI / sides)));
-        return new Polygon(Enumerable.Range(0, sides)
-            .Select(k => new Point(r * Math.Cos(2 * Math.PI * k / sides), r * Math.Sin(2 * Math.PI * k / sides)))
-            .ToList());
+        return new Polygon(Enumerable.Range(0, sides).Select(k => RegularVertex(k, r, sides)).ToList());
     }
+
+    private static Point RegularVertex(int k, double r, int sides) =>
+        new(r * Math.Cos(2 * Math.PI * k / sides), r * Math.Sin(2 * Math.PI * k / sides));
 
     /// <summary>Convex hull (monotone chain), counter-clockwise.</summary>
     public static Polygon ConvexHull(IEnumerable<Point> points)
@@ -307,7 +308,7 @@ public sealed class Polygon
     public IReadOnlyList<Polygon> SplitByAreas(IReadOnlyList<double> weights, CutFamily family)
     {
         if (weights.Count == 0) return [];
-        if (weights.Count == 1 || !IsValid) return weights.Select(_ => this).ToList();
+        if (weights.Count == 1 || !IsValid) return Enumerable.Repeat(this, weights.Count).ToList();
 
         var total = SumOf(weights, 0, weights.Count);
         int k = 1;
@@ -380,8 +381,8 @@ public sealed class Polygon
         var center = IsValid ? Centroid : new Point(0, 0);
         // Distance rounded to 1e-6 (JS Math.round): lots at the same distance keep the grid order,
         // whatever the last bits of sin/cos (they differ between runtimes)
-        List<Point> ByDistance(List<Point> pts) =>
-            pts.OrderBy(p => Math.Floor(Vector.Hypot(p.X - center.X, p.Z - center.Z) * 1e6 + 0.5)).ToList();
+        double RoundedDistance(Point p) => Math.Floor(Vector.Hypot(p.X - center.X, p.Z - center.Z) * 1e6 + 0.5);
+        List<Point> ByDistance(List<Point> pts) => pts.OrderBy(RoundedDistance).ToList();
 
         List<Point> Grid(double step, double ou, double ov, Polygon? area, int extent)
         {

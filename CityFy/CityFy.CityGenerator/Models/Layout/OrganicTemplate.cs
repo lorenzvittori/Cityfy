@@ -20,7 +20,9 @@ public sealed class OrganicTemplate(LayoutContext ctx)
     private const int TreemapIterations = 120;
     private const int BisectionIterations = 40;
 
-    public static readonly CityTemplate Template = ctx => new OrganicTemplate(ctx).Build();
+    public static readonly CityTemplate Template = Run;
+
+    private static TemplateResult Run(LayoutContext context) => new OrganicTemplate(context).Build();
 
     private double Street => ctx.Recipe.Street;
     private double MainRoad => ctx.Recipe.MainRoad;
@@ -28,8 +30,8 @@ public sealed class OrganicTemplate(LayoutContext ctx)
     public TemplateResult Build()
     {
         var squareArea = Math.PI * Square(ctx.SquareRadius + Street);
-        var blockAreas = ctx.Districts.Select(d => d.Blocks.Select(b => ctx.BlockArea(b.Buildings.Count)).ToList()).ToList();
-        var targets = blockAreas.Select(areas => Square(Math.Sqrt(Sum(areas) + squareArea) + MainRoad)).ToList();
+        var blockAreas = ctx.Districts.Select(BlockAreasOf).ToList();
+        var targets = blockAreas.Select(areas => DistrictTarget(areas, squareArea)).ToList();
 
         // 1. City outline: irregular convex polygon with the total area
         var total = Sum(targets);
@@ -65,16 +67,23 @@ public sealed class OrganicTemplate(LayoutContext ctx)
         return result;
     }
 
+    private List<double> BlockAreasOf(CityDistrict district) => district.Blocks.Select(BlockAreaOf).ToList();
+
+    private double BlockAreaOf(CityBlock block) => ctx.BlockArea(block.Buildings.Count);
+
+    /// <summary>Area of a district: its blocks plus the square, as a square with a main road around.</summary>
+    private double DistrictTarget(IReadOnlyList<double> blockAreas, double squareArea) =>
+        Square(Math.Sqrt(Sum(blockAreas) + squareArea) + MainRoad);
+
     /// <summary>Irregular convex outline of the city (hull of a jittered circle), about the requested radius.</summary>
-    private static Polygon CityOutline(double radius, Seed seed)
+    private static Polygon CityOutline(double radius, Seed seed) =>
+        Polygon.ConvexHull(Enumerable.Range(0, OutlineSides).Select(k => OutlinePoint(k, radius, seed)));
+
+    private static Point OutlinePoint(int k, double radius, Seed seed)
     {
-        var pts = Enumerable.Range(0, OutlineSides).Select(k =>
-        {
-            var a = (k + (seed.Unit(k) - 0.5) * 0.5) / OutlineSides * 2 * Math.PI;
-            var r = radius * (0.92 + 0.22 * seed.Unit(100 + k));
-            return new Point(r * Math.Cos(a), r * Math.Sin(a));
-        });
-        return Polygon.ConvexHull(pts);
+        var a = (k + (seed.Unit(k) - 0.5) * 0.5) / OutlineSides * 2 * Math.PI;
+        var r = radius * (0.92 + 0.22 * seed.Unit(100 + k));
+        return new Point(r * Math.Cos(a), r * Math.Sin(a));
     }
 
     /// <summary>
@@ -88,7 +97,7 @@ public sealed class OrganicTemplate(LayoutContext ctx)
         if (n == 1) return [boundary];
         var area = boundary.Area;
         var total = Sum(targets);
-        var wanted = targets.Select(t => t / total * area).ToArray();
+        var wanted = targets.Select(t => Share(t, total, area)).ToArray();
         var c0 = boundary.Centroid;
         var radius = Math.Sqrt(area / Math.PI);
 
@@ -101,7 +110,7 @@ public sealed class OrganicTemplate(LayoutContext ctx)
             var a = k * GoldenAngle;
             sites[order[k]] = new PowerSite(c0.X + rho * Math.Cos(a), c0.Z + rho * Math.Sin(a), 0);
         }
-        var weights = wanted.Select(w => w / Math.PI * 0.2).ToArray();
+        var weights = wanted.Select(InitialWeight).ToArray();
 
         var cells = new Polygon[n];
         for (var iter = 0; iter < TreemapIterations; iter++)
@@ -137,8 +146,15 @@ public sealed class OrganicTemplate(LayoutContext ctx)
         }
 
         // A cell may vanish only in pathological cases: give it a small piece of its biggest neighbor
-        return cells.Select((cell, i) => cell.IsValid ? cell : SplitFallback(cells, sites[i])).ToList();
+        var result = new List<Polygon>(n);
+        for (var i = 0; i < n; i++)
+            result.Add(cells[i].IsValid ? cells[i] : SplitFallback(cells, sites[i]));
+        return result;
     }
+
+    private static double Share(double target, double total, double area) => target / total * area;
+
+    private static double InitialWeight(double wantedArea) => wantedArea / Math.PI * 0.2;
 
     private static Polygon SplitFallback(IReadOnlyList<Polygon> cells, PowerSite site)
     {
@@ -159,12 +175,7 @@ public sealed class OrganicTemplate(LayoutContext ctx)
         if (weights.Count < 3) return null;
         var groups = ContiguousGroups(weights, Math.Min(weights.Count, MaxWedges));
         if (groups.Count < 3) return null;
-        var groupWeights = groups.Select(g =>
-        {
-            var s = 0.0;
-            foreach (var i in g) s += weights[i];
-            return s;
-        }).ToList();
+        var groupWeights = groups.Select(g => GroupWeight(g, weights)).ToList();
 
         var angles = AngularSplit(area, o, groupWeights, start);
         if (angles == null) return null;
@@ -184,6 +195,14 @@ public sealed class OrganicTemplate(LayoutContext ctx)
             for (var j = 0; j < groups[k].Count; j++) cells[groups[k][j]] = pieces[j];
         }
         return cells;
+    }
+
+    // Left-to-right sum of the group's weights, as the JS loop
+    private static double GroupWeight(List<int> group, IReadOnlyList<double> weights)
+    {
+        var s = 0.0;
+        foreach (var i in group) s += weights[i];
+        return s;
     }
 
     /// <summary>Part of a convex polygon between two rays from o (a1 - a0 &lt;= 180°).</summary>

@@ -15,7 +15,7 @@ public sealed class PolygonIndex<T>
     public PolygonIndex(IEnumerable<(Polygon Polygon, T Value)> entries)
     {
         var list = entries.Where(e => e.Polygon.IsValid).ToList();
-        var sizes = list.Select(e => e.Polygon.MaxX - e.Polygon.MinX).OrderBy(s => s).ToList();
+        var sizes = list.Select(WidthOf).Order().ToList();
         _cell = Math.Max(sizes.Count > 0 ? sizes[sizes.Count / 2] : 1, 1);
 
         foreach (var (polygon, value) in list)
@@ -31,11 +31,25 @@ public sealed class PolygonIndex<T>
         }
     }
 
+    private static double WidthOf((Polygon Polygon, T Value) entry) => entry.Polygon.MaxX - entry.Polygon.MinX;
+
     private long Bucket(double coordinate) => (long)Math.Floor(coordinate / _cell);
 
     /// <summary>Values of the polygons containing p (strictly inside by eps when eps &lt; 0).</summary>
-    public IEnumerable<T> At(Point p, double eps = 1e-6) =>
-        _buckets.TryGetValue((Bucket(p.X), Bucket(p.Z)), out var bucket)
-            ? bucket.Select(i => _items[i]).Where(it => it.Edges.All(e => e.Contains(p, eps))).Select(it => it.Value)
-            : [];
+    public IEnumerable<T> At(Point p, double eps = 1e-6)
+    {
+        if (!_buckets.TryGetValue((Bucket(p.X), Bucket(p.Z)), out var bucket))
+            yield break;
+        foreach (var i in bucket)
+            if (Inside(_items[i].Edges, p, eps))
+                yield return _items[i].Value;
+    }
+
+    private static bool Inside(IReadOnlyList<HalfPlane> edges, Point p, double eps)
+    {
+        foreach (var e in edges)
+            if (!e.Contains(p, eps))
+                return false;
+        return true;
+    }
 }

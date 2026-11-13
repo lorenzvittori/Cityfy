@@ -125,8 +125,9 @@ public sealed class GeneratedCityStoreSubService(
 
     public async Task<long> DeleteAllAsync(string userId, CancellationToken ct)
     {
-        foreach (var city in (await repo.ListByStatusAsync(Active, ct)).Where(c => c.UserId == userId))
-            await CancelIfActiveAsync(city, ct);
+        foreach (var city in await repo.ListByStatusAsync(Active, ct))
+            if (city.UserId == userId)
+                await CancelIfActiveAsync(city, ct);
         return await repo.DeleteByUserAsync(userId, ct);
     }
 }

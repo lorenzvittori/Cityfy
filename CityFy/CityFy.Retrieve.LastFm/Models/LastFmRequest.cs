@@ -12,8 +12,14 @@ public sealed record LastFmRequest(string Method, IReadOnlyDictionary<string, st
     /// <summary>Excluded from the signature (Last.fm authspec).</summary>
     private static readonly HashSet<string> UnsignedParameters = ["format", "callback"];
 
-    public static LastFmRequest Of(string method, params (string Name, string? Value)[] parameters) =>
-        new(method, parameters.Where(p => p.Value is not null).ToDictionary(p => p.Name, p => p.Value!, StringComparer.Ordinal));
+    public static LastFmRequest Of(string method, params (string Name, string? Value)[] parameters)
+    {
+        var given = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (name, value) in parameters)
+            if (value is not null)
+                given.Add(name, value);
+        return new LastFmRequest(method, given);
+    }
 
     /// <summary>
     /// api_sig: parameters sorted by name, "name" + "value" concatenated without separators (method
@@ -22,8 +28,8 @@ public sealed record LastFmRequest(string Method, IReadOnlyDictionary<string, st
     public string Signature(string sharedSecret)
     {
         var all = Parameters.Append(new KeyValuePair<string, string>("method", Method))
-            .Where(p => !UnsignedParameters.Contains(p.Key))
-            .OrderBy(p => p.Key, StringComparer.Ordinal);
+            .Where(IsSigned)
+            .OrderBy(KeyOf, StringComparer.Ordinal);
         var text = new StringBuilder();
         foreach (var (name, value) in all)
             text.Append(name).Append(value);
@@ -34,11 +40,15 @@ public sealed record LastFmRequest(string Method, IReadOnlyDictionary<string, st
     /// <summary>"?method=...&amp;name=value..." (values escaped), in a stable order.</summary>
     public string ToQueryString(string? signature = null)
     {
-        var parts = Parameters.OrderBy(p => p.Key, StringComparer.Ordinal)
-            .Select(p => $"{p.Key}={Uri.EscapeDataString(p.Value)}")
+        var parts = Parameters.OrderBy(KeyOf, StringComparer.Ordinal)
+            .Select(QueryPart)
             .Prepend($"method={Uri.EscapeDataString(Method)}");
         if (signature is not null)
             parts = parts.Append($"api_sig={signature}");
         return "?" + string.Join('&', parts);
     }
+
+    private static bool IsSigned(KeyValuePair<string, string> parameter) => !UnsignedParameters.Contains(parameter.Key);
+    private static string KeyOf(KeyValuePair<string, string> parameter) => parameter.Key;
+    private static string QueryPart(KeyValuePair<string, string> parameter) => $"{parameter.Key}={Uri.EscapeDataString(parameter.Value)}";
 }

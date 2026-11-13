@@ -12,7 +12,15 @@ public sealed record LastFmScrobble(
     string? Album,
     string? ArtistMbid,
     string? TrackMbid,
-    DateTime ScrobbledAt);
+    DateTime ScrobbledAt)
+{
+    public bool IsAfter(DateTime cursor) => ScrobbledAt > cursor;
+
+    /// <summary>Strictly after <paramref name="cursor"/> and strictly before <paramref name="to"/>.</summary>
+    public bool IsBetween(DateTime cursor, DateTime to) => ScrobbledAt > cursor && ScrobbledAt < to;
+
+    public static DateTime ScrobbledAtOf(LastFmScrobble scrobble) => scrobble.ScrobbledAt;
+}
 
 /// <summary>The track the user is listening to right now (no date: it is not a scrobble yet).</summary>
 public sealed record LastFmNowPlaying(string Artist, string Track, string? Album, string? ArtistMbid);

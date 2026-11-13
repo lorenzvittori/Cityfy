@@ -17,7 +17,9 @@ public static class V1Mapper
 
     public static DistrictDto ToDto(this CityDistrict d) => new(
         d.DistrictId, d.Name, d.Color, d.Density, d.ListeningIntensity, d.Score,
-        d.Blocks.Select(b => new BlockDto(b.BlockId, b.GenreId, b.Name, b.Score, b.Buildings.Select(ToDto).ToList())).ToList());
+        d.Blocks.Select(ToDto).ToList());
+
+    public static BlockDto ToDto(this CityBlock b) => new(b.BlockId, b.GenreId, b.Name, b.Score, b.Buildings.Select(ToDto).ToList());
 
     public static BuildingDto ToDto(this CityBuilding b) => new(
         b.BuildingId, b.Name, b.SpotifyArtistUri, b.Plays, b.QualifiedPlays, b.ListeningMinutes,
@@ -37,7 +39,9 @@ public static class V1Mapper
 
     public static GenreOptionDto ToDto(this GenreOption g) => new(
         g.GenreId, g.Name, g.Color, g.QualifiedPlays, g.Artists,
-        g.Subgenres.Select(s => new SubgenreOptionDto(s.GenreId, s.Name, s.QualifiedPlays, s.Artists)).ToList());
+        g.Subgenres.Select(ToDto).ToList());
+
+    public static SubgenreOptionDto ToDto(this SubgenreOption s) => new(s.GenreId, s.Name, s.QualifiedPlays, s.Artists);
 
     public static ImportStatusDto ToDto(this TaskInfo t) =>
         new(t.UploadId, t.Status, t.Inserted, t.StartedAt, t.CompletedAt, t.ErrorCode);

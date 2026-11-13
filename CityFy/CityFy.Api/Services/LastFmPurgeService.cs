@@ -39,7 +39,7 @@ public sealed class LastFmPurgeService(
                 StatusCodes.Status502BadGateway);
 
         logger.LogWarning("ALL Last.fm data deleted: {Users} accounts, Retrieve.LastFm {Counts}", deletedUsers,
-            string.Join(", ", lastFmService.Deleted.Select(kv => $"{kv.Key}={kv.Value}")));
+            lastFmService.Summary());
         return new LastFmPurgeResult(deletedUsers, lastFmService);
     }
 }

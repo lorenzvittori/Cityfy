@@ -18,9 +18,11 @@ public sealed class GenreHierarchy
     {
         _genres = graph.Genres.ToDictionary(g => g.Id);
         _parents = graph.Relations
-            .Where(r => r.Type == SubgenreRelation)
+            .Where(IsSubgenre)
             .ToLookup(r => r.ToGenreId, r => r.FromGenreId);
     }
+
+    private static bool IsSubgenre(GenreEdge relation) => relation.Type == SubgenreRelation;
 
     public GenreNode? Get(int genreId) => _genres.GetValueOrDefault(genreId);
 

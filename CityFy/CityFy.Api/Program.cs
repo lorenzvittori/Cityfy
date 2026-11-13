@@ -89,7 +89,7 @@ builder.Services.AddMessageConsumer<NowPlayingChangedConsumer>();
 
 // --- Admin panel (mock admin user, Development only: see AdminOptions) ---
 builder.Services.Configure<AdminOptions>(builder.Configuration.GetSection(AdminOptions.SectionName));
-foreach (var service in ServiceHealthCheckSubService.Services.Where(s => s != ServiceHealthCheckSubService.Self))
+foreach (var service in ServiceHealthCheckSubService.Others)
     builder.Services.AddHttpClient(ServiceHealthCheckSubService.ClientName(service), c =>
     {
         c.BaseAddress = new Uri($"https+http://{service}");

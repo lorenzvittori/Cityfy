@@ -29,30 +29,39 @@ internal sealed class ListeningEventWriter
     {
         await _indexes.Value;
 
-        var plays = events
-            .Where(e => !string.IsNullOrEmpty(e.UserId) && !string.IsNullOrEmpty(e.TrackUri))
-            // Same play twice in one batch: keep one, otherwise the unordered bulk counts it twice
-            .GroupBy(e => ListeningEvent.BuildId(e.UserId, e.TrackUri, e.PlayedAt))
-            .Select(g =>
-            {
-                var e = g.First();
-                e.Id = g.Key;
-                e.MatchKey ??= ListeningEvent.BuildMatchKey(e.ArtistName, e.TrackName);
-                return e;
-            })
-            .ToList();
+        // Same play twice in one batch: keep one, otherwise the unordered bulk counts it twice
+        var plays = events.Where(IsStorable).GroupBy(IdOf).Select(Prepared).ToList();
         if (plays.Count == 0)
             return 0;
 
         var mergeInto = await FindCrossSourceMatchesAsync(plays, ct);
         var now = DateTime.UtcNow;
-        var writes = plays.Select(e => mergeInto.TryGetValue(e.Id, out var existingId)
-                ? (WriteModel<ListeningEvent>)new UpdateOneModel<ListeningEvent>(Builders<ListeningEvent>.Filter.Eq(x => x.Id, existingId), Merge(e))
-                : new UpdateOneModel<ListeningEvent>(Builders<ListeningEvent>.Filter.Eq(x => x.Id, e.Id), Insert(e, now)) { IsUpsert = true })
-            .ToList();
+        var writes = plays.Select(e => WriteOf(e, mergeInto, now)).ToList();
 
         var result = await _events.BulkWriteAsync(writes, new BulkWriteOptions { IsOrdered = false }, ct);
         return result.Upserts.Count;
+    }
+
+    private static bool IsStorable(ListeningEvent e) => !string.IsNullOrEmpty(e.UserId) && !string.IsNullOrEmpty(e.TrackUri);
+
+    private static string IdOf(ListeningEvent e) => ListeningEvent.BuildId(e.UserId, e.TrackUri, e.PlayedAt);
+
+    /// <summary>The first play of a group with the same id, with its id and match key set.</summary>
+    private static ListeningEvent Prepared(IGrouping<string, ListeningEvent> sameId)
+    {
+        var e = sameId.First();
+        e.Id = sameId.Key;
+        e.MatchKey ??= ListeningEvent.BuildMatchKey(e.ArtistName, e.TrackName);
+        return e;
+    }
+
+    /// <summary>Merge into the play of another source it duplicates, otherwise upsert under its own id.</summary>
+    private static WriteModel<ListeningEvent> WriteOf(ListeningEvent e, Dictionary<string, string> mergeInto, DateTime now)
+    {
+        var filter = Builders<ListeningEvent>.Filter;
+        if (mergeInto.TryGetValue(e.Id, out var existingId))
+            return new UpdateOneModel<ListeningEvent>(filter.Eq(x => x.Id, existingId), Merge(e));
+        return new UpdateOneModel<ListeningEvent>(filter.Eq(x => x.Id, e.Id), Insert(e, now)) { IsUpsert = true };
     }
 
     /// <summary>Incoming id → id of the play of another source it duplicates.</summary>
@@ -61,7 +70,7 @@ internal sealed class ListeningEventWriter
         var mergeInto = new Dictionary<string, string>();
         var tolerance = ListeningEvent.MatchTolerance;
 
-        foreach (var user in plays.Where(e => e.MatchKey is not null && e.StartedAt is not null).GroupBy(e => e.UserId))
+        foreach (var user in plays.Where(IsMatchable).GroupBy(UserIdOf))
         {
             var mine = user.ToList();
             var ids = mine.Select(e => e.Id).ToList();
@@ -83,22 +92,45 @@ internal sealed class ListeningEventWriter
             var claimed = new HashSet<string>();
             var byKey = candidates.ToLookup(c => c.MatchKey);
 
-            foreach (var e in mine.Where(e => !stored.Contains(e.Id)).OrderBy(e => e.StartedAt))
+            foreach (var e in mine.OrderBy(StartedAtOf))
             {
-                var match = byKey[e.MatchKey!]
-                    .Where(c => c.Id != e.Id && !claimed.Contains(c.Id) && !c.Sources.Intersect(e.Sources).Any())
-                    .Select(c => (Candidate: c, Distance: (c.StartedAt - e.StartedAt!.Value).Duration()))
-                    .Where(c => c.Distance <= tolerance)
-                    .OrderBy(c => c.Distance)
-                    .Select(c => c.Candidate)
-                    .FirstOrDefault();
-                if (match is null)
+                if (stored.Contains(e.Id))
+                    continue;
+                if (Closest(byKey[e.MatchKey!], e, claimed, tolerance) is not { } match)
                     continue;
                 mergeInto[e.Id] = match.Id;
                 claimed.Add(match.Id);
             }
         }
         return mergeInto;
+    }
+
+    private static bool IsMatchable(ListeningEvent e) => e.MatchKey is not null && e.StartedAt is not null;
+
+    private static string UserIdOf(ListeningEvent e) => e.UserId;
+
+    private static DateTime? StartedAtOf(ListeningEvent e) => e.StartedAt;
+
+    /// <summary>
+    /// The candidate of another source, not yet claimed, whose start is the closest to the play
+    /// and within the tolerance (the first one on a tie, as stored); null when none.
+    /// </summary>
+    private static Candidate? Closest(IEnumerable<Candidate> sameKey, ListeningEvent e, HashSet<string> claimed, TimeSpan tolerance)
+    {
+        Candidate? best = null;
+        var bestDistance = TimeSpan.MaxValue;
+        foreach (var c in sameKey)
+        {
+            if (c.Id == e.Id || claimed.Contains(c.Id) || c.Sources.Intersect(e.Sources).Any())
+                continue;
+            var distance = (c.StartedAt - e.StartedAt!.Value).Duration();
+            if (distance <= tolerance && distance < bestDistance)
+            {
+                best = c;
+                bestDistance = distance;
+            }
+        }
+        return best;
     }
 
     private static UpdateDefinition<ListeningEvent> Insert(ListeningEvent e, DateTime now)

@@ -30,7 +30,7 @@ public sealed class StreetPlan(LayoutRecipe recipe)
     /// <summary>Center lines of the roads between cells of the same group (merged, between intersections).</summary>
     public IReadOnlyList<RoadSegment> SharedEdges(IReadOnlyList<RoadCell> cells, double width, string kind)
     {
-        var index = new PolygonIndex<int>(cells.Select((c, i) => (c.Polygon, i)));
+        var index = new PolygonIndex<int>(cells.Select(Indexed));
         var pieces = new List<(Point A, Point B)>();
 
         for (var i = 0; i < cells.Count; i++)
@@ -54,15 +54,23 @@ public sealed class StreetPlan(LayoutRecipe recipe)
                 var mz = (a.Z + b.Z) / 2;
                 if (nx * (cx - mx) + nz * (cz - mz) > 0) (nx, nz) = (-nx, -nz); // outwards
                 var probe = new Point(mx + nx * Probe, mz + nz * Probe);
-                var group = cells[i].Group;
                 var self = i;
-                if (index.At(probe, -1e-6).Any(j => j != self && cells[j].Group == group))
+                if (index.At(probe, -1e-6).Any(j => IsNeighbor(cells, self, j)))
                     pieces.Add((a, b));
             }
         }
 
-        return MergeCollinear(pieces).Select(s => new RoadSegment(s.A, s.B, width, kind)).ToList();
+        var roads = new List<RoadSegment>();
+        foreach (var (a, b) in MergeCollinear(pieces))
+            roads.Add(new RoadSegment(a, b, width, kind));
+        return roads;
     }
+
+    private static (Polygon Polygon, int Index) Indexed(RoadCell cell, int index) => (cell.Polygon, index);
+
+    /// <summary>Another cell of the same group (the road between them is a street of that group).</summary>
+    private static bool IsNeighbor(IReadOnlyList<RoadCell> cells, int self, int other) =>
+        other != self && cells[other].Group == cells[self].Group;
 
     /// <summary>Unites overlapping collinear pieces (each shared edge is seen from both sides).</summary>
     public static IReadOnlyList<(Point A, Point B)> MergeCollinear(IEnumerable<(Point A, Point B)> pieces)
@@ -121,8 +129,9 @@ public sealed class StreetPlan(LayoutRecipe recipe)
     /// </summary>
     public Streets Furnish(IReadOnlyList<RoadSegment> roads, IReadOnlyList<(Polygon Outline, Polygon Plate)> parts)
     {
-        var sidewalks = new PolygonIndex<Polygon>(parts.Select(p => (p.Outline, p.Plate)));
-        bool OnSidewalk(Point p) => sidewalks.At(p).Any(plate => !plate.Contains(p));
+        var sidewalks = new PolygonIndex<Polygon>(parts);
+        // inside a part (its outline) but not on its plate
+        bool OnSidewalk(Point p) => !sidewalks.At(p).All(plate => plate.Contains(p));
 
         var crossings = new List<Crossing>();
         var lamps = new List<Furniture>();

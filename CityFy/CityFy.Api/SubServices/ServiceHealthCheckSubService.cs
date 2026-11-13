@@ -8,15 +8,19 @@ public sealed class ServiceHealthCheckSubService(IHttpClientFactory factory) : I
     public const string Self = "Api";
 
     /// <summary>AppHost resource names, also used as health-probe HttpClient names (<see cref="ClientName"/>).</summary>
-    public static readonly string[] Services =
-        [Self, "Catalog", "CityGenerator", "Orchestrator", "RetrieveDumpSpotify", "RetrieveLastFm", "RetrieveMusicBrainz"];
+    /// <summary>The services probed over HTTP (all but the Api itself, which answers in-process).</summary>
+    public static readonly string[] Others =
+        ["Catalog", "CityGenerator", "Orchestrator", "RetrieveDumpSpotify", "RetrieveLastFm", "RetrieveMusicBrainz"];
+
+    // After Others: static fields are initialized in declaration order
+    public static readonly string[] Services = [Self, .. Others];
 
     public static string ClientName(string service) => $"health-{service}";
 
     public async Task<IReadOnlyList<ServiceHealthDto>> CheckAllAsync(CancellationToken ct)
     {
         var results = new List<ServiceHealthDto> { new(Self, "Healthy", 0, null) };
-        results.AddRange(await Task.WhenAll(Services.Where(s => s != Self).Select(name => CheckAsync(name, ct))));
+        results.AddRange(await Task.WhenAll(Others.Select(name => CheckAsync(name, ct))));
         return results;
     }
 

@@ -92,7 +92,7 @@ public sealed class MongoStreamingRepository(IMongoDatabase database, MongoOptio
 
         while (await cursor.MoveNextAsync(ct))
         {
-            var batch = cursor.Current.Select(FromLegacy).Where(b => b != null).Select(b => b!).ToList();
+            var batch = cursor.Current.Select(FromLegacy).OfType<StreamingBl>().ToList();
             if (batch.Count > 0)
                 yield return batch;
         }
