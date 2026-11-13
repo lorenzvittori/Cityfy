@@ -22,8 +22,8 @@ L'utente genera città salvate scegliendo periodo, tipo di mappa e generi; il fr
 |---|---|
 | `CityFy/` | Solution .NET 10 (`CityFy.slnx`) con Aspire. **Lavora solo qui e in `cityfy-web/`**: gli script Python in `spotify_data/` e `city_generator/` sono storici, da ignorare |
 | `cityfy-web/` | Frontend Angular (vedi la skill `cityfy-web` dentro quella cartella) |
-| `deploy/` | `docker-compose.yml` di produzione (VM Oracle, Caddy) |
-| `.github/workflows/deploy.yml` | Build delle immagini: elenco `nome:Progetto` da aggiornare per ogni servizio nuovo |
+| `deploy/` | Manifest Kubernetes di produzione (`k8s/base`) e risorse del cluster (`cluster/`): vedi la skill `cityfy-deploy` |
+| `.github/workflows/deploy.yml` | Immagini e deploy sul cluster K3s: elenco `nome:Progetto` da aggiornare per ogni servizio nuovo (vedi `cityfy-deploy`) |
 | `ERRORI_UI.md` | Catalogo dei codici d'errore per la UI (vedi Test) |
 | `PIANO_*.md` | Piani di lavoro con decisioni e fasi |
 | `README.md`, `DEPLOY.md` | Documentazione da aggiornare insieme al codice |
@@ -38,7 +38,7 @@ L'utente genera città salvate scegliendo periodo, tipo di mappa e generi; il fr
 | **Orchestrator** | Debounce degli import, run della pipeline (aggiornamento del catalogo) | `pipeline_runs` |
 | **RetrieveLastFm** | Collegamento account Last.fm (token → chiave di sessione cifrata), import dello storico (job ripristinabile, cursore `HistoryImport` sull'account), lettura degli ascolti nuovi con cadenza adattiva (`LastFmPollingHostedService`), brano in corso in memoria, limitatore unico delle richieste (`LastFmRequestGate`) | `lastfm_accounts`, `lastfm_import_tasks` |
 | **RetrieveDumpSpotify** | Upload dell'export zip di Spotify, import dello storico | task di upload, file su disco |
-| **RetrieveMusicBrainz** | Import del dump MusicBrainz in SQL Server, API di lettura: resolve degli artisti, grafo dei generi | DB SQL `musicbrainz` |
+| **RetrieveMusicBrainz** | Import del dump MusicBrainz in PostgreSQL (EF Core Npgsql, `COPY` binario), API di lettura: resolve degli artisti, grafo dei generi | DB PostgreSQL `musicbrainz` |
 
 Collection condivisa: `listening_events`, scritta dalle sorgenti (Dump, cioè l'export di Spotify, e Last.fm) e letta da Catalog.
 - Gli ascolti Last.fm hanno `TrackUri` = `lastfm:{artista}|{brano}` in minuscolo, e `PlayedAt` = `StartedAt` = ora dello scrobble. Per l'export `PlayedAt` = `ts` (la fine) e `StartedAt` = `ts - ms_played`.
@@ -46,6 +46,11 @@ Collection condivisa: `listening_events`, scritta dalle sorgenti (Dump, cioè l'
   - stesso id → upsert;
   - altrimenti si unisce a un ascolto di **un'altra** fonte con la stessa `MatchKey` (`ListeningEvent.BuildMatchKey`) e un inizio entro `MatchTolerance` (2 min);
   - il primo arrivato resta, il secondo aggiunge sorgente e campi.
+- **Database MusicBrainz (PostgreSQL, dal 2026-11-13; prima SQL Server):**
+  - `Artists.Name` ha la collation ICU non deterministica `case_insensitive` (`und-u-ks-level2`): la ricerca per nome ignora le maiuscole ma non gli accenti, come la vecchia collation di SQL Server;
+  - `ArtistSpotifyLinks.SpotifyArtistId` resta case-sensitive (collation di default): non dargli mai una collation case-insensitive;
+  - le migration sono ripartite da una sola `InitialCreate`; in locale il volume `cityfy-postgres-data` è nuovo e il catalogo va reimportato (`POST api/retrieve`);
+  - per generare una migration serve una connection string fittizia: `$env:ConnectionStrings__musicbrainz='Host=localhost;Database=musicbrainz;Username=postgres;Password=x'`.
 - **Risoluzione degli artisti in Catalog:** id Spotify (`ArtistUri`, oggi non lo scrive nessuna sorgente), poi `ArtistMbid` (Last.fm), poi nome. `api/artists/resolve` di RetrieveMusicBrainz accetta `mbids` e risponde `byMbid`. Collection dismessa: `city_models` (città per periodo); Catalog la ripulisce ancora nella cancellazione dati.
 
 ## Flusso dei dati

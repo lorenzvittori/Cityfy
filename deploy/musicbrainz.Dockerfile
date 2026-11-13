@@ -10,6 +10,6 @@ RUN apt-get update \
 WORKDIR /app
 COPY . .
 
-# non-root user of the .NET images (uid 1654); /data/* volumes are prepared by the "init-volumes" service
+# non-root user of the .NET images (uid 1654); the /data/mb-dumps volume is a PVC (deploy/k8s/base)
 USER $APP_UID
 ENTRYPOINT ["dotnet", "CityFy.Retrieve.MusicBrainz.dll"]

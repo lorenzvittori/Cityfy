@@ -97,9 +97,9 @@ foreach (var service in ServiceHealthCheckSubService.Others)
     });
 builder.Services.AddScoped<IServiceHealthService, ServiceHealthService>();
 builder.Services.AddSingleton<IServiceHealthCheckSubService, ServiceHealthCheckSubService>();
-// Mongo (cityfy): anonymous sessions, plus the read-only database browser with SQL Server (musicbrainz)
+// Mongo (cityfy): anonymous sessions, plus the read-only database browser with PostgreSQL (musicbrainz)
 builder.AddCityFyMongo();
-builder.AddSqlServerClient("musicbrainz");
+builder.AddNpgsqlDataSource("musicbrainz");
 builder.Services.AddScoped<IDatabaseBrowser, DatabaseBrowser>();
 builder.Services.AddSingleton<IMongoBrowseSubService, MongoBrowseSubService>();
 builder.Services.AddScoped<ISqlBrowseSubService, SqlBrowseSubService>();

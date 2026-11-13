@@ -1,28 +1,28 @@
-using System.Data;
 using System.Text.Json.Nodes;
 using CityFy.Api.Models;
-using Microsoft.Data.SqlClient;
+using Npgsql;
 using ServiceDefault.Errors;
 
 namespace CityFy.Api.SubServices;
 
-public sealed class SqlBrowseSubService(SqlConnection sql) : ISqlBrowseSubService
+public sealed class SqlBrowseSubService(NpgsqlDataSource sql) : ISqlBrowseSubService
 {
     public const int MaxPageSize = 200;
 
+    // User tables with the row count estimated by PostgreSQL (reltuples: -1 before the first ANALYZE)
     private const string ListTablesQuery = """
-        SELECT s.name + '.' + t.name, SUM(p.rows)
-        FROM sys.tables t
-        JOIN sys.schemas s ON s.schema_id = t.schema_id
-        JOIN sys.partitions p ON p.object_id = t.object_id AND p.index_id IN (0, 1)
-        GROUP BY s.name, t.name
-        ORDER BY s.name, t.name
+        SELECT n.nspname || '.' || c.relname, GREATEST(c.reltuples, 0)::bigint
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relkind IN ('r', 'p')
+          AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+          AND n.nspname NOT LIKE 'pg_toast%'
+        ORDER BY n.nspname, c.relname
         """;
 
     public async Task<IReadOnlyList<TableInfo>> ListTablesAsync(CancellationToken ct)
     {
-        await EnsureOpenAsync(ct);
-        await using var cmd = new SqlCommand(ListTablesQuery, sql);
+        await using var cmd = sql.CreateCommand(ListTablesQuery);
         await using var reader = await cmd.ExecuteReaderAsync(ct);
         var result = new List<TableInfo>();
         while (await reader.ReadAsync(ct))
@@ -39,11 +39,11 @@ public sealed class SqlBrowseSubService(SqlConnection sql) : ISqlBrowseSubServic
         pageSize = Math.Clamp(pageSize, 1, MaxPageSize);
         var parts = table.Name.Split('.', 2);
         // Identifiers come from the catalog and are quoted; paging values are parameters
-        var query = $"SELECT * FROM {Quote(parts[0])}.{Quote(parts[1])} ORDER BY (SELECT NULL) OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY";
+        var query = $"SELECT * FROM {Quote(parts[0])}.{Quote(parts[1])} OFFSET @skip LIMIT @take";
 
-        await using var cmd = new SqlCommand(query, sql);
-        cmd.Parameters.AddWithValue("@skip", (page - 1) * pageSize);
-        cmd.Parameters.AddWithValue("@take", pageSize);
+        await using var cmd = sql.CreateCommand(query);
+        cmd.Parameters.AddWithValue("skip", (long)(page - 1) * pageSize);
+        cmd.Parameters.AddWithValue("take", (long)pageSize);
         await using var reader = await cmd.ExecuteReaderAsync(ct);
 
         var columns = Enumerable.Range(0, reader.FieldCount).Select(reader.GetName).ToList();
@@ -59,11 +59,5 @@ public sealed class SqlBrowseSubService(SqlConnection sql) : ISqlBrowseSubServic
         return new TablePage(table.Name, table.Rows, page, pageSize, columns, rows);
     }
 
-    private async Task EnsureOpenAsync(CancellationToken ct)
-    {
-        if (sql.State != ConnectionState.Open)
-            await sql.OpenAsync(ct);
-    }
-
-    private static string Quote(string identifier) => "[" + identifier.Replace("]", "]]") + "]";
+    private static string Quote(string identifier) => "\"" + identifier.Replace("\"", "\"\"") + "\"";
 }

@@ -2,10 +2,10 @@ using CityFy.Api.Models;
 
 namespace CityFy.Api.SubServices;
 
-/// <summary>Read-only access to the SQL Server database 'musicbrainz' (admin panel). Values are not redacted.</summary>
+/// <summary>Read-only access to the PostgreSQL database 'musicbrainz' (admin panel). Values are not redacted.</summary>
 public interface ISqlBrowseSubService
 {
-    /// <summary>Tables with their row counts (from the catalog: fast even on large tables).</summary>
+    /// <summary>Tables with their row counts estimated by the catalog (fast even on large tables).</summary>
     Task<IReadOnlyList<TableInfo>> ListTablesAsync(CancellationToken ct);
 
     /// <summary>

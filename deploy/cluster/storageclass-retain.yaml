@@ -1,0 +1,11 @@
+# Same provisioner as the default "local-path", but reclaimPolicy Retain: deleting a PVC (or a
+# namespace) does NOT delete the data folder on the node (/var/lib/rancher/k3s/storage/...).
+# Use it for every volume holding data that matters (databases, encryption keys).
+# The released PV stays "Released": the data is recovered by hand, then the PV is deleted by hand.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-path-retain
+provisioner: rancher.io/local-path
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer

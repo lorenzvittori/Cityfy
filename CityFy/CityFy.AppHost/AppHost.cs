@@ -12,13 +12,12 @@ var mongo = builder.AddMongoDB("mongo")
     .WithMongoExpress();
 var cityfyDb = mongo.AddDatabase("cityfy");
 
-// SQL Server: MusicBrainz genres/artists
-// Explicit volume name: the default one (cityfy.apphost-<hash>-sql-data) was left half-initialized
-// by a first start that crashed, and SQL Server crashes on every start from that state.
-var sql = builder.AddSqlServer("sql")
-    .WithDataVolume("cityfy-sql-data")
+// PostgreSQL: MusicBrainz genres/artists (in production: the shared server of the cluster, data/postgres)
+var postgres = builder.AddPostgres("postgres")
+    .WithImageTag("17-alpine")
+    .WithDataVolume("cityfy-postgres-data")
     .WithLifetime(ContainerLifetime.Persistent);
-var musicBrainzDb = sql.AddDatabase("musicbrainz");
+var musicBrainzDb = postgres.AddDatabase("musicbrainz");
 
 // RabbitMQ: event bus of the pipeline (see ServiceDefault/Contracts/PipelineMessages.cs)
 var broker = builder.AddRabbitMQ("broker")

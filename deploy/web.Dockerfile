@@ -1,5 +1,4 @@
-# Frontend + public entry point: Caddy serves the Angular build, proxies /api to the Api and gets
-# the HTTPS certificate (Let's Encrypt) for $DOMAIN by itself.
+# Frontend: Caddy serves the Angular build on :80 inside the cluster (TLS and /api are on Traefik).
 # Built by deploy.yml after `ng build` (build context: repository root).
 FROM caddy:2-alpine
 

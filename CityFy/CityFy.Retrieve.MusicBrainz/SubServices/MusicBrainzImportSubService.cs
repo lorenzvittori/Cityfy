@@ -1,11 +1,10 @@
-using System.Data;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using CityFy.Retrieve.MusicBrainz.Data;
 using CityFy.Retrieve.MusicBrainz.Models;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
+using Npgsql;
+using NpgsqlTypes;
 
 using CityFy.Retrieve.MusicBrainz.Services;
 
@@ -199,6 +198,10 @@ public sealed partial class MusicBrainzImportSubService(
                 + data.ArtistGenres.Count + data.SpotifyLinks.Count);
             _progress.Report("Writing database", 0, "Clearing the previous tables");
 
+            // No command timeout (Npgsql default: 30 s): deleting millions of rows takes minutes.
+            // Cancellation still works through ct (the transaction is rolled back).
+            db.Database.SetCommandTimeout(0);
+
             // Children first (FKs)
             await db.ArtistSpotifyLinks.ExecuteDeleteAsync(ct);
             await db.ArtistGenres.ExecuteDeleteAsync(ct);
@@ -206,56 +209,63 @@ public sealed partial class MusicBrainzImportSubService(
             await db.Artists.ExecuteDeleteAsync(ct);
             await db.Genres.ExecuteDeleteAsync(ct);
 
-            var conn = (SqlConnection)db.Database.GetDbConnection();
-            var sqlTx = (SqlTransaction)tx.GetDbTransaction();
+            // Same connection and transaction as EF: the COPY is part of the transaction
+            var conn = (NpgsqlConnection)db.Database.GetDbConnection();
 
-            await BulkCopyAsync(ct, conn, sqlTx, "Genres", data.Genres,
-                ("Id", typeof(int), g => g.Id), ("Gid", typeof(string), g => g.Gid), ("Name", typeof(string), g => g.Name));
-            await BulkCopyAsync(ct, conn, sqlTx, "GenreRelations", data.GenreRelations,
-                ("FromGenreId", typeof(int), r => r.FromGenreId), ("ToGenreId", typeof(int), r => r.ToGenreId),
-                ("RelationType", typeof(string), r => r.RelationType));
-            await BulkCopyAsync(ct, conn, sqlTx, "Artists", data.Artists,
-                ("Id", typeof(int), a => a.Id), ("Gid", typeof(string), a => a.Gid), ("Name", typeof(string), a => a.Name),
-                ("TotalGenreVotes", typeof(int), a => a.TotalGenreVotes));
-            await BulkCopyAsync(ct, conn, sqlTx, "ArtistGenres", data.ArtistGenres,
-                ("ArtistId", typeof(int), ag => ag.ArtistId), ("GenreId", typeof(int), ag => ag.GenreId), ("Votes", typeof(int), ag => ag.Votes));
-            await BulkCopyAsync(ct, conn, sqlTx, "ArtistSpotifyLinks", data.SpotifyLinks,
-                ("ArtistId", typeof(int), l => l.ArtistId), ("SpotifyArtistId", typeof(string), l => l.SpotifyArtistId));
+            await BulkCopyAsync(ct, conn, "Genres", data.Genres,
+                ("Id", NpgsqlDbType.Integer, g => g.Id), ("Gid", NpgsqlDbType.Varchar, g => g.Gid), ("Name", NpgsqlDbType.Varchar, g => g.Name));
+            await BulkCopyAsync(ct, conn, "GenreRelations", data.GenreRelations,
+                ("FromGenreId", NpgsqlDbType.Integer, r => r.FromGenreId), ("ToGenreId", NpgsqlDbType.Integer, r => r.ToGenreId),
+                ("RelationType", NpgsqlDbType.Varchar, r => r.RelationType));
+            await BulkCopyAsync(ct, conn, "Artists", data.Artists,
+                ("Id", NpgsqlDbType.Integer, a => a.Id), ("Gid", NpgsqlDbType.Varchar, a => a.Gid), ("Name", NpgsqlDbType.Varchar, a => a.Name),
+                ("TotalGenreVotes", NpgsqlDbType.Integer, a => a.TotalGenreVotes));
+            await BulkCopyAsync(ct, conn, "ArtistGenres", data.ArtistGenres,
+                ("ArtistId", NpgsqlDbType.Integer, ag => ag.ArtistId), ("GenreId", NpgsqlDbType.Integer, ag => ag.GenreId),
+                ("Votes", NpgsqlDbType.Integer, ag => ag.Votes));
+            await BulkCopyAsync(ct, conn, "ArtistSpotifyLinks", data.SpotifyLinks,
+                ("ArtistId", NpgsqlDbType.Integer, l => l.ArtistId), ("SpotifyArtistId", NpgsqlDbType.Varchar, l => l.SpotifyArtistId));
 
             await tx.CommitAsync(ct);
         });
     }
 
-    private async Task BulkCopyAsync<T>(CancellationToken ct, SqlConnection conn, SqlTransaction tx, string table, IReadOnlyCollection<T> rows,
-        params (string Column, Type Type, Func<T, object> Value)[] columns)
+    /// <summary>Rows reported to the progress every this many rows.</summary>
+    private const int ProgressEvery = 10_000;
+
+    /// <summary>
+    /// Binary COPY of the rows into the table (PostgreSQL bulk load). Identifiers are the EF names,
+    /// quoted. Constraints (FKs, keys) are checked as for normal inserts.
+    /// </summary>
+    private async Task BulkCopyAsync<T>(CancellationToken ct, NpgsqlConnection conn, string table, IReadOnlyCollection<T> rows,
+        params (string Column, NpgsqlDbType Type, Func<T, object> Value)[] columns)
     {
-        using var dt = new DataTable();
-        foreach (var c in columns) dt.Columns.Add(c.Column, c.Type);
-        foreach (var row in rows)
-        {
-            var values = new object[columns.Length];
-            for (var i = 0; i < columns.Length; i++) values[i] = columns[i].Value(row);
-            dt.Rows.Add(values);
-        }
-
-        using var bulk = new SqlBulkCopy(conn, SqlBulkCopyOptions.CheckConstraints, tx)
-        {
-            DestinationTableName = $"[dbo].[{table}]",
-            BulkCopyTimeout = 0,
-            BatchSize = 50_000,
-            NotifyAfter = 10_000
-        };
-        foreach (var c in columns) bulk.ColumnMappings.Add(c.Column, c.Column);
-
+        var columnList = string.Join(", ", columns.Select(c => $"\"{c.Column}\""));
         var before = _writtenRows;
         void Report(long copied) => _progress.Report("Writing database", 100.0 * (before + copied) / _totalRows,
             $"{table} · {copied:N0} / {rows.Count:N0} rows");
-        bulk.SqlRowsCopied += (_, e) => Report(e.RowsCopied);
         Report(0);
 
-        // Cancellable: the transaction is rolled back and the previous catalog stays in place
-        await bulk.WriteToServerAsync(dt, ct);
+        // Cancellable: without Complete the COPY is aborted, the transaction is rolled back and the
+        // previous catalog stays in place
+        await using (var writer = await conn.BeginBinaryImportAsync($"COPY \"{table}\" ({columnList}) FROM STDIN (FORMAT BINARY)", ct))
+        {
+            // No timeout (the connection's 30 s by default): the server checks keys and FKs of
+            // millions of rows before answering the Complete
+            writer.Timeout = TimeSpan.Zero;
+            long copied = 0;
+            foreach (var row in rows)
+            {
+                await writer.StartRowAsync(ct);
+                foreach (var c in columns)
+                    await writer.WriteAsync(c.Value(row), c.Type, ct);
+                if (++copied % ProgressEvery == 0) Report(copied);
+            }
+            await writer.CompleteAsync(ct);
+        }
+
         _writtenRows += rows.Count;
+        Report(rows.Count);
         logger.LogInformation("Bulk copied {Count} rows into {Table}", rows.Count, table);
     }
 

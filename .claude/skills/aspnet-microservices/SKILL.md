@@ -103,7 +103,7 @@ Cartelle: `Controllers/`, `Services/`, `Repositories/`, `Clients/`, `Mappers/`, 
 - Gli handler sono idempotenti: un messaggio può arrivare più volte.
 - **Eventi di fine run e di dato cambiato.** Lo stesso evento può fare da tutti e due (es. `<Data>Updated` con `RunId` nullable: chiude la run di chi l'ha chiesta e avvisa chi usa quel dato). Un esito "niente da fare" (es. utente senza dati) chiude comunque la run, con un codice esplicito.
 - **Eventi di stato** ("cosa succede adesso", es. il brano in ascolto): un solo messaggio con i campi null per "fermo", invece di due messaggi. Portano l'ora dell'evento, e il consumer scarta quelli più vecchi di qualche minuto.
-- **Rinominare un messaggio** crea code nuove: le vecchie restano sul broker, vuote. Segnalalo all'utente come pulizia da fare al deploy, insieme ai container rinominati (`docker compose up -d --remove-orphans`).
+- **Rinominare un messaggio** crea code nuove: le vecchie restano sul broker, vuote. Segnalalo all'utente come pulizia da fare al deploy, insieme ai container o deployment rinominati (con compose `docker compose up -d --remove-orphans`; con Kubernetes le risorse tolte dai manifest vanno cancellate a mano).
 
 ## Job in background
 

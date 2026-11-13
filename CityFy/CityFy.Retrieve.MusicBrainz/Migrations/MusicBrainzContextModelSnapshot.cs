@@ -2,8 +2,8 @@
 using CityFy.Retrieve.MusicBrainz.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
@@ -16,28 +16,30 @@ namespace CityFy.Retrieve.MusicBrainz.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
+                .HasAnnotation("Npgsql:CollationDefinition:case_insensitive", "und-u-ks-level2,und-u-ks-level2,icu,False")
                 .HasAnnotation("ProductVersion", "10.0.15")
-                .HasAnnotation("Relational:MaxIdentifierLength", 128);
+                .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
-            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+            NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
             modelBuilder.Entity("CityFy.Retrieve.MusicBrainz.Models.Artist", b =>
                 {
                     b.Property<int>("Id")
-                        .HasColumnType("int");
+                        .HasColumnType("integer");
 
                     b.Property<string>("Gid")
                         .IsRequired()
                         .HasMaxLength(36)
-                        .HasColumnType("nvarchar(36)");
+                        .HasColumnType("character varying(36)");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
+                        .HasColumnType("character varying(500)")
+                        .UseCollation("case_insensitive");
 
                     b.Property<int>("TotalGenreVotes")
-                        .HasColumnType("int");
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
@@ -51,13 +53,13 @@ namespace CityFy.Retrieve.MusicBrainz.Migrations
             modelBuilder.Entity("CityFy.Retrieve.MusicBrainz.Models.ArtistGenre", b =>
                 {
                     b.Property<int>("ArtistId")
-                        .HasColumnType("int");
+                        .HasColumnType("integer");
 
                     b.Property<int>("GenreId")
-                        .HasColumnType("int");
+                        .HasColumnType("integer");
 
                     b.Property<int>("Votes")
-                        .HasColumnType("int");
+                        .HasColumnType("integer");
 
                     b.HasKey("ArtistId", "GenreId");
 
@@ -69,13 +71,11 @@ namespace CityFy.Retrieve.MusicBrainz.Migrations
             modelBuilder.Entity("CityFy.Retrieve.MusicBrainz.Models.ArtistSpotifyLink", b =>
                 {
                     b.Property<int>("ArtistId")
-                        .HasColumnType("int");
+                        .HasColumnType("integer");
 
                     b.Property<string>("SpotifyArtistId")
                         .HasMaxLength(22)
-                        .IsUnicode(false)
-                        .HasColumnType("varchar(22)")
-                        .UseCollation("Latin1_General_100_BIN2");
+                        .HasColumnType("character varying(22)");
 
                     b.HasKey("ArtistId", "SpotifyArtistId");
 
@@ -87,17 +87,17 @@ namespace CityFy.Retrieve.MusicBrainz.Migrations
             modelBuilder.Entity("CityFy.Retrieve.MusicBrainz.Models.Genre", b =>
                 {
                     b.Property<int>("Id")
-                        .HasColumnType("int");
+                        .HasColumnType("integer");
 
                     b.Property<string>("Gid")
                         .IsRequired()
                         .HasMaxLength(36)
-                        .HasColumnType("nvarchar(36)");
+                        .HasColumnType("character varying(36)");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
+                        .HasColumnType("character varying(200)");
 
                     b.HasKey("Id");
 
@@ -110,20 +110,20 @@ namespace CityFy.Retrieve.MusicBrainz.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
+                        .HasColumnType("integer");
 
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<int>("FromGenreId")
-                        .HasColumnType("int");
+                        .HasColumnType("integer");
 
                     b.Property<string>("RelationType")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
+                        .HasColumnType("character varying(50)");
 
                     b.Property<int>("ToGenreId")
-                        .HasColumnType("int");
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 

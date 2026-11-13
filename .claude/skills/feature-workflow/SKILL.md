@@ -54,7 +54,7 @@ Prima di iniziare carica `dotnet-conventions` e la skill di architettura del pro
   - progetto e test, solution, AppHost (risorsa, parametri e segreti);
   - client, endpoint e pannello admin del gateway, health check, elenco dei proprietari di dati per la cancellazione;
   - codici d'errore nei tre cataloghi (backend, documento per la UI, frontend) e costanti condivise rimaste senza uso;
-  - compose, workflow, segreti e `.env.example`, con i passi da fare una volta sul server (container orfani, volumi, dati);
+  - manifest di deploy (compose o Kubernetes), workflow, segreti ed esempi di configurazione, con i passi da fare una volta in produzione (container o deployment orfani, volumi, dati);
   - README, guida di deploy, skill;
   - una ricerca finale dei riferimenti residui.
 - **Dismissione di un metodo di login:** i cookie già emessi restano validi finché scadono. Il controllo del cookie deve rifiutare i principal che non sono più di un tipo previsto, altrimenti restano utenti fantasma senza scadenza.

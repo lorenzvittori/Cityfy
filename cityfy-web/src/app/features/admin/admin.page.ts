@@ -180,7 +180,7 @@ export class AdminPage {
 
   protected startMb(): void {
     const ok = confirm(
-      "Avviare l'import del catalogo MusicBrainz?\n\nScarica l'ultimo export (circa 7-8 GB), sostituisce il dump locale precedente e reimporta generi e artisti in SQL Server. Può richiedere da decine di minuti a qualche ora.",
+      "Avviare l'import del catalogo MusicBrainz?\n\nScarica l'ultimo export (circa 7-8 GB), sostituisce il dump locale precedente e reimporta generi e artisti in PostgreSQL. Può richiedere da decine di minuti a qualche ora.",
     );
     if (!ok) return;
     this.load(this.admin.mbStart(), (s) => {

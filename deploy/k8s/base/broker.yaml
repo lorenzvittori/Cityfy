@@ -1,0 +1,64 @@
+# RabbitMQ (event bus of the pipeline). StatefulSet: the pod is always "broker-0", so the node name
+# (rabbit@broker-0) and the data stored under it stay the same across restarts.
+apiVersion: v1
+kind: Service
+metadata:
+  name: broker
+spec:
+  selector: { app: broker }
+  ports:
+    - name: amqp
+      port: 5672
+      targetPort: 5672
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: broker
+spec:
+  serviceName: broker
+  replicas: 1
+  selector:
+    matchLabels: { app: broker }
+  template:
+    metadata:
+      labels: { app: broker }
+    spec:
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:4-alpine
+          ports:
+            - name: amqp
+              containerPort: 5672
+          env:
+            - name: RABBITMQ_DEFAULT_USER
+              value: cityfy
+            - name: RABBITMQ_DEFAULT_PASS
+              valueFrom:
+                secretKeyRef: { name: cityfy-secrets, key: rabbitmq-password }
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/rabbitmq
+          resources:
+            requests: { cpu: 50m, memory: 256Mi }
+            limits: { memory: 768Mi }
+          readinessProbe:
+            exec:
+              command: ["rabbitmq-diagnostics", "-q", "ping"]
+            periodSeconds: 10
+            timeoutSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["rabbitmq-diagnostics", "-q", "ping"]
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 6
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: local-path-retain
+        resources:
+          requests: { storage: 2Gi }

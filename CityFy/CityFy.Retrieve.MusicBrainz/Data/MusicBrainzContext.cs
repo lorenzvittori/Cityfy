@@ -15,8 +15,16 @@ public sealed class MusicBrainzContext : DbContext
     public DbSet<ArtistGenre> ArtistGenres { get; set; } = null!;
     public DbSet<ArtistSpotifyLink> ArtistSpotifyLinks { get; set; } = null!;
 
+    /// <summary>
+    /// ICU collation, case-insensitive and accent-sensitive ("Beyonce" = "beyonce" but not "Beyoncé"):
+    /// the artist-name lookup used to rely on the case-insensitive default collation of SQL Server.
+    /// </summary>
+    public const string CaseInsensitiveCollation = "case_insensitive";
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.HasCollation(CaseInsensitiveCollation, locale: "und-u-ks-level2", provider: "icu", deterministic: false);
+
         // Ids are MusicBrainz row ids: the import writes them as they are (bulk copy)
         modelBuilder.Entity<Genre>(b =>
         {
@@ -43,8 +51,8 @@ public sealed class MusicBrainzContext : DbContext
             b.HasKey(a => a.Id);
             b.Property(a => a.Id).ValueGeneratedNever();
             b.Property(a => a.Gid).IsRequired().HasMaxLength(36);
-            b.Property(a => a.Name).IsRequired().HasMaxLength(500);
-            // Lookup by name (dump plays have no artist id); default SQL Server collation is case-insensitive
+            // Lookup by name (dump plays have no artist id): equality ignores the case
+            b.Property(a => a.Name).IsRequired().HasMaxLength(500).UseCollation(CaseInsensitiveCollation);
             b.HasIndex(a => a.Name);
             b.HasIndex(a => a.Gid);
         });
@@ -61,11 +69,10 @@ public sealed class MusicBrainzContext : DbContext
         modelBuilder.Entity<ArtistSpotifyLink>(b =>
         {
             b.HasKey(l => new { l.ArtistId, l.SpotifyArtistId });
-            // Spotify ids are base62, i.e. CASE-SENSITIVE: the default (case-insensitive) collation would
-            // treat "6D8m8pBW..." and "6d8m8pbw..." as the same key (MusicBrainz has both) and exact
-            // lookups would match the wrong artist. Binary collation compares them like Spotify does.
-            b.Property(l => l.SpotifyArtistId).IsRequired().HasMaxLength(22).IsUnicode(false)
-                .UseCollation("Latin1_General_100_BIN2");
+            // Spotify ids are base62, i.e. CASE-SENSITIVE: MusicBrainz holds "6D8m8pBW..." and "6d8m8pbw..."
+            // as different links. The default PostgreSQL collation compares them like Spotify does
+            // (never give this column a case-insensitive collation).
+            b.Property(l => l.SpotifyArtistId).IsRequired().HasMaxLength(22);
             b.HasOne(l => l.Artist).WithMany(a => a.SpotifyLinks)
                 .HasForeignKey(l => l.ArtistId).OnDelete(DeleteBehavior.Cascade);
             b.HasIndex(l => l.SpotifyArtistId);

@@ -16,7 +16,7 @@ L’obiettivo è costruire una “città dell’ascolto” partendo da dati prov
 
 ### Prerequisiti
 - .NET SDK 10
-- Docker Desktop **avviato**: MongoDB, SQL Server e RabbitMQ girano come container gestiti da Aspire.
+- Docker Desktop **avviato**: MongoDB, PostgreSQL e RabbitMQ girano come container gestiti da Aspire.
 
 ### Configurazione (una volta sola)
 Servono la API key e lo shared secret di un'applicazione Last.fm (gratuita, da creare su https://www.last.fm/api/account/create con callback `http://127.0.0.1:4200/api/v1/auth/lastfm/callback`):
@@ -26,7 +26,7 @@ dotnet user-secrets set "Parameters:lastfm-api-key" "<api key>" --project CityFy
 dotnet user-secrets set "Parameters:lastfm-shared-secret" "<shared secret>" --project CityFy\CityFy.AppHost
 ```
 
-In alternativa, la dashboard di Aspire li chiede al primo avvio. Le password di Mongo, SQL Server e RabbitMQ le genera Aspire e le salva negli user-secrets dell'AppHost: non vanno configurate a mano.
+In alternativa, la dashboard di Aspire li chiede al primo avvio. Le password di Mongo, PostgreSQL e RabbitMQ le genera Aspire e le salva negli user-secrets dell'AppHost: non vanno configurate a mano.
 
 ### Avvio
 ```powershell
@@ -124,7 +124,7 @@ Il pannello è attivo solo in Development (`appsettings.Development.json` dell'A
 | MusicBrainz | Avvio dell'import del catalogo generi e avanzamento |
 | Pipeline | Esecuzioni dell'orchestratore di tutti gli utenti, aggiornamento manuale del catalogo artisti di un utente |
 | Last.fm e upload | Account Last.fm collegati (stato, ultima lettura, brano in ascolto) con **Leggi ora** e **Reimporta storico**, import dello storico, upload con stato e codice d'errore, **cancellazione di tutti i dati di un utente** (anche indicando a mano un id `u_…` o `anon_…`) |
-| Database | Sola lettura con paginazione: collection Mongo (`cityfy`) e tabelle SQL Server (`musicbrainz`). I campi sensibili (token, secret, password) sono oscurati |
+| Database | Sola lettura con paginazione: collection Mongo (`cityfy`) e tabelle PostgreSQL (`musicbrainz`, righe stimate). I campi sensibili (token, secret, password) sono oscurati |
 
 ### Primo giro completo
 1. **Generi:** `POST /api/retrieve` su **RetrieveMusicBrainz**. Scarica e importa il dump MusicBrainz. Dura a lungo; lo stato si legge su `GET /api/retrieve/status`.
@@ -222,7 +222,7 @@ dotnet ef migrations add <Nome> --project CityFy\CityFy.Retrieve.MusicBrainz
 
 ## Deploy
 
-Pubblicazione a costo zero su una macchina gratuita di Oracle Cloud, con il catalogo su Azure SQL gratuito. GitHub Actions esegue i test e pubblica a ogni push su `main`. La guida completa è in [DEPLOY.md](DEPLOY.md).
+Pubblicazione su https://cityfy.app.pacoaccess.com, nel cluster K3s privato (VPS Contabo), con il catalogo MusicBrainz sul PostgreSQL condiviso del cluster. GitHub Actions esegue i test, crea le immagini e aggiorna il cluster a ogni push su `main`, attraverso un tunnel SSH: l'API Kubernetes non è pubblica. La guida completa è in [DEPLOY.md](DEPLOY.md).
 
 ---
 

@@ -1,144 +1,284 @@
-# Deploy di Cityfy (costo zero)
+# Deploy di Cityfy (cluster K3s su Contabo)
 
-Cityfy gira su **una macchina virtuale gratuita di Oracle Cloud** (ARM, 4 core, 24 GB di RAM) con Docker. Il catalogo MusicBrainz sta su **Azure SQL Database** con l'offerta gratuita. **GitHub Actions** compila, esegue i test, crea le immagini e aggiorna la macchina a ogni push su `main`.
+Cityfy gira nel namespace `cityfy` del cluster K3s `k8s-lab-01` (VPS Contabo, x86-64, nodo singolo). **GitHub Actions** compila, esegue i test, crea le immagini e aggiorna il cluster a ogni push su `main`. Il catalogo MusicBrainz sta sul **PostgreSQL condiviso** del cluster (namespace `data`), che serve anche ad altre applicazioni.
 
 ```
-Browser ──https──► Caddy (web) ──/api──► Api ──► Catalog, CityGenerator, Orchestrator, RetrieveLastFm,
-                     │                          RetrieveDumpSpotify, RetrieveMusicBrainz
-                     └── app Angular            MongoDB, RabbitMQ (rete interna)      ──► Azure SQL
+Browser ──https──► Traefik (Ingress, cert-manager) ──/api──► api ──► catalog, city-generator, orchestrator,
+                     cityfy.app.pacoaccess.com    └── /  ──► web       retrieve-lastfm, retrieve-dump-spotify,
+                                                              (Caddy)   retrieve-musicbrainz
+                                                                       mongo, broker (namespace cityfy)
+                                                                       postgres.data (condiviso) ◄── retrieve-musicbrainz, api
+
+GitHub Actions ──ssh, solo tunnel──► 127.0.0.1:6443 (API Kubernetes, mai pubblica)
+               └─ kubectl come ServiceAccount cityfy-deployer: diritti solo nel namespace cityfy
 ```
 
-Solo Caddy è raggiungibile da Internet, sulle porte 80 e 443. I servizi interni, MongoDB e RabbitMQ restano sulla rete Docker interna.
+Da Internet si raggiunge solo Traefik, sulle porte 80 e 443, e solo `/api/*` arriva a un servizio .NET (il gateway). Il resto resta dentro il cluster.
 
 | File | A cosa serve |
 |---|---|
 | `.github/workflows/ci.yml` | Build e test (.NET e Angular) a ogni push e pull request |
-| `.github/workflows/deploy.yml` | Su `main`: CI, poi immagini ARM64 su GitHub Container Registry, poi aggiornamento via SSH |
-| `deploy/docker-compose.yml` | I servizi in produzione: rispecchia l'AppHost, va aggiornato quando cambia |
-| `deploy/Caddyfile`, `deploy/web.Dockerfile` | Frontend, proxy `/api` e certificato HTTPS automatico |
+| `.github/workflows/deploy.yml` | Su `main`: CI, poi immagini amd64 su GitHub Container Registry, poi tunnel SSH e `kubectl apply` |
+| `deploy/k8s/base/` | I manifest di CityFy (kustomize): rispecchiano l'AppHost, vanno aggiornati quando cambia |
+| `deploy/cluster/` | Risorse del cluster che applica **l'amministratore a mano**: StorageClass, PostgreSQL condiviso, accesso della CI, Traefik |
+| `deploy/Caddyfile`, `deploy/web.Dockerfile` | Frontend: Caddy serve la build Angular in HTTP dentro il cluster |
 | `deploy/musicbrainz.Dockerfile` | RetrieveMusicBrainz con `bzip2`, che serve per estrarre il dump |
-| `deploy/.env.example` | Le variabili del compose. In produzione il file `.env` lo scrive il workflow a partire dai segreti di GitHub |
 
 ---
 
 ## Una volta sola
 
-Servono circa 30-45 minuti. Sia Oracle sia Azure chiedono una carta di credito per la verifica, ma non addebitano nulla.
+Ogni passo finisce con un **checkpoint**: non andare avanti finché il checkpoint non torna come descritto. I comandi `kubectl` si lanciano da Windows, con il tunnel SSH attivo e il kubeconfig amministratore:
 
-### 1. Macchina su Oracle Cloud
-
-1. Crea un account su [cloud.oracle.com](https://cloud.oracle.com). La *home region* non si può cambiare dopo: sceglila vicina, per esempio Milano o Francoforte.
-2. Vai in **Compute → Instances → Create instance**:
-   - **Image:** Canonical Ubuntu 24.04 (aarch64);
-   - **Shape:** Ampere `VM.Standard.A1.Flex`, 4 OCPU, 24 GB;
-   - **Boot volume:** 100 GB o più. Il dump MusicBrainz scaricato occupa diversi GB;
-   - **SSH keys:** carica la tua chiave pubblica personale.
-
-   Se Oracle risponde *out of capacity*, riprova più tardi o cambia *availability domain*.
-3. Apri le porte web: **Networking → Virtual Cloud Network → Security List** della subnet → *Ingress rules*. Aggiungi TCP 80, TCP 443 e UDP 443 da `0.0.0.0/0`.
-4. Entra nella macchina (`ssh ubuntu@<IP pubblico>`). Apri le stesse porte anche nel firewall interno delle immagini Oracle e installa Docker:
-   ```bash
-   sudo iptables -I INPUT 6 -p tcp -m multiport --dports 80,443 -j ACCEPT
-   sudo iptables -I INPUT 6 -p udp --dport 443 -j ACCEPT
-   sudo netfilter-persistent save
-   curl -fsSL https://get.docker.com | sudo sh
-   sudo usermod -aG docker ubuntu   # poi esci e rientra
-   ```
-5. Consigliato: passa l'account a **Pay As You Go**, così Oracle non recupera le macchine gratuite poco usate. Resta gratis entro i limiti *Always Free*. Le risorse che li superano, invece, vengono addebitate: crea solo risorse marcate *Always Free*.
-
-### 2. Dominio gratuito
-
-Su [duckdns.org](https://www.duckdns.org) crea un sottodominio, per esempio `cityfy-tuonome.duckdns.org`, e puntalo all'IP pubblico della macchina. Caddy ottiene e rinnova da solo il certificato HTTPS.
-
-### 3. Database del catalogo su Azure SQL (gratuito)
-
-1. Su [portal.azure.com](https://portal.azure.com) crea un **SQL Database** e attiva il banner **"Apply offer" (Free)**:
-   - nome del database: `musicbrainz`; crea un nuovo server con **autenticazione SQL** (utente e password);
-   - quando si raggiunge il limite gratuito, scegli **"Auto-pause the database until next month"**: così non paghi mai.
-2. In **Networking** del server: accesso pubblico, con una regola del firewall per l'**IP pubblico della macchina Oracle**.
-3. In **Connection strings → ADO.NET** copia la stringa, metti la password e aggiungi `Connection Timeout=60;`. Il database in pausa impiega fino a un minuto per riprendersi. Al primo avvio, RetrieveMusicBrainz crea le tabelle da solo (migration).
-
-### 4. Last.fm
-
-Crea un'applicazione su [last.fm/api/account/create](https://www.last.fm/api/account/create), con callback `https://<tuo dominio>/api/v1/auth/lastfm/callback`. API key e shared secret vanno nei segreti di GitHub (punto 6).
-
-Prima di aprire il login Last.fm al pubblico serve l'approvazione scritta di Last.fm: vedi `PIANO_LASTFM.md`, fase 0.
-
-### 5. Chiave SSH per il deploy
-
-Crea una chiave dedicata a GitHub, senza passphrase:
-```bash
-ssh-keygen -t ed25519 -f cityfy_deploy -N "" -C "github-deploy"
-ssh-copy-id -i cityfy_deploy.pub ubuntu@<IP pubblico>
+```powershell
+$env:KUBECONFIG = "$env:USERPROFILE\.kube\k3s-headlamp.yaml"
+kubectl get nodes   # k8s-lab-01 Ready
 ```
 
-### 6. Configurazione su GitHub
+I comandi marcati **(server)** si lanciano in una sessione SSH come `root`. Tieni sempre aperta una seconda sessione SSH mentre tocchi qualcosa che riguarda SSH.
 
-Serve un utente amministratore del repository. Vai in **Settings → Secrets and variables → Actions**.
+### 0. Controlli preliminari (server, sola lettura)
+
+```bash
+grep -o -m1 -w avx /proc/cpuinfo                       # MongoDB 7 richiede AVX: deve stampare "avx"
+sshd -T | grep -Ei '^(allowtcpforwarding|disableforwarding)'   # allowtcpforwarding yes, disableforwarding no
+df -h /var/lib/rancher                                 # spazio libero per i volumi (servono ~70 GB)
+```
+
+**Checkpoint:** `avx` presente, forwarding TCP permesso, spazio sufficiente. Se `allowtcpforwarding` è `no`, fermati: va cambiato `sshd_config`, ed è una modifica da concordare.
+
+### 1. DNS su Cloudflare
+
+Aggiungi un record: **Type** `A`, **Name** `cityfy.app`, **Content** `185.2.101.25`, **Proxy** *DNS only* (nuvola grigia), **TTL** *Auto*.
+
+```powershell
+Resolve-DnsName cityfy.app.pacoaccess.com -Type A
+```
+
+**Checkpoint:** risponde `185.2.101.25`.
+
+### 2. StorageClass con dati conservati
+
+`local-path` ha `reclaimPolicy: Delete`: cancellare un PVC cancella i dati. Per i database e le chiavi di cifratura c'è `local-path-retain`, che conserva la cartella sul nodo anche se il PVC viene cancellato.
+
+```powershell
+kubectl apply --dry-run=server -f deploy/cluster/storageclass-retain.yaml
+kubectl apply -f deploy/cluster/storageclass-retain.yaml
+kubectl get storageclass
+```
+
+**Checkpoint:** compaiono `local-path (default)` e `local-path-retain`, quest'ultima con `RECLAIMPOLICY Retain`. La classe di default non cambia.
+
+### 3. PostgreSQL condiviso (namespace `data`)
+
+PostgreSQL 17 (`postgres:17-alpine`): leggero (~100 MB di RAM), senza limiti di dimensione, con l'immagine fissata alla versione maggiore. Ogni applicazione avrà un suo ruolo e un suo database, mai il superutente `postgres`. Si connettono solo i namespace con l'etichetta `pacoaccess.com/postgres-client=true`.
+
+1. Genera la password del superutente `postgres` e salvala nel tuo password manager:
+   ```powershell
+   function New-Password { $b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); ([Convert]::ToBase64String($b) -replace '[^a-zA-Z0-9]','').Substring(0,24) + 'Aa1' }
+   $pg = New-Password; $pg   # copiala nel password manager
+   ```
+2. Crea namespace e segreto, poi il server:
+   ```powershell
+   kubectl create namespace data
+   kubectl -n data create secret generic postgres-superuser --from-literal=password="$pg"
+   kubectl apply --dry-run=server -f deploy/cluster/postgres.yaml
+   kubectl apply -f deploy/cluster/postgres.yaml
+   kubectl -n data rollout status statefulset/postgres --timeout=5m
+   kubectl -n data logs postgres-0 --tail=20
+   ```
+   **Checkpoint:** `postgres-0` è `Running` e `1/1`; nel log c'è `database system is ready to accept connections`.
+3. Crea ruolo e database di CityFy. Genera la password (`$cf = New-Password; $cf`, salvala), poi apri `psql` dentro il pod. Dall'interno del container non chiede password:
+   ```powershell
+   kubectl -n data exec -it postgres-0 -- psql -U postgres
+   ```
+   e scrivi, sostituendo `<password cityfy>`:
+   ```sql
+   CREATE ROLE cityfy LOGIN PASSWORD '<password cityfy>';
+   CREATE DATABASE musicbrainz OWNER cityfy;
+   \l musicbrainz
+   \q
+   ```
+   **Checkpoint:** `\l` mostra `musicbrainz` con owner `cityfy`. Al primo avvio RetrieveMusicBrainz crea da solo collation e tabelle (migration). Il proprietario del database ha i diritti per farlo.
+4. La connection string, che andrà nel segreto `MUSICBRAINZ_SQL_CONNECTION`, è:
+   ```
+   Host=postgres.data.svc.cluster.local;Port=5432;Database=musicbrainz;Username=cityfy;Password=<password cityfy>
+   ```
+   Senza TLS: il traffico non esce dal nodo, e la NetworkPolicy lascia entrare solo i namespace autorizzati.
+
+### 4. Namespace `cityfy` e identità della CI
+
+`cityfy-access.yaml` crea il namespace, con l'etichetta che dà accesso a PostgreSQL, e il ServiceAccount `cityfy-deployer`. Questo può gestire deployment, servizi, segreti, volumi e ingress **solo** in `cityfy`: nessun diritto sul cluster, sugli altri namespace o sui permessi.
+
+```powershell
+kubectl apply --dry-run=server -f deploy/cluster/cityfy-access.yaml
+kubectl apply -f deploy/cluster/cityfy-access.yaml
+```
+
+Crea il kubeconfig del ServiceAccount, che contiene un token: trattalo come una password.
+
+```powershell
+$token = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String((kubectl -n cityfy get secret cityfy-deployer-token -o jsonpath='{.data.token}')))
+$ca = kubectl -n cityfy get secret cityfy-deployer-token -o jsonpath='{.data.ca\.crt}'
+@"
+apiVersion: v1
+kind: Config
+clusters:
+- name: k8s-lab-01
+  cluster:
+    server: https://127.0.0.1:6443
+    certificate-authority-data: $ca
+users:
+- name: cityfy-deployer
+  user:
+    token: $token
+contexts:
+- name: cityfy
+  context:
+    cluster: k8s-lab-01
+    user: cityfy-deployer
+    namespace: cityfy
+current-context: cityfy
+"@ | Set-Content -Encoding ascii "$env:USERPROFILE\.kube\cityfy-deployer.yaml"
+
+kubectl --kubeconfig "$env:USERPROFILE\.kube\cityfy-deployer.yaml" auth can-i create deployments   # yes
+kubectl --kubeconfig "$env:USERPROFILE\.kube\cityfy-deployer.yaml" get nodes                       # Forbidden
+kubectl --kubeconfig "$env:USERPROFILE\.kube\cityfy-deployer.yaml" -n data get pods                # Forbidden
+```
+
+**Checkpoint:** `yes`, poi due `Forbidden`. Il contenuto del file va nel segreto `CITYFY_KUBECONFIG` (passo 7). Dopo, cancella il file da Windows.
+
+Per revocare l'accesso della CI: `kubectl -n cityfy delete secret cityfy-deployer-token`, poi riapplica `cityfy-access.yaml` e rigenera il kubeconfig.
+
+### 5. Chiave SSH della CI (solo tunnel)
+
+Il runner di GitHub raggiunge l'API Kubernetes come fai tu da Windows: con un tunnel SSH verso `127.0.0.1:6443`. La chiave è dedicata, appartiene all'utente `devops` e sul server viene **limitata al solo tunnel**: niente shell, niente altri inoltri. Firewall e configurazione di `sshd` non cambiano.
+
+1. **Windows:** crea la chiave, senza passphrase:
+   ```powershell
+   ssh-keygen -t ed25519 -f "$env:USERPROFILE\.ssh\cityfy_github_deploy" -N '""' -C github-cityfy-deploy
+   Get-Content "$env:USERPROFILE\.ssh\cityfy_github_deploy.pub"
+   ```
+2. **(server)** Aggiungi la chiave pubblica a `devops` con le restrizioni davanti. La riga è una sola:
+   ```bash
+   cp -a /home/devops/.ssh/authorized_keys /home/devops/.ssh/authorized_keys.bak
+   echo 'restrict,port-forwarding,permitopen="127.0.0.1:6443",command="/bin/false" ssh-ed25519 AAAA...incolla... github-cityfy-deploy' >> /home/devops/.ssh/authorized_keys
+   tail -n 1 /home/devops/.ssh/authorized_keys
+   ```
+   Le chiavi già presenti non cambiano.
+3. **Windows**, prova della chiave (con il tunnel abituale su 6443 attivo, la prova usa 16443):
+   ```powershell
+   $key = "$env:USERPROFILE\.ssh\cityfy_github_deploy"
+   ssh -i $key -o IdentitiesOnly=yes devops@185.2.101.25          # deve chiudersi subito, senza shell
+   ssh -i $key -o IdentitiesOnly=yes -N -L 16443:127.0.0.1:6443 devops@185.2.101.25
+   ```
+   Lascia aperta l'ultima finestra e in un'altra prova:
+   ```powershell
+   kubectl --kubeconfig "$env:USERPROFILE\.kube\cityfy-deployer.yaml" --server https://127.0.0.1:16443 auth can-i list pods   # yes
+   ```
+   Infine verifica che un altro inoltro venga rifiutato: `ssh -i $key -o IdentitiesOnly=yes -N -L 16444:127.0.0.1:22 devops@185.2.101.25`, poi `Test-NetConnection 127.0.0.1 -Port 16444`. L'output SSH deve dire *administratively prohibited*.
+
+   **Checkpoint:** nessuna shell, tunnel 6443 funzionante, altri inoltri rifiutati, e le tue sessioni root e devops funzionano come prima.
+4. **Host key** da fissare in GitHub, così il runner non si fida di un server diverso. Confronta l'impronta vista da Windows con quella del server:
+   ```powershell
+   ssh-keyscan -t ed25519 185.2.101.25 2>$null | Tee-Object -Variable kh | ssh-keygen -lf -
+   ```
+   ```bash
+   ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub   # (server)
+   ```
+   **Checkpoint:** le due impronte `SHA256:...` sono identiche. La riga `$kh` (`185.2.101.25 ssh-ed25519 AAAA...`) va nella variabile `DEPLOY_KNOWN_HOSTS`.
+
+### 6. Token per scaricare le immagini
+
+Le immagini `cityfy-*` sono private, e il cluster le scarica anche giorni dopo il deploy, per esempio quando un pod riparte. Il token del job scade con il job, quindi ne serve uno dedicato.
+
+Su GitHub: **Settings (del tuo profilo) → Developer settings → Personal access tokens → Tokens (classic) → Generate new token**:
+- **Note:** `cityfy-cluster-pull`;
+- **Expiration:** *No expiration*. Un token scaduto bloccherebbe in silenzio i pod che ripartono (`ImagePullBackOff`);
+- **Scope:** **solo `read:packages`**. Chi lo ottenesse potrebbe solo scaricare le immagini, che non contengono segreti.
+
+Se pensi che il token sia stato esposto, revocalo dalla stessa pagina, creane uno nuovo, aggiorna `GHCR_PULL_TOKEN` e rilancia il deploy.
+
+### 7. Configurazione su GitHub
+
+Serve un utente amministratore del repository. In **Settings → Environments** crea l'ambiente `production`, che il job di deploy usa. Opzionale: *Required reviewers* per approvare ogni deploy. Poi, in **Settings → Secrets and variables → Actions**, oppure nell'ambiente `production`:
 
 | Tipo | Nome | Valore |
 |---|---|---|
-| Variable | `DEPLOY_HOST` | IP pubblico della macchina. Finché manca, il deploy non parte |
-| Variable | `DEPLOY_USER` | `ubuntu` |
-| Variable | `DOMAIN` | es. `cityfy-tuonome.duckdns.org` |
-| Secret | `DEPLOY_SSH_KEY` | Contenuto del file **privato** `cityfy_deploy` |
-| Secret | `MONGO_PASSWORD` | Password a scelta, solo lettere e numeri |
-| Secret | `RABBITMQ_PASSWORD` | Password a scelta, solo lettere e numeri |
-| Secret | `MUSICBRAINZ_SQL_CONNECTION` | La connection string del punto 3 |
-| Secret | `LASTFM_API_KEY` | La API key dell'applicazione Last.fm (creata su https://www.last.fm/api/account/create, con callback `https://<DOMAIN>/api/v1/auth/lastfm/callback`) |
-| Secret | `LASTFM_SHARED_SECRET` | Lo shared secret della stessa applicazione Last.fm |
+| Variable | `DEPLOY_HOST` | `185.2.101.25`. Finché manca, il deploy non parte |
+| Variable | `DEPLOY_USER` | `devops` |
+| Variable | `DEPLOY_KNOWN_HOSTS` | La riga `$kh` del passo 5.4 |
+| Variable | `GHCR_PULL_USER` | Il tuo utente GitHub (proprietario del token del passo 6) |
+| Secret | `DEPLOY_SSH_KEY` | Contenuto del file **privato** `cityfy_github_deploy` |
+| Secret | `CITYFY_KUBECONFIG` | Contenuto di `cityfy-deployer.yaml` (passo 4) |
+| Secret | `GHCR_PULL_TOKEN` | Il token del passo 6 |
+| Secret | `MONGO_PASSWORD` | `New-Password`: solo lettere e numeri |
+| Secret | `RABBITMQ_PASSWORD` | `New-Password`: solo lettere e numeri |
+| Secret | `MUSICBRAINZ_SQL_CONNECTION` | La connection string del passo 3.4 |
+| Secret | `LASTFM_API_KEY` | API key dell'applicazione Last.fm, con callback `https://cityfy.app.pacoaccess.com/api/v1/auth/lastfm/callback` |
+| Secret | `LASTFM_SHARED_SECRET` | Shared secret della stessa applicazione |
 
-Le password non devono contenere apici singoli (`'`).
+Si possono cancellare i vecchi segreti `SPOTIFY_CLIENT_SECRET` e la variabile `DOMAIN`: il dominio ora sta nei manifest (`deploy/k8s/base/config.yaml` e `ingress.yaml`).
 
-**Immagini:** con un repository **privato** il piano gratuito di GitHub Packages offre solo 500 MB. In quel caso, dopo il primo deploy, rendi pubblici i pacchetti `cityfy-*` (pagina del pacchetto → *Package settings → Change visibility*). Le immagini non contengono segreti. Con un repository pubblico non ci sono limiti, e nemmeno sui minuti di Actions.
+La password di Mongo viene letta **solo al primo avvio**, con il volume vuoto. Se cambi poi `MONGO_PASSWORD`, va cambiata anche dentro Mongo (`db.changeUserPassword`), altrimenti i servizi non si connettono più.
 
-### 7. Primo deploy
+### 8. Traefik: IP reale del client e upload lunghi (consigliato prima dell'apertura al pubblico)
 
-Fai un merge su `main`, oppure apri **Actions → Deploy → Run workflow**. Il primo giro dura circa 15-20 minuti: l'immagine MusicBrainz viene costruita in emulazione ARM.
+Senza questa modifica Traefik vede come mittente l'indirizzo interno del nodo. Così i limiti di richieste per rete di Cityfy contano tutti gli utenti come uno solo. Inoltre Traefik v3 chiude dopo 60 secondi una richiesta ancora in lettura, e un export Spotify da 200 MB su una connessione lenta non ci sta. **Applicarla riavvia Traefik**: tutte le applicazioni restano qualche secondo senza HTTP/HTTPS.
 
-### 8. Import del catalogo MusicBrainz
+```powershell
+kubectl -n kube-system get helmchartconfig                    # se esiste già "traefik", fermati: va unito, non sovrascritto
+kubectl apply --dry-run=server -f deploy/cluster/traefik-config.yaml
+kubectl apply -f deploy/cluster/traefik-config.yaml
+kubectl -n kube-system get pods -w                            # attendi il nuovo pod traefik Running (Ctrl+C)
+kubectl -n kube-system get svc traefik -o jsonpath='{.spec.externalTrafficPolicy}'   # Local
+curl.exe -s https://app.pacoaccess.com | Select-String 'RemoteAddr|X-Forwarded-For|X-Real-Ip'
+```
 
-Il pannello admin in produzione è spento, quindi l'import si avvia dalla macchina:
-```bash
-cd ~/cityfy
-docker compose run --rm tools -X POST http://retrieve-musicbrainz:8080/api/retrieve
-docker compose run --rm tools http://retrieve-musicbrainz:8080/api/retrieve/status   # avanzamento
+**Checkpoint:** `whoami` risponde ancora, e `X-Real-Ip` / `X-Forwarded-For` mostrano il tuo IP pubblico, non un `10.x`. Con più nodi, `externalTrafficPolicy: Local` va rivisto.
+
+### 9. Primo deploy
+
+Fai un merge su `main`, oppure apri **Actions → Deploy → Run workflow**. Il job `deploy` mostra alla fine pod, ingress, certificato ed eventi.
+
+```powershell
+kubectl -n cityfy get pods                          # tutti Running e READY
+kubectl -n cityfy get certificate                   # cityfy-tls READY True (può servire un minuto)
+curl.exe -I https://cityfy.app.pacoaccess.com       # 200, con strict-transport-security
+curl.exe -I http://cityfy.app.pacoaccess.com        # 308 verso https
+curl.exe -si https://cityfy.app.pacoaccess.com/api/v1/me   # 401 dall'Api (senza cookie), non la pagina HTML
+```
+
+Al primo giro i servizi possono riavviarsi un paio di volte (`RESTARTS` > 0) mentre Mongo e RabbitMQ partono: è normale, se poi restano stabili.
+
+### 10. Import del catalogo MusicBrainz
+
+Il pannello admin in produzione è spento, quindi l'import si avvia con un pod temporaneo:
+```powershell
+kubectl -n cityfy run mb --rm -it --restart=Never --image=curlimages/curl -- -sS -X POST http://retrieve-musicbrainz:8080/api/retrieve
+kubectl -n cityfy run mb --rm -it --restart=Never --image=curlimages/curl -- -sS http://retrieve-musicbrainz:8080/api/retrieve/status   # avanzamento
 ```
 Alla fine dell'import il catalogo artisti di tutti gli utenti si aggiorna da solo (`CatalogUpdated`): le nuove città useranno i generi aggiornati.
 
 ---
 
-## Passaggio a Last.fm (una volta, al primo deploy dopo `PIANO_LASTFM.md`)
-
-Il servizio `retrieve-spotify` non esiste più e i database si ricreano (decisione L9: nessuna migrazione degli utenti di prova).
-```bash
-cd ~/cityfy
-docker compose up -d --remove-orphans          # toglie il container retrieve-spotify
-docker volume rm cityfy_spotify-keys           # refresh token Spotify, non servono più
-docker compose exec mongo mongosh -u cityfy -p "$MONGO_PASSWORD" --authenticationDatabase admin --eval 'db.getSiblingDB("cityfy").dropDatabase()'
-docker compose restart                         # i servizi ricreano collection e indici
-```
-Su GitHub si può cancellare il segreto `SPOTIFY_CLIENT_SECRET`. Il catalogo MusicBrainz (Azure SQL) non si tocca.
-
 ## Uso quotidiano
 
-```bash
-cd ~/cityfy
-docker compose ps                         # stato
-docker compose logs -f api catalog    # log
-docker compose restart retrieve-lastfm    # riavvio di un servizio
+```powershell
+kubectl -n cityfy get pods                                  # stato
+kubectl -n cityfy logs deploy/api -f                        # log (anche: catalog, retrieve-lastfm, ...)
+kubectl -n cityfy rollout restart deploy/retrieve-lastfm    # riavvio di un servizio
+kubectl -n cityfy rollout undo deploy/api                   # torna all'immagine precedente
 ```
+Headlamp mostra le stesse cose nel namespace `cityfy`.
 
-**Backup.** Due cose vanno salvate:
-- **MongoDB:** ascolti e città, con
-  ```bash
-  docker compose exec mongo mongodump -u cityfy -p "$MONGO_PASSWORD" --authenticationDatabase admin --archive > backup.archive
-  ```
-- **Il volume `cityfy_api-keys`:** se va perso, i cookie non si leggono più: gli account rifanno l'accesso con Last.fm. Per le sessioni anonime è grave: l'utente perde l'accesso ai suoi dati, che poi scadono e vengono cancellati.
+**Dati che contano.** I backup non sono ancora configurati (decisione presa). `local-path-retain` protegge dalla cancellazione di un PVC, **non** dalla perdita del disco del VPS. Contano:
+- **MongoDB** (PVC `data-mongo-0`): ascolti, città, account, sessioni;
+- **`api-keys`:** se va perso, i cookie non si leggono più: gli account rifanno l'accesso con Last.fm. Per le sessioni anonime è grave: l'utente perde l'accesso ai suoi dati, che poi scadono e vengono cancellati;
+- **`lastfm-keys`:** cifra le chiavi di sessione Last.fm salvate. Se va perso, ogni account Last.fm va ricollegato (gli account passano a `Suspended` con `LASTFM_AUTH_FAILED`);
+- **PostgreSQL** (`data/data-postgres-0`): il catalogo si può reimportare dal dump, ma ci vogliono ore. Gli altri database ospitati lì dipendono dalle rispettive applicazioni.
 
-**Il volume `cityfy_lastfm-keys`:** cifra le chiavi di sessione Last.fm salvate. Se va perso, ogni account Last.fm va ricollegato (gli account passano a `Suspended` con `LASTFM_AUTH_FAILED`).
-
-**Last.fm.** Il servizio `retrieve-lastfm` legge gli account collegati con una cadenza che si adatta (15 s mentre l'utente ascolta, 2 min se ha ascoltato nell'ultima ora, 15 min altrimenti) e importa lo storico al primo collegamento. Last.fm limita le richieste per IP: con un errore 29 la lettura si ferma e riparte da sola (`docker compose logs retrieve-lastfm | grep -i "rate\|29"`). Prima di aprire il login Last.fm al pubblico serve l'approvazione scritta di Last.fm (vedi `PIANO_LASTFM.md`, fase 0).
+**Last.fm.** Il servizio `retrieve-lastfm` legge gli account collegati con una cadenza che si adatta (15 s mentre l'utente ascolta, 2 min se ha ascoltato nell'ultima ora, 15 min altrimenti) e importa lo storico al primo collegamento. Last.fm limita le richieste per IP: con un errore 29 la lettura si ferma e riparte da sola (`kubectl -n cityfy logs deploy/retrieve-lastfm | Select-String "rate|29"`). Prima di aprire il login Last.fm al pubblico serve l'approvazione scritta di Last.fm (vedi `PIANO_LASTFM.md`, fase 0).
 
 **Limiti di richieste.** Il gateway limita le richieste per rete di provenienza: un IPv4, oppure un /64 per IPv6. I valori di default sono:
 - 10 sessioni nuove l'ora;
@@ -146,11 +286,11 @@ docker compose restart retrieve-lastfm    # riavvio di un servizio
 - 20 login Last.fm l'ora;
 - 300 richieste al minuto.
 
-Si cambiano con le variabili `RateLimits__SessionStartsPerHour`, `RateLimits__UploadsPerHour`, `RateLimits__UploadsPerUserPerDay`, `RateLimits__ConcurrentUploads`, `RateLimits__LastFmLoginsPerHour` e `RateLimits__ApiRequestsPerMinute`. Oltre il limite la risposta è `429 RATE_LIMITED`.
+Si cambiano con le variabili `RateLimits__SessionStartsPerHour`, `RateLimits__UploadsPerHour`, `RateLimits__UploadsPerUserPerDay`, `RateLimits__ConcurrentUploads`, `RateLimits__LastFmLoginsPerHour` e `RateLimits__ApiRequestsPerMinute` (in `deploy/k8s/base/services.yaml`, deployment `api`). Oltre il limite la risposta è `429 RATE_LIMITED`.
 
-L'IP del client arriva da Caddy (`X-Forwarded-For`), considerato attendibile solo dalle reti in `Proxy__KnownNetworks__*`, cioè le reti Docker (già impostate nel compose). Se i log mostrano per tutti lo stesso IP 172.x, la rete Docker è diversa da quelle impostate e va aggiunta. In quel caso tutti gli utenti condividono un solo contatore.
+L'IP del client arriva da Traefik (`X-Forwarded-For`), considerato attendibile solo dalla rete dei pod (`Proxy__KnownNetworks__0: 10.42.0.0/16`). Se i log mostrano per tutti lo stesso IP `10.x`, Traefik non vede l'IP reale (passo 8). In quel caso tutti gli utenti condividono un solo contatore.
 
-**Eventi in diretta.** Il gateway (`api`) ora usa anche RabbitMQ: consuma `NowPlayingChanged` (coda `api.now-playing-changed`) e pubblica `UserActive` (coda `retrieve-lastfm.user-active`). `GET /api/v1/live` è uno stream SSE: nel `Caddyfile` è escluso dalla compressione e il proxy fa flush immediato. Se la barra "Stai ascoltando" non si aggiorna, controlla che lo stream non venga bufferizzato (`curl -N https://<DOMAIN>/api/v1/live` con il cookie di un account deve mostrare un `ping` ogni 25 secondi). Il gateway deve restare **una sola istanza**: con più istanze ogni evento arriverebbe a una sola.
+**Eventi in diretta.** Il gateway (`api`) consuma `NowPlayingChanged` (coda `api.now-playing-changed`) e pubblica `UserActive` (coda `retrieve-lastfm.user-active`). `GET /api/v1/live` è uno stream SSE: Traefik non lo bufferizza e non lo comprime. Non aggiungere un middleware `compress` all'Ingress. Se la barra "Stai ascoltando" non si aggiorna, controlla lo stream: `curl.exe -N https://cityfy.app.pacoaccess.com/api/v1/live`, con il cookie di un account, deve mostrare un `ping` ogni 25 secondi. Il gateway deve restare **una sola istanza** (`replicas: 1`): con più istanze ogni evento arriverebbe a una sola.
 
 **Fine della licenza Last.fm.** Se Last.fm revoca la licenza, i termini (9.3) chiedono di cancellare tutti i suoi dati.
 - Si fa dal pannello admin (scheda Last.fm): **Cancella tutti i dati Last.fm…**, che chiama `POST /api/admin/lastfm/purge` con `{ "confirm": "DELETE ALL LASTFM DATA" }`.
@@ -158,13 +298,15 @@ L'IP del client arriva da Caddy (`X-Forwarded-For`), considerato attendibile sol
 - Cancella tutti gli account con tutti i loro dati; le sessioni anonime restano.
 - Poi togli `LASTFM_API_KEY`/`LASTFM_SHARED_SECRET`, così nessuno può accedere di nuovo.
 
-**Account.** Gli account (login con Last.fm) stanno nella collection `users` del gateway. Per cancellare un account con tutti i suoi dati c'è la cancellazione dati del pannello admin (o "Cancella i miei dati" dell'utente). Nell'applicazione Last.fm la callback deve essere `https://<DOMAIN>/api/v1/auth/lastfm/callback`.
+**Account.** Gli account (login con Last.fm) stanno nella collection `users` del gateway. Per cancellare un account con tutti i suoi dati c'è la cancellazione dati del pannello admin (o "Cancella i miei dati" dell'utente).
 
-**Sessioni senza account.** Le gestisce il gateway (`api`), nella collection `anonymous_sessions` di Mongo, e le cancella da solo un giorno dopo l'ultima visita. Per cambiare i tempi si usano le variabili `Sessions__Lifetime` (es. `1.00:00:00`), `Sessions__RenewAfter` e `Sessions__CleanupIntervalMinutes`. Un `docker compose logs api | grep "anonymous session"` mostra le sessioni create, le cancellazioni e quelle da ritentare.
+**Sessioni senza account.** Le gestisce il gateway (`api`), nella collection `anonymous_sessions` di Mongo, e le cancella da solo un giorno dopo l'ultima visita. Per cambiare i tempi si usano le variabili `Sessions__Lifetime` (es. `1.00:00:00`), `Sessions__RenewAfter` e `Sessions__CleanupIntervalMinutes`. `kubectl -n cityfy logs deploy/api | Select-String "anonymous session"` mostra le sessioni create, le cancellazioni e quelle da ritentare.
 
-## Limiti del costo zero
+## Limiti
 
-- **Azure SQL gratuito:** 100.000 vCore-secondi al mese. Il database va in pausa dopo un'ora senza richieste, e ogni risveglio consuma almeno mezz'ora di vCore. Con un uso leggero (qualche costruzione di città al giorno) si resta nel limite. Se lo si supera, il catalogo resta in pausa fino al mese successivo e le città non si costruiscono (`MUSICBRAINZ_UNAVAILABLE`). La soluzione è spostare il catalogo su PostgreSQL, sulla stessa macchina.
-- **Oracle:** la capacità ARM gratuita non è sempre disponibile; le macchine inattive vengono recuperate (si evita con il passaggio a Pay As You Go del punto 1.5).
+- **PostgreSQL condiviso:** un solo server per tutte le applicazioni. Un aggiornamento di versione maggiore (17 → 18) richiede dump e restore di tutti i database, e va pianificato.
+- **Nodo singolo:** un riavvio del VPS ferma tutto; i volumi `local-path` stanno sul disco del nodo e non si spostano su un altro nodo.
+- **Nessun backup** (vedi *Dati che contano*).
+- **Token GHCR:** è senza scadenza. Se viene revocato, i pod che ripartono non scaricano più le immagini.
 - **Last.fm:** limiti di richieste non dichiarati, per IP; uso solo non commerciale; serve l'approvazione scritta per le pagine pubbliche (vedi `PIANO_LASTFM.md`, fase 0).
 - **Pannello admin:** è spento in produzione. Per accenderlo serve un login vero: l'utente fittizio di sviluppo non va esposto.

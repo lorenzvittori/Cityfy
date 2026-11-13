@@ -110,7 +110,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
 
         // The database clients need a connection string to be registered (never opened by these tests)
         builder.UseSetting("ConnectionStrings:cityfy", "mongodb://localhost:27017/cityfy");
-        builder.UseSetting("ConnectionStrings:musicbrainz", "Server=localhost;Database=musicbrainz;User Id=sa;Password=x;TrustServerCertificate=true");
+        builder.UseSetting("ConnectionStrings:musicbrainz", "Host=localhost;Database=musicbrainz;Username=postgres;Password=x");
 
         // Service discovery resolves the resource names to these addresses
         foreach (var resource in new[] { "Catalog", "CityGenerator", "Orchestrator", "RetrieveDumpSpotify", "RetrieveLastFm", "RetrieveMusicBrainz" })

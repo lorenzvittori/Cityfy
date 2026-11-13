@@ -1,0 +1,25 @@
+# CityFy in production: namespace "cityfy" of the K3s cluster (see DEPLOY.md and deploy/cluster/).
+# Same resources as CityFy.AppHost: keep in sync when services or settings change.
+#
+# Applied by .github/workflows/deploy.yml through a generated overlay (deploy/k8s/release/) that sets
+# registry and tag of the images; the bare names below (cityfy-api, ...) are replaced there.
+# Secrets are NOT here: the workflow creates "cityfy-secrets" and "ghcr-pull" from the GitHub secrets.
+#
+# Configuration names are the ones the AppHost injects in development:
+#   ConnectionStrings__<name>          connection strings (cityfy = Mongo, musicbrainz = PostgreSQL, broker)
+#   services__<Resource>__http__0      service discovery ("https+http://<Resource>" in the code)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: cityfy
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: cityfy
+
+resources:
+  - config.yaml
+  - mongo.yaml
+  - broker.yaml
+  - services.yaml
+  - web.yaml
+  - ingress.yaml

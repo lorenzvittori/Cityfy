@@ -1,9 +1,11 @@
-# Deploy to the production server (Oracle Cloud Always Free, ARM64) — see DEPLOY.md.
+# Deploy to the K3s cluster on the Contabo VPS (namespace "cityfy") — see DEPLOY.md.
 #   1. CI (build + all tests);
-#   2. ARM64 images on GitHub Container Registry, tagged with the commit sha:
-#      .NET services with the SDK container support (no Dockerfile, no emulation needed),
+#   2. linux/amd64 images on GitHub Container Registry, tagged with the commit sha:
+#      .NET services with the SDK container support (no Dockerfile),
 #      RetrieveMusicBrainz and the frontend (Caddy) with their Dockerfiles in deploy/;
-#   3. over SSH: docker-compose.yml + .env (from the secrets) on the server, pull, up.
+#   3. SSH tunnel to the Kubernetes API (127.0.0.1:6443 on the server, never public) with a key that
+#      can ONLY open that tunnel, then kubectl as the ServiceAccount "cityfy-deployer" (rights only in
+#      namespace cityfy): secrets from GitHub, manifests of deploy/k8s, wait for the rollout.
 # Runs on every push to main and by hand. Does nothing until the DEPLOY_HOST variable is set.
 name: Deploy
 
@@ -20,6 +22,10 @@ concurrency:
   group: deploy
   cancel-in-progress: false
 
+env:
+  TAG: ${{ github.sha }}
+  KUBECTL_VERSION: v1.37.2 # same minor as the cluster (k3s v1.37.2+k3s1)
+
 jobs:
   ci:
     if: vars.DEPLOY_HOST != ''
@@ -28,8 +34,6 @@ jobs:
   images:
     needs: ci
     runs-on: ubuntu-latest
-    env:
-      TAG: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
 
@@ -48,7 +52,7 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      # Images built by the SDK straight from the arm64 base image (no Docker build, no QEMU)
+      # Images built by the SDK straight from the aspnet base image (no Docker build)
       - name: .NET services
         working-directory: CityFy
         run: |
@@ -63,7 +67,7 @@ jobs:
           do
             name="${pair%%:*}"; project="${pair#*:}"
             echo "::group::$name"
-            dotnet publish "$project/$project.csproj" -c Release -r linux-arm64 \
+            dotnet publish "$project/$project.csproj" -c Release -r linux-x64 \
               -t:PublishContainer \
               -p:ContainerRegistry=ghcr.io \
               -p:ContainerRepository="$OWNER/cityfy-$name" \
@@ -71,17 +75,16 @@ jobs:
             echo "::endgroup::"
           done
 
-      - uses: docker/setup-qemu-action@v3 # RUN apt-get of the MusicBrainz image runs as arm64
-      - uses: docker/setup-buildx-action@v3
-
       - name: RetrieveMusicBrainz (needs bzip2)
         run: |
+          set -e
           dotnet publish CityFy/CityFy.Retrieve.MusicBrainz/CityFy.Retrieve.MusicBrainz.csproj \
-            -c Release -r linux-arm64 --self-contained false -o publish/musicbrainz
-          docker buildx build --platform linux/arm64 --push \
+            -c Release -r linux-x64 --self-contained false -o publish/musicbrainz
+          docker build --platform linux/amd64 \
             -f deploy/musicbrainz.Dockerfile \
             -t "$REGISTRY/cityfy-retrieve-musicbrainz:$TAG" \
             publish/musicbrainz
+          docker push "$REGISTRY/cityfy-retrieve-musicbrainz:$TAG"
 
       - uses: actions/setup-node@v4
         with:
@@ -91,11 +94,13 @@ jobs:
 
       - name: Frontend (Caddy)
         run: |
+          set -e
           (cd cityfy-web && npm ci && npx ng build)
-          docker buildx build --platform linux/arm64 --push \
+          docker build --platform linux/amd64 \
             -f deploy/web.Dockerfile \
             -t "$REGISTRY/cityfy-web:$TAG" \
             .
+          docker push "$REGISTRY/cityfy-web:$TAG"
 
   deploy:
     needs: images
@@ -109,8 +114,11 @@ jobs:
 
       - name: Check the configuration
         env:
-          DOMAIN: ${{ vars.DOMAIN }}
+          KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+          GHCR_PULL_USER: ${{ vars.GHCR_PULL_USER }}
           SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KUBECONFIG_DATA: ${{ secrets.CITYFY_KUBECONFIG }}
+          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
           MONGO_PASSWORD: ${{ secrets.MONGO_PASSWORD }}
           RABBITMQ_PASSWORD: ${{ secrets.RABBITMQ_PASSWORD }}
           MUSICBRAINZ_SQL_CONNECTION: ${{ secrets.MUSICBRAINZ_SQL_CONNECTION }}
@@ -118,64 +126,105 @@ jobs:
           LASTFM_SHARED_SECRET: ${{ secrets.LASTFM_SHARED_SECRET }}
         run: |
           missing=0
-          for v in HOST USER_NAME DOMAIN SSH_KEY MONGO_PASSWORD RABBITMQ_PASSWORD MUSICBRAINZ_SQL_CONNECTION LASTFM_API_KEY LASTFM_SHARED_SECRET; do
+          for v in HOST USER_NAME KNOWN_HOSTS GHCR_PULL_USER SSH_KEY KUBECONFIG_DATA GHCR_PULL_TOKEN \
+                   MONGO_PASSWORD RABBITMQ_PASSWORD MUSICBRAINZ_SQL_CONNECTION LASTFM_API_KEY LASTFM_SHARED_SECRET; do
             if [ -z "${!v}" ]; then echo "::error::$v is not set (see DEPLOY.md)"; missing=1; fi
           done
           exit $missing
 
-      # Single-quoted values: the passwords must not contain single quotes
-      - name: Write .env
+      - name: kubectl ${{ env.KUBECTL_VERSION }}
+        run: |
+          curl -fsSLo "$RUNNER_TEMP/kubectl" "https://dl.k8s.io/release/$KUBECTL_VERSION/bin/linux/amd64/kubectl"
+          install -m 755 "$RUNNER_TEMP/kubectl" /usr/local/bin/kubectl
+          kubectl version --client
+
+      # Host key pinned in DEPLOY_KNOWN_HOSTS (no ssh-keyscan: a swapped server would be trusted)
+      - name: SSH key and known host
         env:
-          DOMAIN: ${{ vars.DOMAIN }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_deploy ~/.ssh/known_hosts
+
+      # The key is restricted on the server to this forward (permitopen="127.0.0.1:6443"): no shell
+      - name: Tunnel to the Kubernetes API
+        run: |
+          ssh -i ~/.ssh/id_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+              -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
+              -M -S "$RUNNER_TEMP/tunnel.sock" -f -N \
+              -L 6443:127.0.0.1:6443 "$USER_NAME@$HOST"
+
+      - name: Kubeconfig (ServiceAccount cityfy-deployer)
+        env:
+          KUBECONFIG_DATA: ${{ secrets.CITYFY_KUBECONFIG }}
+        run: |
+          install -m 700 -d ~/.kube
+          printf '%s\n' "$KUBECONFIG_DATA" > ~/.kube/config
+          chmod 600 ~/.kube/config
+          kubectl -n cityfy auth can-i create deployments
+
+      - name: Secrets
+        env:
+          GHCR_PULL_USER: ${{ vars.GHCR_PULL_USER }}
+          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
           MONGO_PASSWORD: ${{ secrets.MONGO_PASSWORD }}
           RABBITMQ_PASSWORD: ${{ secrets.RABBITMQ_PASSWORD }}
           MUSICBRAINZ_SQL_CONNECTION: ${{ secrets.MUSICBRAINZ_SQL_CONNECTION }}
           LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
           LASTFM_SHARED_SECRET: ${{ secrets.LASTFM_SHARED_SECRET }}
         run: |
-          umask 077
+          set -e
+          kubectl -n cityfy create secret generic cityfy-secrets \
+            --from-literal=mongo-password="$MONGO_PASSWORD" \
+            --from-literal=rabbitmq-password="$RABBITMQ_PASSWORD" \
+            --from-literal=musicbrainz-connection="$MUSICBRAINZ_SQL_CONNECTION" \
+            --from-literal=lastfm-api-key="$LASTFM_API_KEY" \
+            --from-literal=lastfm-shared-secret="$LASTFM_SHARED_SECRET" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          # The cluster pulls the private images also when a pod restarts days later: a token
+          # with only read:packages, not the job token (it expires with the job)
+          kubectl -n cityfy create secret docker-registry ghcr-pull \
+            --docker-server=ghcr.io \
+            --docker-username="$GHCR_PULL_USER" \
+            --docker-password="$GHCR_PULL_TOKEN" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Manifests (images of this commit)
+        run: |
+          set -e
+          registry="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}"
+          mkdir -p deploy/k8s/release
           {
-            printf "REGISTRY='%s'\n" "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}"
-            printf "TAG='%s'\n" "$GITHUB_SHA"
-            printf "DOMAIN='%s'\n" "$DOMAIN"
-            printf "MONGO_PASSWORD='%s'\n" "$MONGO_PASSWORD"
-            printf "RABBITMQ_PASSWORD='%s'\n" "$RABBITMQ_PASSWORD"
-            printf "MUSICBRAINZ_SQL_CONNECTION='%s'\n" "$MUSICBRAINZ_SQL_CONNECTION"
-            printf "LASTFM_API_KEY='%s'\n" "$LASTFM_API_KEY"
-            printf "LASTFM_SHARED_SECRET='%s'\n" "$LASTFM_SHARED_SECRET"
-          } > deploy/.env
+            echo "apiVersion: kustomize.config.k8s.io/v1beta1"
+            echo "kind: Kustomization"
+            echo "resources: [../base]"
+            echo "images:"
+            for n in api catalog city-generator orchestrator retrieve-dump-spotify retrieve-lastfm retrieve-musicbrainz web; do
+              printf '  - name: cityfy-%s\n    newName: %s/cityfy-%s\n    newTag: "%s"\n' "$n" "$registry" "$n" "$TAG"
+            done
+          } > deploy/k8s/release/kustomization.yaml
+          kubectl apply -k deploy/k8s/release
 
-      - name: SSH key
-        env:
-          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Rollout
         run: |
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
-          chmod 600 ~/.ssh/id_deploy
-          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
-
-      - name: Copy compose and .env
-        run: |
-          ssh -i ~/.ssh/id_deploy "$USER_NAME@$HOST" 'mkdir -p ~/cityfy'
-          scp -i ~/.ssh/id_deploy deploy/docker-compose.yml deploy/.env "$USER_NAME@$HOST:~/cityfy/"
-          ssh -i ~/.ssh/id_deploy "$USER_NAME@$HOST" 'chmod 600 ~/cityfy/.env'
-
-      # The job token can read the (private) images while the job runs: login only for the pull
-      - name: Pull and start
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          printf '%s' "$GHCR_TOKEN" | ssh -i ~/.ssh/id_deploy "$USER_NAME@$HOST" \
-            "docker login ghcr.io -u '${{ github.actor }}' --password-stdin"
-          ssh -i ~/.ssh/id_deploy "$USER_NAME@$HOST" '
-            cd ~/cityfy
-            docker compose pull --quiet
-            docker compose up -d --remove-orphans
-            rc=$?
-            docker logout ghcr.io
-            docker image prune -f
-            exit $rc'
+          set -e
+          for r in statefulset/mongo statefulset/broker \
+                   deployment/retrieve-musicbrainz deployment/catalog deployment/city-generator \
+                   deployment/orchestrator deployment/retrieve-dump-spotify deployment/retrieve-lastfm \
+                   deployment/api deployment/web; do
+            kubectl -n cityfy rollout status "$r" --timeout=10m
+          done
 
       - name: Status
         if: always()
-        run: ssh -i ~/.ssh/id_deploy "$USER_NAME@$HOST" 'cd ~/cityfy && docker compose ps' || true
+        run: |
+          kubectl -n cityfy get pods -o wide || true
+          kubectl -n cityfy get ingress,certificate || true
+          kubectl -n cityfy get events --sort-by=.lastTimestamp | tail -n 40 || true
+
+      - name: Close the tunnel
+        if: always()
+        run: ssh -S "$RUNNER_TEMP/tunnel.sock" -O exit "$USER_NAME@$HOST" || true

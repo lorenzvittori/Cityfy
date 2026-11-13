@@ -14,9 +14,9 @@ builder.Services.AddControllers();
 builder.Services.AddCityFySwagger("Retrieve MusicBrainz");
 builder.Services.AddCityFyCors(builder.Configuration);
 
-// Aspire client integration: connection string "ConnectionStrings:musicbrainz" (injected by the
-// AppHost), retries, health check and tracing included
-builder.AddSqlServerDbContext<MusicBrainzContext>("musicbrainz");
+// Aspire client integration (PostgreSQL): connection string "ConnectionStrings:musicbrainz" (injected
+// by the AppHost), retries, health check and tracing included
+builder.AddNpgsqlDbContext<MusicBrainzContext>("musicbrainz");
 
 // Dump download: no client timeout, the archives are several GB
 builder.Services.AddHttpClient<IMbDumpClient, MbDumpClient>(c =>
