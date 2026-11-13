@@ -1,0 +1,279 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--bg);
+  font-size: 14px;
+}
+
+.admin-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  background: #23262d;
+  color: #fff;
+
+  nav {
+    flex: 1;
+    display: flex;
+    gap: 4px;
+  }
+
+  nav button {
+    border: 0;
+    background: transparent;
+    color: #c9ccd3;
+
+    &.active {
+      background: #3a3f4a;
+      color: #fff;
+    }
+  }
+
+  .ghost {
+    color: #c9ccd3;
+  }
+}
+
+.content {
+  flex: 1;
+  overflow: auto;
+  padding: 16px 20px;
+}
+
+h2 {
+  margin: 20px 0 10px;
+  font-size: 16px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  margin-bottom: 10px;
+
+  th,
+  td {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--row-border);
+    text-align: left;
+    vertical-align: top;
+  }
+
+  th {
+    background: var(--table-head);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+}
+
+.badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: var(--badge);
+
+  &.Healthy,
+  &.Done {
+    background: var(--ok-bg);
+    color: var(--ok-text);
+  }
+
+  &.Unhealthy,
+  &.Unreachable,
+  &.Failed {
+    background: var(--ko-bg);
+    color: var(--danger);
+  }
+
+  &.Running,
+  &.Building,
+  &.Pending,
+  &.InProgress {
+    background: var(--run-bg);
+    color: var(--run-text);
+  }
+
+  &.Cancelled {
+    background: var(--off-bg);
+    color: var(--off-text);
+  }
+}
+
+.actions-cell {
+  white-space: nowrap;
+
+  button + button {
+    margin-left: 6px;
+  }
+}
+
+button.cancel {
+  border-color: var(--error-border);
+  color: var(--danger);
+}
+
+// "Annulla" at the end of the activity headers
+.activity header button.cancel {
+  margin-left: auto;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 16px;
+
+  dt {
+    color: var(--text-muted);
+  }
+
+  dd {
+    margin: 0;
+  }
+}
+
+.links li {
+  margin: 4px 0;
+}
+
+.inline {
+  display: flex;
+  gap: 8px;
+
+  input {
+    font: inherit;
+    padding: 6px 10px;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    min-width: 280px;
+  }
+}
+
+button.small {
+  padding: 3px 10px;
+  font-size: 12px;
+}
+
+.activity {
+  max-width: 760px;
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+
+  &.failed {
+    border-color: var(--error-border);
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+
+  .phase {
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .detail {
+    margin-top: 4px;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  .stuck {
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--warning-text);
+  }
+}
+
+.idle {
+  padding: 14px;
+  border-radius: 8px;
+  background: var(--table-head);
+  color: var(--text-muted);
+}
+
+.notice {
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--info-bg);
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.small {
+  font-size: 12px;
+}
+
+.error-text {
+  color: var(--danger);
+}
+
+.db {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 16px;
+  min-height: 0;
+
+  aside {
+    h3 {
+      margin: 12px 0 6px;
+      font-size: 12px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    ul {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    li {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+
+      &:hover {
+        background: var(--row-border);
+      }
+
+      &.active {
+        background: var(--selected);
+      }
+    }
+  }
+}
+
+.viewer {
+  min-width: 0;
+
+  .pager {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+
+  .scroll {
+    overflow: auto;
+    max-height: calc(100vh - 170px);
+  }
+
+  .data td {
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+}

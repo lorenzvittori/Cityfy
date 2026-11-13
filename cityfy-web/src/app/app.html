@@ -1,0 +1,36 @@
+@if (auth.me()) {
+  <header class="topbar">
+    <a class="brand" routerLink="/cities">Cityfy</a>
+    <nav>
+      <a routerLink="/cities" routerLinkActive="active">Città</a>
+      <a routerLink="/upload" routerLinkActive="active">Carica export</a>
+    </nav>
+    <div class="spacer"></div>
+
+    @if (live.nowPlaying(); as p) {
+      @if (p.playing) {
+        <a class="now-playing" [href]="p.trackUrl" target="_blank" rel="noopener" title="Stai ascoltando (da Last.fm)">
+          <span aria-hidden="true">♪</span> {{ p.artist }} – {{ p.track }}
+        </a>
+      }
+    }
+
+    <button type="button" class="ghost theme" [title]="themeLabel()" [attr.aria-label]="themeLabel()" (click)="theme.cycle()">{{ themeIcon() }}</button>
+    <a class="user" routerLink="/account" routerLinkActive="active" title="I tuoi dati">{{ userLabel() }}</a>
+    @if (auth.isAccount()) {
+      <button type="button" class="ghost" (click)="logout()">Esci</button>
+    }
+  </header>
+} @else {
+  <!-- welcome and other pages without the top bar -->
+  <button type="button" class="ghost theme floating" [title]="themeLabel()" [attr.aria-label]="themeLabel()" (click)="theme.cycle()">{{ themeIcon() }}</button>
+}
+
+<main>
+  <router-outlet />
+</main>
+
+@if (auth.isAccount()) {
+  <!-- Last.fm terms (2.7): attribution with a link back on the pages that use Last.fm data -->
+  <footer class="powered">powered by <a href="https://www.last.fm" target="_blank" rel="noopener">AudioScrobbler</a></footer>
+}

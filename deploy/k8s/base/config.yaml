@@ -1,0 +1,54 @@
+# Non-secret settings shared by the .NET services. Public origin: browser, Last.fm callback and
+# session cookie all live on https://cityfy.app.pacoaccess.com (Ingress in ingress.yaml).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cityfy-config
+data:
+  ASPNETCORE_ENVIRONMENT: Production
+  TZ: Europe/Rome
+  PUBLIC_URL: https://cityfy.app.pacoaccess.com
+---
+# Volumes of the services. local-path-retain: deleting the PVC does not delete the data.
+# api-keys / lastfm-keys: DataProtection keys, must never be lost (see DEPLOY.md).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: api-keys
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path-retain
+  resources:
+    requests: { storage: 100Mi }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: lastfm-keys
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path-retain
+  resources:
+    requests: { storage: 100Mi }
+---
+# Uploaded Spotify exports (up to 200 MB each, deleted after the import)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: uploads
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests: { storage: 5Gi }
+---
+# MusicBrainz dump archives: several GB, downloaded again if lost
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mb-dumps
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests: { storage: 20Gi }

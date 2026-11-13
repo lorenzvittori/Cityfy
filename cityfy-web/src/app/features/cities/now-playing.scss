@@ -1,0 +1,38 @@
+// Track playing now (Last.fm): banner in the panel and the artist row in the legend
+
+.playing {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #f2b705;
+  border-radius: 8px;
+  background: var(--surface);
+
+  div {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  strong,
+  .small {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+}
+
+.note {
+  color: #f2b705;
+  font-size: 18px;
+}
+
+.row.playing {
+  box-shadow: inset 3px 0 0 #f2b705;
+
+  .note {
+    font-size: inherit;
+  }
+}

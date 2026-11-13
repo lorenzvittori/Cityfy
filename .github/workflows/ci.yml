@@ -1,0 +1,66 @@
+# Build and tests of the whole solution: .NET services (xUnit v4 / Microsoft.Testing.Platform,
+# Testcontainers for Mongo and RabbitMQ: Docker is available on the GitHub runners) and the
+# Angular frontend (Vitest). Also called by deploy.yml before publishing.
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+# github.workflow is the caller's name when called by deploy.yml: the two runs do not cancel each other
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dotnet:
+    name: .NET build + test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: CityFy
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore CityFy.slnx
+
+      - name: Build
+        run: dotnet build CityFy.slnx --no-restore -c Release
+
+      # global.json selects Microsoft.Testing.Platform: one test app per project
+      - name: Test
+        run: dotnet test --solution CityFy.slnx --no-build -c Release
+
+  web:
+    name: Frontend build + test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cityfy-web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: cityfy-web/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Test
+        run: npx ng test --watch=false
+
+      - name: Build
+        run: npx ng build

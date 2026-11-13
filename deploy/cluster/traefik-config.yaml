@@ -1,0 +1,26 @@
+# Configuration of the Traefik bundled with K3s (file: /var/lib/rancher/k3s/server/manifests/traefik-config.yaml
+# or kubectl apply). Applying it RESTARTS Traefik: a few seconds without HTTP/HTTPS for every application.
+#   - externalTrafficPolicy Local: Traefik sees the real client IP (otherwise every request comes from
+#     the node/pod network and the per-network rate limits of the applications count everyone as one);
+#     safe on a single node, to review when nodes are added;
+#   - readTimeout 600s: Traefik v3 closes a request still being read after 60 s by default, too short for
+#     big uploads (CityFy accepts Spotify exports up to 200 MB) on a slow connection.
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    service:
+      spec:
+        externalTrafficPolicy: Local
+    ports:
+      web:
+        transport:
+          respondingTimeouts:
+            readTimeout: 600s
+      websecure:
+        transport:
+          respondingTimeouts:
+            readTimeout: 600s

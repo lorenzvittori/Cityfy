@@ -1,0 +1,19 @@
+<Solution>
+  <Project Path="CityFy.Api.Tests/CityFy.Api.Tests.csproj" />
+  <Project Path="CityFy.Api/CityFy.Api.csproj" />
+  <Project Path="CityFy.AppHost/CityFy.AppHost.csproj" />
+  <Project Path="CityFy.Catalog.Tests/CityFy.Catalog.Tests.csproj" />
+  <Project Path="CityFy.Catalog/CityFy.Catalog.csproj" />
+  <Project Path="CityFy.CityGenerator.Tests/CityFy.CityGenerator.Tests.csproj" />
+  <Project Path="CityFy.CityGenerator/CityFy.CityGenerator.csproj" />
+  <Project Path="CityFy.Orchestrator.Tests/CityFy.Orchestrator.Tests.csproj" />
+  <Project Path="CityFy.Orchestrator/CityFy.Orchestrator.csproj" />
+  <Project Path="CityFy.Retrieve.Dump.Spotify.Tests/CityFy.Retrieve.Dump.Spotify.Tests.csproj" />
+  <Project Path="CityFy.Retrieve.Dump.Spotify/CityFy.Retrieve.Dump.Spotify.csproj" Id="72f0681e-fd1f-4701-add5-c3734aa0701d" />
+  <Project Path="CityFy.Retrieve.LastFm.Tests/CityFy.Retrieve.LastFm.Tests.csproj" />
+  <Project Path="CityFy.Retrieve.LastFm/CityFy.Retrieve.LastFm.csproj" />
+  <Project Path="CityFy.Retrieve.MusicBrainz.Tests/CityFy.Retrieve.MusicBrainz.Tests.csproj" />
+  <Project Path="CityFy.Retrieve.MusicBrainz/CityFy.Retrieve.MusicBrainz.csproj" />
+  <Project Path="ServiceDefault.Tests/ServiceDefault.Tests.csproj" />
+  <Project Path="ServiceDefault/ServiceDefault.csproj" />
+</Solution>

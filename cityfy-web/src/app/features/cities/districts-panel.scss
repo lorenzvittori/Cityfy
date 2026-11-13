@@ -1,0 +1,50 @@
+// "Quartieri" section of the new-city form (kept apart for the 4 kB style budget)
+
+.districts-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+
+  label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  input[type='number'] {
+    width: 80px;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    padding: 6px 8px;
+    background: var(--surface);
+    font: inherit;
+    color: var(--text);
+
+    &:disabled {
+      opacity: 0.5;
+    }
+  }
+}
+
+.extra {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 6px;
+
+  label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+}
+
+.notice-inline {
+  margin: 6px 0 0;
+  padding: 6px 10px;
+  border-left: 3px solid var(--warning, #f9a825);
+  background: var(--surface);
+  font-size: 14px;
+}

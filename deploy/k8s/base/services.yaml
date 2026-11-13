@@ -1,0 +1,378 @@
+# The 7 .NET services (port 8080, user 1654 of the .NET images). Only "api" is reached from outside,
+# through the Ingress (ingress.yaml); the others stay inside the cluster.
+# Connections follow the WithReference of CityFy.AppHost:
+#   - Mongo + RabbitMQ: every service except RetrieveMusicBrainz;
+#   - PostgreSQL "musicbrainz" (shared, data/postgres): RetrieveMusicBrainz and Api (admin panel).
+# Strategy Recreate: services with a ReadWriteOnce volume or that must run as a single instance
+# (Api: live events; background jobs and pollers).
+#
+# Probes: /alive (process up) for startup and liveness, /health for readiness.
+
+# --- Api (gateway) ---------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+spec:
+  selector: { app: api }
+  ports:
+    - { name: http, port: 8080, targetPort: http }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+  replicas: 1 # must stay 1: with more instances every live event would reach only one
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: api }
+  template:
+    metadata:
+      labels: { app: api }
+    spec:
+      imagePullSecrets: [{ name: ghcr-pull }]
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext: { runAsNonRoot: true, fsGroup: 1654 }
+      containers:
+        - name: api
+          image: cityfy-api
+          ports: [{ name: http, containerPort: 8080 }]
+          envFrom: [{ configMapRef: { name: cityfy-config } }]
+          env:
+            - name: MONGO_PASSWORD
+              valueFrom: { secretKeyRef: { name: cityfy-secrets, key: mongo-password } }
+            - name: RABBITMQ_PASSWORD
+              valueFrom: { secretKeyRef: { name: cityfy-secrets, key: rabbitmq-password } }
+            - name: PUBLIC_URL
+              valueFrom: { configMapKeyRef: { name: cityfy-config, key: PUBLIC_URL } }
+            - { name: ConnectionStrings__cityfy, value: "mongodb://cityfy:$(MONGO_PASSWORD)@mongo:27017/cityfy?authSource=admin" }
+            - { name: ConnectionStrings__broker, value: "amqp://cityfy:$(RABBITMQ_PASSWORD)@broker:5672" }
+            - name: ConnectionStrings__musicbrainz
+              valueFrom: { secretKeyRef: { name: cityfy-secrets, key: musicbrainz-connection } }
+            - { name: Frontend__BaseUrl, value: "$(PUBLIC_URL)" }
+            - { name: DataProtection__KeysPath, value: /data/keys } # session cookie keys: survive deploys
+            # Traefik runs in the pod network: its X-Forwarded-For gives the real client address,
+            # which the rate limits count on (see deploy/cluster/traefik-config.yaml)
+            - { name: Proxy__KnownNetworks__0, value: 10.42.0.0/16 }
+            - { name: services__Catalog__http__0, value: "http://catalog:8080" }
+            - { name: services__CityGenerator__http__0, value: "http://city-generator:8080" }
+            - { name: services__Orchestrator__http__0, value: "http://orchestrator:8080" }
+            - { name: services__RetrieveDumpSpotify__http__0, value: "http://retrieve-dump-spotify:8080" }
+            - { name: services__RetrieveLastFm__http__0, value: "http://retrieve-lastfm:8080" }
+            - { name: services__RetrieveMusicBrainz__http__0, value: "http://retrieve-musicbrainz:8080" }
+          volumeMounts: [{ name: keys, mountPath: /data/keys }]
+          resources:
+            requests: { cpu: 50m, memory: 192Mi }
+            limits: { memory: 768Mi }
+          startupProbe: { httpGet: { path: /alive, port: http }, periodSeconds: 5, failureThreshold: 60 }
+          livenessProbe: { httpGet: { path: /alive, port: http }, periodSeconds: 20, failureThreshold: 3 }
+          readinessProbe: { httpGet: { path: /health, port: http }, periodSeconds: 10 }
+      volumes:
+        - name: keys
+          persistentVolumeClaim: { claimName: api-keys }
+
+# --- Catalog -----------------------------------------------------------------------------------
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalog
+spec:
+  selector: { app: catalog }
+  ports:
+    - { name: http, port: 8080, targetPort: http }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: catalog }
+  template:
+    metadata:
+      labels: { app: catalog }
+    spec:
+      imagePullSecrets: [{ name: ghcr-pull }]
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext: { runAsNonRoot: true }
+      containers:
+        - name: catalog
+          image: cityfy-catalog
+          ports: [{ name: http, containerPort: 8080 }]
+          envFrom: [{ configMapRef: { name: cityfy-config } }]
+          env:
+            - name: MONGO_PASSWORD
+              valueFrom: { secretKeyRef: { name: cityfy-secrets, key: mongo-password } }
+            - name: RABBITMQ_PASSWORD
+              valueFrom: { secretKeyRef: { name: cityfy-secrets, key: rabbitmq-password } }
+            - { name: ConnectionStrings__cityfy, value: "mongodb://cityfy:$(MONGO_PASSWORD)@mongo:27017/cityfy?authSource=admin" }
+            - { name: ConnectionStrings__broker, value: "amqp://cityfy:$(RABBITMQ_PASSWORD)@broker:5672" }
+            - { name: services__RetrieveMusicBrainz__http__0, value: "http://retrieve-musicbrainz:8080" }
+          resources:
+            requests: { cpu: 50m, memory: 192Mi }
+            limits: { memory: 1Gi }
+          startupProbe: { httpGet: { path: /alive, port: http }, periodSeconds: 5, failureThreshold: 60 }
+          livenessProbe: { httpGet: { path: /alive, port: http }, periodSeconds: 20, failureThreshold: 3 }
+          readinessProbe: { httpGet: { path: /health, port: http }, periodSeconds: 10 }
+
+# --- CityGenerator -----------------------------------------------------------------------------
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: city-generator
+spec:
+  selector: { app: city-generator }
+  ports:
+    - { name: http, port: 8080, targetPort: http }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: city-generator
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: city-generator }
+  template:
+    metadata:
+      labels: { app: city-generator }
+    spec:
+      imagePullSecrets: [{ name: ghcr-pull }]
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext: { runAsNonRoot: true }
+      containers:
+        - name: city-generator
+          image: cityfy-city-generator
+          ports: [{ name: http, containerPort: 8080 }]
+          envFrom: [{ configMapRef: { name: cityfy-config } }]
+          env:
+            - name: MONGO_PASSWORD
+              valueFrom: { secretKeyRef: { name: cityfy-secrets, key: mongo-password } }
+            - name: RABBITMQ_PASSWORD
+              valueFrom: { secretKeyRef: { name: cityfy-secrets, key: rabbitmq-password } }
+            - { name: ConnectionStrings__cityfy, value: "mongodb://cityfy:$(MONGO_PASSWORD)@mongo:27017/cityfy?authSource=admin" }
+            - { name: ConnectionStrings__broker, value: "amqp://cityfy:$(RABBITMQ_PASSWORD)@broker:5672" }
+            - { name: services__Catalog__http__0, value: "http://catalog:8080" }
+          resources:
+            requests: { cpu: 50m, memory: 192Mi }
+            limits: { memory: 1Gi }
+          startupProbe: { httpGet: { path: /alive, port: http }, periodSeconds: 5, failureThreshold: 60 }
+          livenessProbe: { httpGet: { path: /alive, port: http }, periodSeconds: 20, failureThreshold: 3 }
+          readinessProbe: { httpGet: { path: /health, port: http }, periodSeconds: 10 }
+
+# --- Orchestrator ------------------------------------------------------------------------------
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orchestrator
+spec:
+  selector: { app: orchestrator }
+  ports:
+    - { name: http, port: 8080, targetPort: http }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orchestrator
+spec:
+  replicas: 1 # debounce of the imports in memory
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: orchestrator }
+  template:
+    metadata:
+      labels: { app: orchestrator }
+    spec:
+      imagePullSecrets: [{ name: ghcr-pull }]
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext: { runAsNonRoot: true }
+      containers:
+        - name: orchestrator
+          image: cityfy-orchestrator
+          ports: [{ name: http, containerPort: 8080 }]
+          envFrom: [{ configMapRef: { name: cityfy-config } }]
+          env:
+            - name: MONGO_PASSWORD
+              valueFrom: { secretKeyRef: { name: cityfy-secrets, key: mongo-password } }
+            - name: RABBITMQ_PASSWORD
+              valueFrom: { secretKeyRef: { name: cityfy-secrets, key: rabbitmq-password } }
+            - { name: ConnectionStrings__cityfy, value: "mongodb://cityfy:$(MONGO_PASSWORD)@mongo:27017/cityfy?authSource=admin" }
+            - { name: ConnectionStrings__broker, value: "amqp://cityfy:$(RABBITMQ_PASSWORD)@broker:5672" }
+          resources:
+            requests: { cpu: 25m, memory: 128Mi }
+            limits: { memory: 512Mi }
+          startupProbe: { httpGet: { path: /alive, port: http }, periodSeconds: 5, failureThreshold: 60 }
+          livenessProbe: { httpGet: { path: /alive, port: http }, periodSeconds: 20, failureThreshold: 3 }
+          readinessProbe: { httpGet: { path: /health, port: http }, periodSeconds: 10 }
+
+# --- RetrieveDumpSpotify -----------------------------------------------------------------------
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: retrieve-dump-spotify
+spec:
+  selector: { app: retrieve-dump-spotify }
+  ports:
+    - { name: http, port: 8080, targetPort: http }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: retrieve-dump-spotify
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: retrieve-dump-spotify }
+  template:
+    metadata:
+      labels: { app: retrieve-dump-spotify }
+    spec:
+      imagePullSecrets: [{ name: ghcr-pull }]
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext: { runAsNonRoot: true, fsGroup: 1654 }
+      containers:
+        - name: retrieve-dump-spotify
+          image: cityfy-retrieve-dump-spotify
+          ports: [{ name: http, containerPort: 8080 }]
+          envFrom: [{ configMapRef: { name: cityfy-config } }]
+          env:
+            - name: MONGO_PASSWORD
+              valueFrom: { secretKeyRef: { name: cityfy-secrets, key: mongo-password } }
+            - name: RABBITMQ_PASSWORD
+              valueFrom: { secretKeyRef: { name: cityfy-secrets, key: rabbitmq-password } }
+            - { name: ConnectionStrings__cityfy, value: "mongodb://cityfy:$(MONGO_PASSWORD)@mongo:27017/cityfy?authSource=admin" }
+            - { name: ConnectionStrings__broker, value: "amqp://cityfy:$(RABBITMQ_PASSWORD)@broker:5672" }
+            - { name: Upload__RootPath, value: /data/uploads }
+          volumeMounts: [{ name: uploads, mountPath: /data/uploads }]
+          resources:
+            requests: { cpu: 50m, memory: 192Mi }
+            limits: { memory: 1Gi }
+          startupProbe: { httpGet: { path: /alive, port: http }, periodSeconds: 5, failureThreshold: 60 }
+          livenessProbe: { httpGet: { path: /alive, port: http }, periodSeconds: 20, failureThreshold: 3 }
+          readinessProbe: { httpGet: { path: /health, port: http }, periodSeconds: 10 }
+      volumes:
+        - name: uploads
+          persistentVolumeClaim: { claimName: uploads }
+
+# --- RetrieveLastFm ----------------------------------------------------------------------------
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: retrieve-lastfm
+spec:
+  selector: { app: retrieve-lastfm }
+  ports:
+    - { name: http, port: 8080, targetPort: http }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: retrieve-lastfm
+spec:
+  replicas: 1 # single poller and single Last.fm request gate
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: retrieve-lastfm }
+  template:
+    metadata:
+      labels: { app: retrieve-lastfm }
+    spec:
+      imagePullSecrets: [{ name: ghcr-pull }]
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext: { runAsNonRoot: true, fsGroup: 1654 }
+      containers:
+        - name: retrieve-lastfm
+          image: cityfy-retrieve-lastfm
+          ports: [{ name: http, containerPort: 8080 }]
+          envFrom: [{ configMapRef: { name: cityfy-config } }]
+          env:
+            - name: MONGO_PASSWORD
+              valueFrom: { secretKeyRef: { name: cityfy-secrets, key: mongo-password } }
+            - name: RABBITMQ_PASSWORD
+              valueFrom: { secretKeyRef: { name: cityfy-secrets, key: rabbitmq-password } }
+            - name: PUBLIC_URL
+              valueFrom: { configMapKeyRef: { name: cityfy-config, key: PUBLIC_URL } }
+            - { name: ConnectionStrings__cityfy, value: "mongodb://cityfy:$(MONGO_PASSWORD)@mongo:27017/cityfy?authSource=admin" }
+            - { name: ConnectionStrings__broker, value: "amqp://cityfy:$(RABBITMQ_PASSWORD)@broker:5672" }
+            - name: LastFm__ApiKey
+              valueFrom: { secretKeyRef: { name: cityfy-secrets, key: lastfm-api-key } }
+            - name: LastFm__SharedSecret
+              valueFrom: { secretKeyRef: { name: cityfy-secrets, key: lastfm-shared-secret } }
+            - { name: LastFm__CallbackUrl, value: "$(PUBLIC_URL)/api/v1/auth/lastfm/callback" }
+            - { name: DataProtection__KeysPath, value: /data/keys } # encrypts the stored session keys: must never be lost
+          volumeMounts: [{ name: keys, mountPath: /data/keys }]
+          resources:
+            requests: { cpu: 50m, memory: 192Mi }
+            limits: { memory: 768Mi }
+          startupProbe: { httpGet: { path: /alive, port: http }, periodSeconds: 5, failureThreshold: 60 }
+          livenessProbe: { httpGet: { path: /alive, port: http }, periodSeconds: 20, failureThreshold: 3 }
+          readinessProbe: { httpGet: { path: /health, port: http }, periodSeconds: 10 }
+      volumes:
+        - name: keys
+          persistentVolumeClaim: { claimName: lastfm-keys }
+
+# --- RetrieveMusicBrainz -----------------------------------------------------------------------
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: retrieve-musicbrainz
+spec:
+  selector: { app: retrieve-musicbrainz }
+  ports:
+    - { name: http, port: 8080, targetPort: http }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: retrieve-musicbrainz
+spec:
+  replicas: 1 # the import job runs in this process
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: retrieve-musicbrainz }
+  template:
+    metadata:
+      labels: { app: retrieve-musicbrainz }
+    spec:
+      imagePullSecrets: [{ name: ghcr-pull }]
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext: { runAsNonRoot: true, fsGroup: 1654 }
+      containers:
+        - name: retrieve-musicbrainz
+          image: cityfy-retrieve-musicbrainz
+          ports: [{ name: http, containerPort: 8080 }]
+          envFrom: [{ configMapRef: { name: cityfy-config } }]
+          env:
+            - name: RABBITMQ_PASSWORD
+              valueFrom: { secretKeyRef: { name: cityfy-secrets, key: rabbitmq-password } }
+            - { name: ConnectionStrings__broker, value: "amqp://cityfy:$(RABBITMQ_PASSWORD)@broker:5672" }
+            - name: ConnectionStrings__musicbrainz
+              valueFrom: { secretKeyRef: { name: cityfy-secrets, key: musicbrainz-connection } }
+            - { name: DumpStorage__RootPath, value: /data/mb-dumps } # the dump archives are several GB
+          volumeMounts: [{ name: mb-dumps, mountPath: /data/mb-dumps }]
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { memory: 1536Mi }
+          # migrations run at startup (Database.Migrate): the first start can be slow
+          startupProbe: { httpGet: { path: /alive, port: http }, periodSeconds: 5, failureThreshold: 120 }
+          livenessProbe: { httpGet: { path: /alive, port: http }, periodSeconds: 20, failureThreshold: 3 }
+          readinessProbe: { httpGet: { path: /health, port: http }, periodSeconds: 10 }
+      volumes:
+        - name: mb-dumps
+          persistentVolumeClaim: { claimName: mb-dumps }

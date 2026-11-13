@@ -1,0 +1,41 @@
+# Frontend: Caddy serves the Angular build over plain HTTP inside the cluster (TLS is done by
+# Traefik + cert-manager, routing /api by the Ingress). See deploy/Caddyfile.
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+spec:
+  selector: { app: web }
+  ports:
+    - { name: http, port: 80, targetPort: http }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: web }
+  template:
+    metadata:
+      labels: { app: web }
+    spec:
+      imagePullSecrets: [{ name: ghcr-pull }]
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      containers:
+        - name: web
+          image: cityfy-web
+          ports: [{ name: http, containerPort: 80 }]
+          volumeMounts:
+            - { name: caddy-data, mountPath: /data }
+            - { name: caddy-config, mountPath: /config }
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { memory: 128Mi }
+          readinessProbe: { httpGet: { path: /, port: http }, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /, port: http }, periodSeconds: 30 }
+      volumes:
+        - { name: caddy-data, emptyDir: {} }
+        - { name: caddy-config, emptyDir: {} }

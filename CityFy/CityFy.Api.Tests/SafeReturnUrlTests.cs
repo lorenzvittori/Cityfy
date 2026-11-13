@@ -1,0 +1,20 @@
+using CityFy.Api.Auth;
+
+namespace CityFy.Api.Tests;
+
+public sealed class SafeReturnUrlTests
+{
+    [Theory]
+    [InlineData("/city", "/city")]
+    [InlineData("/cities?page=2", "/cities?page=2")]
+    [InlineData(null, "/")]
+    [InlineData("", "/")]
+    [InlineData("https://evil.example/phish", "/")]   // absolute URL
+    [InlineData("//evil.example", "/")]              // protocol-relative
+    [InlineData("/\\evil.example", "/")]             // backslash trick
+    [InlineData("city", "/")]                        // not rooted
+    public void OnlyLocalPathsAreAllowed(string? input, string expected)
+    {
+        Assert.Equal(expected, AuthSetup.SafeReturnUrl(input));
+    }
+}

@@ -1,0 +1,35 @@
+﻿<Project Sdk="Aspire.AppHost.Sdk/13.6.5">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AspireUseCliBundle>true</AspireUseCliBundle>
+    <UserSecretsId>da74f123-6485-49c4-bbca-c1b4b924cff4</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CityFy.Catalog\CityFy.Catalog.csproj" />
+    <ProjectReference Include="..\CityFy.CityGenerator\CityFy.CityGenerator.csproj" />
+    <ProjectReference Include="..\CityFy.Retrieve.Dump.Spotify\CityFy.Retrieve.Dump.Spotify.csproj" />
+    <ProjectReference Include="..\CityFy.Retrieve.LastFm\CityFy.Retrieve.LastFm.csproj" />
+    <ProjectReference Include="..\CityFy.Retrieve.MusicBrainz\CityFy.Retrieve.MusicBrainz.csproj" />
+    <ProjectReference Include="..\CityFy.Orchestrator\CityFy.Orchestrator.csproj" />
+    <ProjectReference Include="..\CityFy.Api\CityFy.Api.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Controllers\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.JavaScript" Version="13.6.5" />
+    <PackageReference Include="Aspire.Hosting.MongoDB" Version="13.6.5" />
+    <PackageReference Include="Aspire.Hosting.PostgreSQL" Version="13.6.5" />
+    <PackageReference Include="Aspire.Hosting.RabbitMQ" Version="13.6.5" />
+  </ItemGroup>
+
+</Project>
+
+

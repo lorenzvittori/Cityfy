@@ -1,91 +1,626 @@
-# Quartiere 3D
+# Cityfy
 
-Visualizzazione minimal di un quartiere composto da palazzi (parallelepipedi),
-con telecamera dall'alto interagibile (rotazione + zoom).
+Cityfy è un progetto che trasforma i dati musicali personali in una rappresentazione urbana generativa.
+L’idea centrale è semplice: i brani ascoltati, i generi e i sotto-generi diventano elementi di una città, dove ogni quartiere, blocco e edificio rappresenta un aspetto del profilo musicale dell’utente.
 
-Stack: **Vite** + **Three.js** (vanilla JS, nessun framework).
+L’obiettivo è costruire una “città dell’ascolto” partendo da dati provenienti da Spotify e arricchiti con metadata di artisti e tag musicali da Last.fm. Il risultato finale è una visione grafica della propria identità musicale, resa come una mappa urbana o una scena 3D in cui:
 
-## Struttura del repo
+- il genere diventa un quartiere
+- il sotto-genere diventa una zona o un blocco
+- l’artista diventa un edificio
+- l’intensità di ascolto definisce l’altezza e la densità
 
+---
+
+## Avvio in locale (solution .NET)
+
+### Prerequisiti
+- .NET SDK 10
+- Docker Desktop **avviato**: MongoDB, PostgreSQL e RabbitMQ girano come container gestiti da Aspire.
+
+### Configurazione (una volta sola)
+Servono la API key e lo shared secret di un'applicazione Last.fm (gratuita, da creare su https://www.last.fm/api/account/create con callback `http://127.0.0.1:4200/api/v1/auth/lastfm/callback`):
+
+```powershell
+dotnet user-secrets set "Parameters:lastfm-api-key" "<api key>" --project CityFy\CityFy.AppHost
+dotnet user-secrets set "Parameters:lastfm-shared-secret" "<shared secret>" --project CityFy\CityFy.AppHost
 ```
-quartiere-3d/
-├── index.html               # entry point HTML
-├── package.json
-├── vite.config.js
-├── .gitignore
-├── README.md
-├── manual_city.json          # dati di input: quartieri, edifici, popolazione, colore
-└── src/
-    ├── main.js               # scena, camera, luci, controlli, render loop, hover
-    ├── style.css              # stile base (canvas fullscreen, tooltip)
-    └── city_generator/         # genera la città a partire da manual_city.json
-        ├── data.js            # carica e valida manual_city.json
-        ├── layout.js           # posiziona quartieri ed edifici (nessuna dipendenza da three.js)
-        ├── scale.js            # mappa la popolazione di un edificio ad altezza/footprint
-        ├── buildings.js        # crea le mesh degli edifici
-        └── index.js            # orchestratore: createCityFromData() -> THREE.Group
+
+In alternativa, la dashboard di Aspire li chiede al primo avvio. Le password di Mongo, PostgreSQL e RabbitMQ le genera Aspire e le salva negli user-secrets dell'AppHost: non vanno configurate a mano.
+
+### Avvio
+```powershell
+dotnet run --project CityFy\CityFy.AppHost
 ```
 
-La città non è generata a caso: viene costruita leggendo `manual_city.json`
-(vedi sezione [Personalizzare la città](#personalizzare-la-città) più sotto).
+La dashboard di Aspire (l'URL compare nel terminale) mostra:
+- lo stato dei servizi;
+- i log;
+- le tracce distribuite;
+- gli endpoint di ogni servizio. Swagger è disponibile su `/swagger` di ciascun servizio.
 
-## Avvio in locale
+I container hanno lifetime *persistent* e volumi dati, quindi restano attivi e conservano i dati tra un avvio e l'altro. Mongo Express (interfaccia web per Mongo) è raggiungibile dalla dashboard.
 
-```bash
+### API pubblica (CityFy.Api)
+Il frontend parla solo con **Api** (`https://localhost:7300`, Swagger su `/swagger`), passando dal proxy del dev server. Gli altri servizi sono interni.
+
+| Endpoint | Descrizione |
+|---|---|
+| `POST /api/v1/session` | "Inizia senza account": apre una sessione anonima (cookie `cityfy.auth`) o restituisce quella già aperta |
+| `GET /api/v1/auth/lastfm/login?returnUrl=/...` | "Accedi con Last.fm" (navigazione del browser, non fetch) |
+| `GET /api/v1/auth/lastfm/callback?token=` | Callback dell'applicazione Last.fm: crea o ritrova l'account, sposta i dati della sessione anonima e apre la sessione dell'account (30 giorni, rinnovata a ogni visita) |
+| `POST /api/v1/auth/logout` | Chiude la sessione di un account |
+| `GET /api/v1/me` | Chi sta usando l'app: sessione anonima con la sua scadenza (`kind: anonymous`, `expiresAt`) o account (`kind: lastfm`, `lastFm` con lo stato della lettura) |
+| `GET /api/v1/lastfm/imports/{id}` | Avanzamento dell'import dello storico Last.fm |
+| `GET /api/v1/live` | Server-Sent Events (solo account): `now-playing` con il brano in ascolto adesso, `ping` ogni 25 s |
+| `DELETE /api/v1/me/data` | Cancella subito tutti i dati e chiude la sessione |
+| `GET /api/v1/cities?page=&pageSize=` | Città salvate (paginate) |
+| `POST /api/v1/cities` | Genera una città (date, mappa, generi; 202) |
+| `GET /api/v1/cities/{id}`, `DELETE`, `POST .../cancel` | Città (dati + mappa), cancellazione, annullamento |
+| `GET /api/v1/cities/recipe/schema` | Parametri della mappa personalizzata |
+| `GET /api/v1/cities/options` | Default e soglie del form della città (quartieri predefiniti, soglia dell'avviso, lunghezza del nome, numero di generi) |
+| `GET /api/v1/city/genres?from=&to=` | Generi e sottogeneri ascoltati, per il form |
+| `POST /api/v1/city/rebuild` | Aggiorna subito il catalogo artisti |
+| `POST /api/v1/uploads`, `GET /api/v1/uploads/{id}` | Caricamento dell'export e suo stato |
+| `GET /api/v1/pipeline/runs` | Stato degli aggiornamenti del catalogo artisti |
+
+**Last.fm (servizio RetrieveLastFm).** Collega un account Last.fm a un utente (`POST internal/lastfm/link` con il token del callback), importa tutto lo storico a pagine da 200 (job annullabile che riprende dopo un riavvio) e legge gli ascolti nuovi con una cadenza che si adatta: 15 s mentre l'utente ascolta, 2 min se ha ascoltato nell'ultima ora, 15 min altrimenti. Tutte le richieste a Last.fm passano da un unico limitatore (`LastFm:MaxRequestsPerSecond`, default 4); con l'errore 29 la lettura si ferma, con una pausa che raddoppia fino a 10 minuti. Pannello admin: scheda **Last.fm e upload** (API `api/admin/lastfm/accounts`, `lastfm/imports`, `lastfm/accounts/{userId}/import`, `.../poll`, `lastfm/imports/{id}/cancel`).
+
+**Brano in corso.** Per gli account la barra in alto mostra "♪ Artista – Brano", con il link alla pagina del brano su Last.fm. Nel dettaglio di una città, se l'artista c'è, il suo edificio ha un contorno dorato e la legenda lo segna.
+- Il dato arriva da Retrieve.LastFm (`NowPlayingChanged`) al gateway, che lo manda in SSE su `api/v1/live`.
+- Finché una pagina è aperta, il gateway manda `UserActive` ogni minuto e l'utente viene letto ogni 15 s.
+
+**Ascolti da più fonti.** Lo stesso ascolto arrivato dall'export di Spotify e da Last.fm resta un solo documento in `listening_events`. Due ascolti si considerano lo stesso se hanno stesso artista e brano normalizzati e un inizio entro 2 minuti. Il documento tiene le due sorgenti, la durata dell'export e l'MBID dell'artista di Last.fm, che Catalog usa per trovare l'artista su MusicBrainz prima di provare col nome.
+
+**Limiti di richieste.** Sezione `RateLimits` di Api, con i limiti per rete (IPv4 o IPv6 /64) su `api/v1`:
+- sessioni nuove, upload e login Last.fm per ora;
+- tutte le richieste per minuto;
+- upload per utente al giorno e upload in corso sul server.
+
+Oltre il limite la risposta è `429 RATE_LIMITED` con `Retry-After`. In locale le richieste arrivano tutte da `127.0.0.1`, quindi condividono un solo contatore.
+
+**Account (Accedi con Last.fm).** L'account Last.fm è l'identità: lo stesso account Last.fm ritrova sempre lo stesso utente CityFy (`users`, id `u_…`). Se nel browser c'è una sessione anonima ancora valida, al login i suoi dati passano all'account:
+- upload e ascolti cambiano proprietario (`POST internal/users/{from}/transfer` su RetrieveDumpSpotify e Catalog);
+- run della pipeline e città della sessione si cancellano;
+- il catalogo dell'account si ricalcola, e la prima città arriva da sola.
+
+Se un servizio non risponde, o un import della sessione è ancora in corso, il login riesce comunque e il passaggio si ritenta ogni 10 minuti.
+
+**Sessioni senza account.** Non serve registrarsi: "Inizia senza account" apre una sessione anonima. Verso i servizi interni il proprietario dei dati è `anon_{sessionId}`. La sessione scade **1 giorno dopo l'ultima visita** (ogni visita la rinnova, al massimo una volta l'ora). Alla scadenza un job del gateway cancella i dati su tutti i servizi, ogni 10 minuti, e ritenta se un servizio non risponde. Configurazione nella sezione `Sessions` di Api (`Lifetime`, `RenewAfter`, `CleanupIntervalMinutes`, `CleanupBatchSize`); collection `anonymous_sessions`.
+
+**Callback di Last.fm.** Nell'applicazione Last.fm la callback è `http://127.0.0.1:4200/api/v1/auth/lastfm/callback`, cioè il valore di `LastFm:CallbackUrl` negli appsettings di Retrieve.LastFm.
+
+**Accesso pubblico con ngrok (opzionale).** Se in `CityFy.AppHost/appsettings.json` è valorizzato `Ngrok:Url` (per esempio `https://<nome>.ngrok-free.dev`), l'AppHost avvia anche la risorsa **Ngrok**. È la CLI `ngrok` locale, con il tuo authtoken, e apre un tunnel verso il **frontend** (porta 4200). In questo caso:
+- la callback di Last.fm e l'indirizzo del frontend passano automaticamente all'URL ngrok;
+- nell'applicazione Last.fm la callback va cambiata in `<Ngrok:Url>/api/v1/auth/lastfm/callback`;
+- l'app va aperta dall'URL ngrok: il login da `127.0.0.1` non funziona più, perché Last.fm rimanderebbe all'URL ngrok.
+
+Lasciando `Ngrok:Url` vuoto si torna al funzionamento solo locale su `127.0.0.1`.
+
+### Frontend (cityfy-web)
+L'app Angular (`cityfy-web/`, nella root del repo) parte insieme al resto con l'AppHost (risorsa **Web**). L'indirizzo è **http://127.0.0.1:4200**: va usato proprio `127.0.0.1`, non `localhost`, altrimenti la callback di Last.fm non torna sulla stessa origine del cookie.
+
+Il dev server inoltra `/api` all'API (`proxy.conf.mjs`). In questo modo browser, callback di Last.fm e cookie di sessione stanno sulla stessa origine e non serve configurare CORS.
+
+Per avviarlo da solo, con l'API già in esecuzione:
+```powershell
+cd cityfy-web
 npm install
-npm run dev
+npm start
 ```
 
-Poi apri l'URL mostrato in console (di solito `http://localhost:5173`).
+- **Test:** `npm run test:ci` (Vitest).
+- **Angular 21, non 22:** Angular 22 richiede Node ≥ 22.22, qui è installata la 22.17. Si può aggiornare dopo aver aggiornato Node.
+- **`.npmrc`:** contiene `legacy-peer-deps=true` per aggirare un bug di npm 10 nella risoluzione delle dipendenze peer.
 
-## Build di produzione
+### Pannello admin
+**http://127.0.0.1:4200/admin** (o `<URL ngrok>/admin`). Utente di sviluppo definito nella configurazione dell'API, sezione `Admin`: **`admin` / `cityfy-admin`**.
 
-```bash
-npm run build
-npm run preview
+Il pannello è attivo solo in Development (`appsettings.Development.json` dell'API). Fuori da Development gli endpoint `/api/admin/*` rispondono 404.
+
+| Sezione | Cosa permette |
+|---|---|
+| Servizi e log | Stato `/health` di ogni servizio, link a log strutturati e tracce (dashboard Aspire) e a RabbitMQ (code e DLQ) |
+| MusicBrainz | Avvio dell'import del catalogo generi e avanzamento |
+| Pipeline | Esecuzioni dell'orchestratore di tutti gli utenti, aggiornamento manuale del catalogo artisti di un utente |
+| Last.fm e upload | Account Last.fm collegati (stato, ultima lettura, brano in ascolto) con **Leggi ora** e **Reimporta storico**, import dello storico, upload con stato e codice d'errore, **cancellazione di tutti i dati di un utente** (anche indicando a mano un id `u_…` o `anon_…`) |
+| Database | Sola lettura con paginazione: collection Mongo (`cityfy`) e tabelle PostgreSQL (`musicbrainz`, righe stimate). I campi sensibili (token, secret, password) sono oscurati |
+
+### Primo giro completo
+1. **Generi:** `POST /api/retrieve` su **RetrieveMusicBrainz**. Scarica e importa il dump MusicBrainz. Dura a lungo; lo stato si legge su `GET /api/retrieve/status`.
+2. **Ascolti:** arrivano in due modi:
+   - l'export di Spotify, caricato da `/upload` (o `POST /internal/uploads` su **RetrieveDumpSpotify**, con il file e lo `userId`);
+   - Last.fm, con "Accedi con Last.fm": import dello storico e poi ascolti nuovi in quasi tempo reale.
+3. **Catalogo artisti:** si aggiorna da solo. Circa 30 secondi dopo l'ultimo import con nuovi ascolti, l'**Orchestrator** chiede a **Catalog** di ricalcolarlo (`RefreshCatalogRequested`); la run si chiude con `UserCatalogUpdated` o `CatalogRefreshFailed`.
+   - Avanzamento: `GET /api/pipeline/runs?userId=...` su **Orchestrator**.
+   - Aggiornamento senza nuovi import: dal pulsante **Aggiorna i dati** nella lista delle città (`POST /api/v1/city/rebuild`, usa tutti gli ascolti importati da qualunque fonte), oppure `POST /internal/pipeline/trigger/{userId}` su **Orchestrator**; in debug `POST /debug/catalog/refresh/{userId}` su **Catalog**.
+   - Quando un import di MusicBrainz finisce, **RetrieveMusicBrainz** pubblica `CatalogUpdated` e l'Orchestrator aggiorna il catalogo di tutti gli utenti che hanno ascolti. Le città già salvate restano com'erano; quelle nuove usano i generi aggiornati.
+   - **Numero di quartieri:**
+     - lo sceglie chi crea la città (`maxDistricts`, 0 = tutti, nessun massimo); se non lo sceglie vale `City:DefaultDistricts` (default 12);
+     - i macro-generi meno ascoltati oltre il limite finiscono nel quartiere "Altri generi" (`extraGenres: merge`, il default) oppure escono dalla città e dai suoi totali (`drop`);
+     - oltre `City:WarnDistricts` quartieri (default 20) la città riceve l'avviso `CITY_MANY_DISTRICTS`.
+   - **Catalogo artisti:** a ogni run Catalog ricalcola, su tutti gli ascolti, genere e sottogenere di ogni artista (`user_artist_placements`, versione corrente in `user_catalogs`) e pubblica `UserCatalogUpdated`. Le città di qualunque intervallo e genere si calcolano da qui senza richiamare MusicBrainz: `POST /api/catalog/city-model/{userId}`, `GET /api/catalog/genres/{userId}?from&to`.
+
+4. **Città salvate (CityGenerator):** l'utente genera una città scegliendo date, tipo di mappa (`organic`, `grid`) e generi o sottogeneri (`POST /api/v1/cities`). La generazione è un job in background (`GenerateCityRequested`) che chiede i dati a Catalog e salva il risultato in `generated_cities`.
+   - Lista paginata `GET /api/v1/cities`, dettaglio `GET /api/v1/cities/{cityId}`, cancellazione `DELETE /api/v1/cities/{cityId}`, annullamento `POST /api/v1/cities/{cityId}/cancel`; generi disponibili `GET /api/v1/city/genres?from&to`.
+   - Al massimo `CityGenerator:MaxCitiesPerUser` città per utente (default 10, poi `CITY_LIMIT_REACHED`). Una richiesta identica sullo stesso catalogo riusa la città esistente.
+   - Dopo il primo import, un utente senza città ne riceve una "tutto il periodo, organica, tutti i generi".
+
+   **La mappa:** la calcola CityGenerator (`CityLayoutSubService`) quando genera la città, e il browser la disegna così com'è (three.js). Due tipi di mappa:
+   - **Organica:** quartieri irregolari che coprono tutta la città (Voronoi pesato, aree proporzionali agli edifici). Al centro di ogni quartiere c'è una piazza con rotonda, i blocchi dei generi stanno attorno a spicchi;
+   - **Griglia:** isolati rettangolari e strade dritte, come Manhattan.
+
+   In tutti i tipi:
+   - i generi con più di 16 artisti sono divisi in isolati da strade interne;
+   - ogni isolato ha un marciapiede rialzato;
+   - le strade hanno la segnaletica orizzontale: mezzeria tratteggiata, doppia linea continua sulle strade principali, strisce pedonali agli incroci;
+   - c'è anche la segnaletica verticale: lampioni, semafori sulle strade principali, cartelli di stop, dare precedenza e attraversamento pedonale.
+
+   Le strade sono ricavate dalla geometria: il bordo condiviso tra due celle è l'asse di una strada (`Models/Layout/StreetPlan.cs`). I golden test (`CityFy.CityGenerator.Tests/Golden`) fissano le mappe di alcune città di esempio.
+
+   **Nel browser:** `/cities` è la lista delle città salvate, `/cities/new` il form (nome facoltativo, date con scorciatoie, tipo di mappa, generi e sottogeneri), `/cities/{id}` la città con legenda e dettaglio dell'artista.
+   **Cancellazione dei dati:** cliccando il proprio nome nella barra si apre "I tuoi dati" con **Cancella i miei dati** (`DELETE /api/v1/me/data`); l'admin fa lo stesso dal pannello (`DELETE /api/admin/users/{userId}/data`). L'Api chiama `DELETE .../users/{userId}/data` su ogni servizio che possiede dati dell'utente, in quest'ordine:
+   1. **RetrieveLastFm:** ferma gli import dello storico, cancella gli import e l'account collegato con la chiave di sessione;
+   2. **RetrieveDumpSpotify:** ferma gli import, cancella gli upload, gli zip e i file estratti su disco;
+   3. **Orchestrator:** cancella le esecuzioni della pipeline;
+   4. **CityGenerator:** ferma le generazioni e cancella le città salvate;
+   5. **Catalog:** cancella ascolti e catalogo artisti.
+
+   Ogni passo si può ripetere senza problemi: se un servizio non risponde gli altri completano comunque la loro parte, e la risposta è `USER_DATA_DELETION_INCOMPLETE` (basta riprovare). Un aggiornamento del catalogo già in corso non salva nulla per un utente rimasto senza ascolti.
+
+   **Tema chiaro/scuro:** il pulsante ◐/☀/☾ nella barra passa tra automatico (come il sistema), chiaro e scuro; la scelta resta salvata nel browser. In tema scuro la città è di notte: lampioni accesi, edifici illuminati.
+
+   **Link a Spotify:** nel dettaglio dell'artista. L'export di Spotify non contiene gli id degli artisti: in quel caso si usa il link Spotify che MusicBrainz conosce per l'artista; se manca anche quello, il pulsante diventa "Cerca su Spotify".
+
+   Navigazione da mappa: trascinare per spostarsi, tasto destro per ruotare, rotella per lo zoom verso il cursore, WASD/frecce e Q/E, doppio clic per avvicinarsi, minimappa cliccabile in basso a sinistra.
+
+### Pipeline a eventi (RabbitMQ)
+```
+Dump.Spotify   upload ──► UploadReceived ──► import ──► ListeningImported ─┐
+LastFm         import storico / lettura periodica ─────► ListeningImported ─┤
+MusicBrainz    import finito ──► CatalogUpdated (aggiorna tutti i cataloghi)│
+Orchestrator   ListeningImported ──► debounce ──► RefreshCatalogRequested ─►│
+Catalog        RefreshCatalogRequested ──► UserCatalogUpdated | CatalogRefreshFailed
+Orchestrator   pipeline run ──► DONE | FAILED ◄─────────────────────────────┘
+CityGenerator  UserCatalogUpdated ──► prima città di un utente nuovo
+CityGenerator  POST /api/v1/cities ──► GenerateCityRequested ──► dati da Catalog ──► Done | Failed
 ```
 
-I file pronti per il deploy finiscono in `dist/`, pubblicabili su qualsiasi
-hosting statico (Vercel, Netlify, GitHub Pages, ecc.).
+**Struttura delle code:**
+- tutti i messaggi passano sull'exchange `cityfy.events`;
+- ogni consumer ha la propria coda, più tre code di ritardo per i retry (5 s, 30 s, 2 min) e una coda `.dlq` per i messaggi che falliscono tutti i tentativi;
+- i contratti dei messaggi sono in `ServiceDefault/Contracts`.
 
-## Controlli camera
+Il pannello di gestione di RabbitMQ è raggiungibile dalla dashboard di Aspire.
 
-- **Trascina** (mouse/touch) → ruota la vista attorno al quartiere
-- **Scroll / pinch** → zoom in/out
-- I limiti di zoom e l'angolo massimo sono configurabili in `src/main.js`
-  (`controls.minDistance`, `controls.maxDistance`, `controls.maxPolarAngle`)
+### Errori
+Tutti i servizi rispondono agli errori con `application/problem+json`, cioè ProblemDetails con due campi aggiuntivi:
+- `code`: codice stabile, definito in `ServiceDefault/Errors/ErrorCodes.cs`;
+- `traceId`: identificativo per ritrovare la richiesta nei log.
 
-## Personalizzare la città
+Anche upload, import dello storico Last.fm ed esecuzioni della pipeline espongono un `errorCode` quando falliscono. La città espone `warnings`.
 
-**I dati** vivono in [`manual_city.json`](manual_city.json): un oggetto per
-quartiere (es. `Q1`), con un `color` (hex) e una mappa `buildings` dove ogni
-chiave è l'id dell'edificio (es. `b1_1`) e il valore è la sua popolazione.
-Aggiungere/rimuovere quartieri o edifici, o cambiarne popolazione/colore,
-basta modificare questo file — `main.js` lo importa staticamente, quindi
-serve un riavvio/refresh di Vite per vedere le modifiche.
+Il catalogo per la grafica e il frontend è in [ERRORI_UI.md](ERRORI_UI.md). Un test fallisce se un codice del backend non vi è documentato.
 
-**Il layout** (come i quartieri e gli edifici vengono disposti nello spazio,
-con corridoi stradali tra loro) è regolato dalle costanti in
-[`src/city_generator/layout.js`](src/city_generator/layout.js):
+### Test
+```powershell
+cd CityFy
+dotnet test --solution CityFy.slnx
+```
 
-- `LOT_GAP` → spazio tra edifici dentro lo stesso quartiere
-- `MAIN_ROAD_WIDTH` → larghezza dei corridoi tra quartieri e tra righe
-- `MAX_ROW_WIDTH` → larghezza oltre cui i quartieri vanno a capo su una nuova riga
+I test di integrazione su Mongo usano Testcontainers: se Docker non è attivo vengono saltati.
 
-**La geometria** dei singoli edifici (come la popolazione si traduce in
-altezza/base) è in [`src/city_generator/scale.js`](src/city_generator/scale.js):
-`MIN_HEIGHT`/`MAX_HEIGHT` e `MIN_FOOTPRINT`/`MAX_FOOTPRINT`.
+### Migration EF (Retrieve.MusicBrainz)
+Gli strumenti `dotnet ef` hanno bisogno di una connection string, perché quella vera la inietta l'AppHost solo a runtime:
 
-## Interazione
+```powershell
+$env:ConnectionStrings__musicbrainz = "Server=localhost,1433;Database=musicbrainz;User Id=sa;Password=...;TrustServerCertificate=True"
+dotnet ef migrations add <Nome> --project CityFy\CityFy.Retrieve.MusicBrainz
+```
 
-- Passando il mouse su un edificio compare un tooltip con quartiere e id
-  dell'edificio, e l'edificio viene evidenziato con un contorno bianco
-  (raycasting, vedi `src/main.js`)
+---
 
-## Prossimi passi possibili
+## Deploy
 
-- Strade come mesh vere (non solo corridoi vuoti nel terreno)
-- Ombre morbide (`renderer.shadowMap`, `castShadow`/`receiveShadow`)
-- Pannello info al click su un palazzo (oltre al tooltip hover)
-- Caricamento dei dati via fetch/import dinamico invece di import statico
-- Passaggio a React Three Fiber se l'interfaccia cresce in complessità
+Pubblicazione su https://cityfy.app.pacoaccess.com, nel cluster K3s privato (VPS Contabo), con il catalogo MusicBrainz sul PostgreSQL condiviso del cluster. GitHub Actions esegue i test, crea le immagini e aggiorna il cluster a ogni push su `main`, attraverso un tunnel SSH: l'API Kubernetes non è pubblica. La guida completa è in [DEPLOY.md](DEPLOY.md).
+
+---
+
+## Architettura del progetto
+
+Il progetto è pensato come una pipeline in 3 parti:
+
+1. Retrieve
+   - recupero dati grezzi da Spotify
+   - recupero metadata di artisti e generi
+   - arricchimento da Last.fm
+   - salvataggio dei dati raw
+
+2. Processing
+   - pulizia e normalizzazione
+   - aggregazione per genere, sotto-genere e artista
+   - trasformazione in feature urbane
+   - costruzione del modello città
+
+3. Exposure API
+   - esposizione dei dati elaborati
+   - endpoint REST per il frontend
+   - consumo da Angular per la visualizzazione
+
+---
+
+## Flusso alto livello
+
+```mermaid
+flowchart LR
+    A[Spotify Recent Tracks] --> B[MS 1 - Retrieve]
+    C[Spotify Followed Artists] --> B
+    D[Last.fm Artist Tags] --> B
+    B --> E[Raw normalized data]
+    E --> F[MS 2 - Processing]
+    F --> G[Genre aggregates / city metrics]
+    G --> H[MS 3 - Exposure API]
+    H --> I[Angular Frontend]
+    I --> J[3D city visualization]
+```
+
+---
+
+## 1) Retrieve
+
+La prima parte del sistema raccoglie dati grezzi da fonti esterne. Nel progetto attuale i flussi principali sono implementati in:
+
+- [spotify_data/spotify_library.py](spotify_data/spotify_library.py)
+- [spotify_data/spotify_artist_follow.py](spotify_data/spotify_artist_follow.py)
+- [spotify_data/lastfm_genres.py](spotify_data/lastfm_genres.py)
+
+### Flusso di retrieve
+
+```mermaid
+flowchart TD
+    A[Utente autentica Spotify] --> B[OAuth PKCE / access token]
+    B --> C{Endpoint richiesto}
+    C -->|GET /me/tracks| D[Library tracks]
+    C -->|GET /me/following?type=artist| E[Followed artists]
+    D --> F[Normalizza track + artist + album]
+    E --> G[Normalizza artist + genres + popularity]
+    F --> H[Salvataggio dati raw]
+    G --> H
+    H --> I[Dataset grezzo pronto per processing]
+
+    J[Last.fm artist.gettoptags] --> K[Tag musicali per artista]
+    K --> L[Filtra blacklist]
+    L --> M[Ordina per peso]
+    M --> N[Salvataggio artist -> tag]
+```
+
+### Dati recuperati
+
+Da Spotify:
+- tracce ascoltate
+- artisti seguiti
+- generi associati agli artisti
+- popularity e follower count
+- album e artist metadata
+
+Da Last.fm:
+- top tags per artista
+- classificazione per genere e sotto-genere
+- in particolare i tag che descrivono il profilo musicale dell’artista
+
+### Esempio di dati grezzi
+
+```json
+{
+  "trackId": "abc123",
+  "trackName": "Midnight City",
+  "artistId": "artist1",
+  "artistName": "M83",
+  "albumId": "album1",
+  "albumName": "Hurry Up, We're Dreaming",
+  "addedAt": "2026-09-01T10:22:00Z",
+  "durationMs": 270000,
+  "genres": ["electronic", "indie pop"]
+}
+```
+
+---
+
+## 2) Processing
+
+Una volta raccolti i dati grezzi, si applica la fase di elaborazione. L’obiettivo è trasformare il profilo musicale in una struttura urbana.
+
+### Flusso di processing
+
+```mermaid
+flowchart TD
+    A[Raw music data] --> B[Unify schema]
+    B --> C[Join artist + genre + tags]
+    C --> D[Clean + normalize]
+    D --> E[Aggregate by genre / subgenre / artist]
+    E --> F[Compute city metrics]
+    F --> G{Metriche}
+    G --> G1[listening volume]
+    G --> G2[genre intensity]
+    G --> G3[artist popularity]
+    G --> G4[temporal clustering]
+    G --> H[Map to city model]
+    H --> I[Districts / blocks / buildings]
+    I --> J[API payload ready for frontend]
+```
+
+### Logica di trasformazione
+
+La mappatura logica è la seguente:
+
+- genere principale → quartiere
+- sotto-genere → blocco o zona
+- artista → edificio o cluster di edifici
+- numero di ascolti → altezza edificio
+- intensità del genere → densità del quartiere
+- categoria musicale → colore del quartiere / edificio
+
+### Esempio di trasformazione
+
+```text
+electronic
+  -> quartiere "Electronic District"
+  -> colore blu / verde
+  -> densità alta se l'utente ascolta molto musica elettronica
+
+house / deep house / techno
+  -> sotto-zone del quartiere
+  -> blocchi con altezza variabile in base al listening score
+
+M83 / Daft Punk / Massive Attack
+  -> edifici distinti
+  -> altezza proporzionale alla frequenza di ascolto
+```
+
+---
+
+## 3) Exposure API
+
+La terza parte del sistema espone i dati elaborati tramite API REST; il frontend Angular si occupa poi della renderizzazione grafica.
+
+### Obiettivo delle API
+- restituire la città generata
+- restituire aggregati per genere
+- restituire dettagli per quartiere / blocco / artista
+- filtrare dati per periodo, genere o artista
+
+### API proposal
+
+```http
+GET /api/city
+GET /api/city?period=30d
+GET /api/genres
+GET /api/districts
+GET /api/artists/{artistId}
+GET /api/genres/{genre}
+```
+
+### Esempio payload di risposta
+
+```json
+{
+  "cityId": "user-spotify-city",
+  "generatedAt": "2026-09-12T00:00:00Z",
+  "period": "30d",
+  "summary": {
+    "totalTracks": 1240,
+    "totalArtists": 89,
+    "topGenres": ["electronic", "rock", "hiphop"]
+  },
+  "districts": [
+    {
+      "districtId": "electronic",
+      "name": "Electronic District",
+      "color": "#4cc9f0",
+      "density": 0.82,
+      "listeningIntensity": 92.4,
+      "buildings": [
+        {
+          "buildingId": "artist1",
+          "name": "M83",
+          "height": 26.5,
+          "width": 10,
+          "color": "#4cc9f0",
+          "score": 92.4
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+## 4) Modello backend / domain model
+
+Il backend dovrebbe lavorare con un modello concettuale come questo.
+
+### TrackRecord
+
+```json
+{
+  "trackId": "abc123",
+  "trackName": "Midnight City",
+  "artistId": "artist1",
+  "artistName": "M83",
+  "albumId": "album1",
+  "albumName": "Hurry Up, We're Dreaming",
+  "addedAt": "2026-09-01T10:22:00Z",
+  "durationMs": 270000,
+  "genres": ["electronic", "indie pop"],
+  "source": "spotify"
+}
+```
+
+### ArtistProfile
+
+```json
+{
+  "artistId": "artist1",
+  "artistName": "M83",
+  "genres": ["electronic", "indie pop"],
+  "popularity": 90,
+  "followers": 15400000,
+  "topTags": ["electronic", "indie", "dream pop"],
+  "macroGenre": "electronic"
+}
+```
+
+### GenreAggregate
+
+```json
+{
+  "genre": "electronic",
+  "subgenres": ["house", "deep house", "techno"],
+  "trackCount": 420,
+  "artistCount": 35,
+  "listeningScore": 92.4
+}
+```
+
+### CityDistrict
+
+```json
+{
+  "districtId": "electronic",
+  "name": "Electronic District",
+  "color": "#4cc9f0",
+  "density": 0.82,
+  "listeningIntensity": 92.4,
+  "buildings": []
+}
+```
+
+---
+
+## 5) Come dovrebbe essere l’Angular
+
+Il frontend non è solo un semplice viewer: è il layer di presentazione del modello della città.
+
+L’app Angular dovrebbe avere una struttura simile a questa:
+
+```text
+app/
+  core/
+    services/
+      city.service.ts
+      genre.service.ts
+      filters.service.ts
+
+  features/
+    city/
+      components/
+        city-view/
+        city-scene/
+        district-legend/
+      models/
+        city.model.ts
+        building.model.ts
+
+    filters/
+      components/
+        genre-filter/
+        period-filter/
+        artist-search/
+
+  shared/
+    components/
+      metric-card/
+      loading-state/
+      empty-state/
+```
+
+### Responsabilità dell’Angular
+
+- chiamare l’API di city
+- ricevere il JSON del modello
+- trasformare i dati in scena grafica
+- supportare filtri per genere, artista, periodo
+- mostrare un layout urbano con quartieri e edifici
+
+### Logica di rendering
+
+- quartiere = zona della città
+- edificio = artista o cluster di artisti
+- altezza = intensità di ascolto
+- colore = genere / macro-genere
+- densità = numero di tracce o ascolti
+
+---
+
+## 6) Flusso completo dal dato alla città
+
+```mermaid
+flowchart TD
+    A[Spotify tracks] --> B[retrieve]
+    C[Spotify artists] --> B
+    D[Last.fm tags] --> B
+    B --> E[raw dataset]
+    E --> F[process]
+    F --> G[aggregate by genre]
+    G --> H[compute urban features]
+    H --> I[build city model]
+    I --> J[expose API]
+    J --> K[Angular reads JSON]
+    K --> L[render city]
+```
+
+---
+
+## 7) Idea di valore del progetto
+
+Cityfy non è solo una visualizzazione musicale. È una rappresentazione dell’identità sonora dell’utente in forma urbana:
+
+- il tuo consumo musicale diventa paesaggio
+- i generi diventano aree geografiche
+- la storia dell’ascolto diventa una città dinamica
+
+Questo rende il progetto interessante non solo come app visiva, ma come strumento di analisi del proprio comportamento musicale.
+
+---
+
+## 8) Stack tecnologico
+
+### Attuale
+- Vite
+- JavaScript / vanilla
+- Three.js
+- Python per il retrieval e il processing dati
+
+### Evoluzione prevista
+- Angular per il frontend
+- API REST per l’esposizione
+- backend in Node.js o ASP.NET o Java secondo preferenza
+- database leggero per dati aggregati (JSON / SQLite / Postgres)
+
+---
+
+## 9) Prossimi step
+
+1. separare il layer di retrieve in microservizio dedicato
+2. definire un modello concreto di city JSON
+3. creare la struttura Angular di base
+4. implementare le API REST
+5. collegare il frontend al backend
+6. sostituire la città statica con dati dinamici provenienti dalle API
+
+---
+
+## 10) Conclusione
+
+Cityfy combina due elementi:
+- analisi dati musicali
+- visualizzazione urbana
+
+La sua forza è la trasformazione del comportamento di ascolto in un modello spaziale, dove la città non è un ambiente generico ma una rappresentazione delle tue preferenze musicali.
+
+Questo rende il progetto perfettamente coerente con una architettura a 3 livelli:
+- retrieve
+- processing
+- exposure API
+- con Angular come layer di presentazione visiva.

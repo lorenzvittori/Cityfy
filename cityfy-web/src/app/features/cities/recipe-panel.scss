@@ -1,0 +1,144 @@
+// Custom map panel of the new-city form (separate file: component style budget)
+
+.recipe {
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-alt);
+
+  .recipe-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+
+    .spacer {
+      flex: 1;
+    }
+
+    .segmented {
+      margin: 0;
+
+      .active {
+        background: var(--segmented-active);
+        font-weight: 600;
+      }
+    }
+  }
+
+  textarea {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-family: ui-monospace, monospace;
+    background: var(--surface);
+    color: var(--text);
+  }
+}
+
+.link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.recipe-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px 18px;
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+
+    label {
+      font-weight: 600;
+    }
+
+    .default {
+      margin-left: 6px;
+      padding: 0 6px;
+      border-radius: 999px;
+      background: var(--surface-sunken);
+      font-size: 11px;
+      font-weight: 400;
+      color: var(--text-muted);
+    }
+
+    select,
+    input[type='number'] {
+      border: 1px solid var(--border-strong);
+      border-radius: 6px;
+      padding: 5px 8px;
+      background: var(--surface);
+      font: inherit;
+      color: var(--text);
+    }
+
+    &.invalid select,
+    &.invalid input {
+      border-color: var(--danger, #c62828);
+    }
+  }
+
+  .slider {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    input {
+      flex: 1;
+    }
+
+    output {
+      min-width: 32px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+  }
+
+  .seed {
+    display: flex;
+    gap: 6px;
+
+    input {
+      flex: 1;
+      min-width: 0;
+    }
+
+    button {
+      border: 1px solid var(--border-strong);
+      background: var(--surface);
+      border-radius: 6px;
+      cursor: pointer;
+    }
+  }
+}
+
+.problems {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  color: var(--danger, #c62828);
+  font-size: 14px;
+}
+
+.recipe-string {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0 0;
+  font-size: 13px;
+
+  code {
+    flex: 1;
+    overflow-wrap: anywhere;
+  }
+}

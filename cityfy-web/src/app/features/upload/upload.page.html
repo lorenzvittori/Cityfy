@@ -1,0 +1,85 @@
+<section class="upload">
+  <h1>Carica l'export di Spotify</h1>
+  <p class="muted">Con l'export la città include tutta la tua cronologia, non solo gli ascolti recenti.</p>
+
+  @switch (step().kind) {
+    @case ('idle') {
+      <label
+        class="dropzone"
+        [class.dragging]="dragging()"
+        (dragover)="$event.preventDefault(); dragging.set(true)"
+        (dragleave)="dragging.set(false)"
+        (drop)="onDrop($event)"
+      >
+        <input type="file" accept=".zip,application/zip" (change)="onFileInput($event)" />
+        <strong>Trascina qui lo zip</strong>
+        <span class="muted">oppure clicca per sceglierlo (massimo 200 MB)</span>
+      </label>
+    }
+
+    @case ('uploading') {
+      <ol class="steps">
+        <li class="current">Invio del file…</li>
+        <li>Lettura degli ascolti</li>
+        <li>Costruzione della città</li>
+      </ol>
+    }
+
+    @case ('processing') {
+      <ol class="steps">
+        <li class="done">File ricevuto</li>
+        @if (step(); as s) {
+          @if (s.kind === 'processing' && s.status?.status === 'InProgress') {
+            <li class="current">Stiamo leggendo i tuoi ascolti… <span class="muted">({{ s.status?.newPlays ?? 0 }} finora)</span></li>
+          } @else {
+            <li class="current">File ricevuto, in coda…</li>
+          }
+        }
+        <li>Costruzione della città</li>
+      </ol>
+      <p class="muted small">Per export di più anni può richiedere alcuni minuti: puoi lasciare aperta questa pagina.</p>
+    }
+
+    @case ('building') {
+      <ol class="steps">
+        <li class="done">File ricevuto</li>
+        <li class="done">Ascolti importati</li>
+        <li class="current">Stiamo costruendo la tua città…</li>
+      </ol>
+    }
+
+    @case ('done') {
+      @if (step(); as s) {
+        @if (s.kind === 'done') {
+          <div class="success">
+            @if (s.newPlays > 0) {
+              <h2>Fatto! {{ s.newPlays }} nuovi ascolti nella tua città.</h2>
+            } @else {
+              <h2>Nessun ascolto nuovo: questo export era già stato caricato.</h2>
+            }
+            <a class="button primary" routerLink="/cities">Vai alle tue città</a>
+          </div>
+        }
+      }
+    }
+
+    @case ('error') {
+      @if (step(); as s) {
+        @if (s.kind === 'error') {
+          <app-error-message [code]="s.error.code" [traceId]="s.error.traceId" (retry)="reset()" />
+          <button type="button" class="link" (click)="reset()">Carica un altro file</button>
+        }
+      }
+    }
+  }
+
+  <section id="guida" class="guide">
+    <h2>Come scaricare l'export giusto</h2>
+    <ol>
+      <li>Apri <a href="https://www.spotify.com/account/privacy/" target="_blank" rel="noopener">Spotify → Account → Privacy</a>.</li>
+      <li>Seleziona <strong>Cronologia streaming estesa</strong> (non "Dati dell'account") e richiedi i dati.</li>
+      <li>Spotify ti invierà un'email con il link: può volerci qualche giorno.</li>
+      <li>Scarica lo zip e caricalo qui così com'è, <strong>senza estrarlo</strong>.</li>
+    </ol>
+  </section>
+</section>

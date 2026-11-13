@@ -1,0 +1,16 @@
+# Static server of the Angular build, behind Traefik in the cluster (deploy/k8s/base/web.yaml).
+# Plain HTTP on :80: TLS, certificate, /api routing and security headers are done by Traefik
+# (deploy/k8s/base/ingress.yaml). This server never sees /api.
+{
+	auto_https off
+	admin off
+}
+
+:80 {
+	encode zstd gzip
+
+	# Angular: static files, unknown paths -> index.html (client-side routes like /city, /account)
+	root * /srv
+	try_files {path} /index.html
+	file_server
+}
