@@ -11,6 +11,9 @@ public interface ICityGeneratorClient : IUserDataOwner
     /// <summary>Keys, ranges and presets of the parameter string of a custom map.</summary>
     Task<RecipeSchema> GetRecipeSchemaAsync(CancellationToken ct);
 
+    /// <summary>Defaults and limits of the city form (districts, name, genres).</summary>
+    Task<CityFormOptions> GetFormOptionsAsync(CancellationToken ct);
+
     Task<GeneratedCityPage> ListAsync(string userId, int page, int pageSize, CancellationToken ct);
 
     /// <summary>Throws CITY_NOT_FOUND (404), also for a city of another user.</summary>

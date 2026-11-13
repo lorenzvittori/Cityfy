@@ -15,6 +15,9 @@ public interface ICityGenerationService
     /// <summary>Keys, ranges and presets of the parameter string of a custom map.</summary>
     RecipeSchema GetRecipeSchema();
 
+    /// <summary>Defaults and limits of the city form (districts, name, genres).</summary>
+    CityFormOptions GetFormOptions();
+
     Task<GeneratedCityPage> ListAsync(string userId, int page, int pageSize, CancellationToken ct);
 
     /// <summary>Throws CITY_NOT_FOUND (404), also for a city of another user.</summary>

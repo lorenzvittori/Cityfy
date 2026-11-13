@@ -15,11 +15,12 @@ public sealed class CityModelService(
     {
         var now = DateTime.UtcNow;
         var (from, to) = ranges.Validate(query.From, query.To, now);
+        var limit = cityBuild.Limit(query.MaxDistricts, query.ExtraGenres);
 
         var catalog = await catalogs.GetRequiredAsync(userId, ct);
         var placements = await catalogs.GetPlacementsAsync(catalog, ct);
         var plays = await listening.AggregateAsync(userId, from, to, ct);
-        var city = cityBuild.Build(userId, from, to, now, plays, placements, new GenreFilter(query.Genres, query.Subgenres));
+        var city = cityBuild.Build(userId, from, to, now, plays, placements, new GenreFilter(query.Genres, query.Subgenres), limit);
 
         return new CityModelResult(city, catalog.Version);
     }

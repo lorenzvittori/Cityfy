@@ -33,4 +33,19 @@ public sealed class GeneratedCityBsonTests
         Assert.Equal(ProcessingStatus.Done, back.Status);
         Assert.Equal(JsonSerializer.Serialize(map), JsonSerializer.Serialize(back.Map));
     }
+
+    [Fact]
+    public void CitySavedBeforeTheDistrictLimit_ReadsAsNull()
+    {
+        var old = new BsonDocument
+        {
+            ["_id"] = "c1", ["UserId"] = "u1", ["Layout"] = "organic", ["ParamsHash"] = "h", ["Status"] = "Done",
+            ["Genres"] = new BsonArray(), ["Subgenres"] = new BsonArray()
+        };
+
+        var back = BsonSerializer.Deserialize<GeneratedCity>(old);
+
+        Assert.Null(back.MaxDistricts);
+        Assert.Null(back.ExtraGenres);
+    }
 }

@@ -68,6 +68,7 @@ const MESSAGES: Record<string, ErrorMessage> = {
   CITY_INVALID_RECIPE: { message: 'Controlla i parametri della mappa.', action: 'none' },
   CITY_INVALID_NAME: { message: 'Il nome della città è troppo lungo.', action: 'none' },
   CITY_INVALID_GENRES: { message: 'Hai selezionato troppi generi.', action: 'none' },
+  CITY_INVALID_DISTRICTS: { message: 'Controlla il numero di quartieri.', action: 'none' },
   MUSICBRAINZ_UNAVAILABLE: {
     message: 'Il catalogo dei generi musicali non è disponibile al momento. La città verrà costruita appena torna online.',
     action: 'none',
@@ -78,6 +79,7 @@ const MESSAGES: Record<string, ErrorMessage> = {
     message: 'La città mostra solo una parte dei tuoi ascolti: alcuni artisti non sono nel nostro catalogo.',
     action: 'none',
   },
+  CITY_MANY_DISTRICTS: { message: 'Questa città ha molti quartieri: la mappa può risultare affollata.', action: 'none' },
 
   // --- Pipeline
   PIPELINE_RUN_NOT_FOUND: { message: 'Non troviamo questa elaborazione.', action: 'none' },

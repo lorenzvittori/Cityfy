@@ -25,7 +25,7 @@
         <div class="layout">
           <div class="scene">
             @for (w of d.city.warnings; track w) {
-              <div class="warning" [class.blocking]="w !== 'CITY_LOW_COVERAGE'">
+              <div class="warning" [class.blocking]="w !== 'CITY_LOW_COVERAGE' && w !== 'CITY_MANY_DISTRICTS'">
                 {{ message(w).message }}
                 @if (w === 'CITY_LOW_COVERAGE') { <span class="muted">({{ d.city.summary.coveragePercent }}% degli ascolti)</span> }
               </div>

@@ -23,9 +23,13 @@ public sealed class CityOptions
     [Range(1, 1000)]
     public double MaxWidth { get; set; } = 12;
 
-    /// <summary>Districts shown on the map; the least listened beyond this are merged into "Other genres".</summary>
-    [Range(2, 100)]
-    public int MaxDistricts { get; set; } = 12;
+    /// <summary>Districts of a city when the request does not choose (see ServiceDefault.City.DistrictLimit).</summary>
+    [Range(2, 10_000)]
+    public int DefaultDistricts { get; set; } = 12;
+
+    /// <summary>Beyond this many districts the city gets the CITY_MANY_DISTRICTS warning (crowded map).</summary>
+    [Range(1, 10_000)]
+    public int WarnDistricts { get; set; } = 20;
 
     /// <summary>Below this share (0-100) of placed qualified plays the city gets the CITY_LOW_COVERAGE warning.</summary>
     [Range(0, 100)]

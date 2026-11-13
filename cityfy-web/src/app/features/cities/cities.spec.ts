@@ -1,6 +1,21 @@
 import { GenreOption } from '../../core/api/api.models';
-import { NO_SELECTION, apiRange, districtState, formTo, rangeError, shortcutRange, subgenreChecked, toggleDistrict, toggleSubgenre } from './city-form';
-import { cityTitle, periodLabel } from './city-labels';
+import {
+  NO_SELECTION,
+  apiRange,
+  districtChoiceOf,
+  districtPreview,
+  districtState,
+  districtsError,
+  districtsRequest,
+  formTo,
+  rangeError,
+  selectionOf,
+  shortcutRange,
+  subgenreChecked,
+  toggleDistrict,
+  toggleSubgenre,
+} from './city-form';
+import { cityTitle, districtsLabel, periodLabel } from './city-labels';
 
 const rock: GenreOption = {
   genreId: 1,
@@ -76,5 +91,47 @@ describe('genre selection', () => {
 
     expect(districtState(rock, s)).toBe('checked');
     expect(districtState(rock, toggleDistrict(rock, s))).toBe('unchecked');
+  });
+});
+
+describe('districts', () => {
+  const genre = (genreId: number): GenreOption => ({ genreId, name: `g${genreId}`, color: '#000', qualifiedPlays: 1, artistCount: 1, subgenres: [] });
+  const five = [1, 2, 3, 4, 5].map(genre);
+
+  it('reads the query parameters of "duplicate and edit"', () => {
+    expect(districtChoiceOf(null, null)).toEqual({ all: false, max: null, extra: 'merge' });
+    expect(districtChoiceOf('0', 'drop')).toEqual({ all: true, max: null, extra: 'drop' });
+    expect(districtChoiceOf('8', 'other')).toEqual({ all: false, max: 8, extra: 'merge' });
+  });
+
+  it('sends 0 for all and null for the default', () => {
+    expect(districtsRequest({ all: true, max: 5, extra: 'drop' })).toEqual({ maxDistricts: 0, extraGenres: 'drop' });
+    expect(districtsRequest({ all: false, max: null, extra: 'merge' })).toEqual({ maxDistricts: null, extraGenres: 'merge' });
+  });
+
+  it('needs one real genre beside "Altri generi", and has no maximum', () => {
+    expect(districtsError({ all: false, max: 1, extra: 'merge' })).not.toBeNull();
+    expect(districtsError({ all: false, max: 1, extra: 'drop' })).toBeNull();
+    expect(districtsError({ all: false, max: 2.5, extra: 'drop' })).not.toBeNull();
+    expect(districtsError({ all: false, max: 500, extra: 'merge' })).toBeNull();
+  });
+
+  it('previews merged and dropped genres', () => {
+    // 5 macro-genres, max 3: merge keeps 2 + "Altri generi" (3 merged), drop keeps 3 (2 dropped)
+    expect(districtPreview(five, NO_SELECTION, { all: false, max: 3, extra: 'merge' }, 12, 20)).toEqual({ candidates: 5, shown: 3, extra: 3, crowded: false });
+    expect(districtPreview(five, NO_SELECTION, { all: false, max: 3, extra: 'drop' }, 12, 20)).toEqual({ candidates: 5, shown: 3, extra: 2, crowded: false });
+    expect(districtPreview(five, NO_SELECTION, { all: true, max: null, extra: 'merge' }, 12, 4)).toEqual({ candidates: 5, shown: 5, extra: 0, crowded: true });
+  });
+
+  it('counts only the chosen macro-genres, and uses the default when no number is set', () => {
+    const chosen = selectionOf([1, 2], []);
+    expect(districtPreview(five, chosen, { all: false, max: null, extra: 'merge' }, 12, 20).candidates).toBe(2);
+    expect(districtPreview([...five, rock], selectionOf([], [11]), { all: false, max: null, extra: 'merge' }, 12, 20).candidates).toBe(1);
+  });
+
+  it('describes the choice of a saved city', () => {
+    expect(districtsLabel(null, null, 12)).toBe('12 quartieri, altri generi uniti');
+    expect(districtsLabel(8, 'drop', 12)).toBe('8 quartieri, altri generi esclusi');
+    expect(districtsLabel(0, 'merge', 12)).toBe('Tutti i quartieri');
   });
 });

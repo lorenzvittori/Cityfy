@@ -17,7 +17,7 @@ namespace CityFy.Api.Controllers;
 [Route("api/v1/cities")]
 public sealed class CitiesController(ICityGeneratorClient cities) : ControllerBase
 {
-    // POST api/v1/cities { name?, from?, to?, layout?, genres?, subgenres? } — 202 with the city (Pending,
+    // POST api/v1/cities { name?, from?, to?, layout?, recipe?, genres?, subgenres?, maxDistricts?, extraGenres? } — 202 with the city (Pending,
     // or the existing one when an identical city is already there)
     [HttpPost]
     public async Task<ActionResult<GeneratedCityDto>> Create([FromBody] CreateCityRequest request, CancellationToken ct)
@@ -30,6 +30,10 @@ public sealed class CitiesController(ICityGeneratorClient cities) : ControllerBa
     // (shared contract, exposed as-is: the form is built from it)
     [HttpGet("recipe/schema")]
     public async Task<ActionResult<RecipeSchema>> RecipeSchema(CancellationToken ct) => Ok(await cities.GetRecipeSchemaAsync(ct));
+
+    // GET api/v1/cities/options — defaults and limits of the city form (districts, name, genres)
+    [HttpGet("options")]
+    public async Task<ActionResult<CityFormOptionsDto>> Options(CancellationToken ct) => Ok((await cities.GetFormOptionsAsync(ct)).ToDto());
 
     // GET api/v1/cities?page=1&pageSize=10 — most recent first
     [HttpGet]

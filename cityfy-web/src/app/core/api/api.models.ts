@@ -142,6 +142,20 @@ export interface GeneratedCity {
   districtCount: number;
   artistCount: number;
   topGenres: string[];
+  /** 0 = all; null for the cities saved before it could be chosen (= the default, "merge"). */
+  maxDistricts: number | null;
+  extraGenres: ExtraGenres | null;
+}
+
+/** The macro-genres beyond maxDistricts: merged into "Other genres" (counted as a district) or left out. */
+export type ExtraGenres = 'merge' | 'drop';
+
+/** Defaults and limits of the city form (GET cities/options). warnDistricts: a warning, not a maximum. */
+export interface CityFormOptions {
+  defaultDistricts: number;
+  warnDistricts: number;
+  maxNameLength: number;
+  maxGenres: number;
 }
 
 /** city and map: null until status is Done. */
@@ -168,6 +182,9 @@ export interface CreateCityRequest {
   recipe: string | null;
   genres: number[];
   subgenres: number[];
+  /** 0 = all, null = the default. */
+  maxDistricts: number | null;
+  extraGenres: ExtraGenres;
 }
 
 /** A district (top-level genre) that can be chosen, with its subgenres. */

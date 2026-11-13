@@ -44,6 +44,8 @@ public sealed class GeneratedCityStoreSubService(
             Recipe = request.Recipe,
             Genres = request.Genres.ToList(),
             Subgenres = request.Subgenres.ToList(),
+            MaxDistricts = request.Districts.Max,
+            ExtraGenres = request.Districts.ExtraName,
             ParamsHash = paramsHash,
             CatalogVersion = catalogVersion,
             Status = ProcessingStatus.Pending,

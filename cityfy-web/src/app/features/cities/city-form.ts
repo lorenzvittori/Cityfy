@@ -1,6 +1,6 @@
-// Logic of the "new city" form (pure): date range and genre selection.
+// Logic of the "new city" form (pure): date range, genre selection and number of districts.
 
-import { GenreOption } from '../../core/api/api.models';
+import { ExtraGenres, GenreOption } from '../../core/api/api.models';
 
 // --- Dates ----------------------------------------------------------------------
 
@@ -107,4 +107,77 @@ export function selectionOf(genres: number[], subgenres: number[]): GenreSelecti
 
 export function isEmpty(s: GenreSelection): boolean {
   return s.genres.size === 0 && s.subgenres.size === 0;
+}
+
+// --- Districts ----------------------------------------------------------------------
+
+/** Defaults when GET cities/options does not answer (same as the backend configuration). */
+export const DEFAULT_DISTRICTS = 12;
+export const WARN_DISTRICTS = 20;
+
+/**
+ * How many districts the city shows. all = every macro-genre (sent as 0). max null = the default
+ * of the backend. No maximum: beyond warnDistricts the form only warns.
+ */
+export interface DistrictChoice {
+  all: boolean;
+  max: number | null;
+  extra: ExtraGenres;
+}
+
+export const DEFAULT_DISTRICT_CHOICE: DistrictChoice = { all: false, max: null, extra: 'merge' };
+
+/** With "merge" one district is "Altri generi": at least one real genre beside it (same rule as the backend). */
+export function minDistricts(extra: ExtraGenres): number {
+  return extra === 'merge' ? 2 : 1;
+}
+
+/** Validation of the number (the backend checks again: CITY_INVALID_DISTRICTS). */
+export function districtsError(choice: DistrictChoice): string | null {
+  if (choice.all || choice.max === null) return null;
+  const min = minDistricts(choice.extra);
+  if (!Number.isInteger(choice.max) || choice.max < min) return `Scegli almeno ${min} quartier${min === 1 ? 'e' : 'i'}.`;
+  return null;
+}
+
+/** The request fields: 0 = all, null = the backend default. */
+export function districtsRequest(choice: DistrictChoice): { maxDistricts: number | null; extraGenres: ExtraGenres } {
+  return { maxDistricts: choice.all ? 0 : choice.max, extraGenres: choice.extra };
+}
+
+/** Choice of query parameters ("duplicate and edit"): districts=0 is "all", extra=drop. */
+export function districtChoiceOf(districts: string | null, extra: string | null): DistrictChoice {
+  const n = districts ? Number(districts) : NaN;
+  return {
+    all: n === 0,
+    max: Number.isInteger(n) && n > 0 ? n : null,
+    extra: extra === 'drop' ? 'drop' : 'merge',
+  };
+}
+
+/**
+ * What the city will look like: candidates = macro-genres involved (the chosen ones, or every one
+ * listened in the period when nothing is chosen); shown = districts on the map ("Altri generi"
+ * included); extra = macro-genres merged or dropped; crowded = beyond the warning threshold.
+ */
+export interface DistrictPreview {
+  candidates: number;
+  shown: number;
+  extra: number;
+  crowded: boolean;
+}
+
+export function districtPreview(
+  options: GenreOption[],
+  selection: GenreSelection,
+  choice: DistrictChoice,
+  defaultMax: number,
+  warnDistricts: number,
+): DistrictPreview {
+  const candidates = isEmpty(selection) ? options.length : options.filter((o) => districtState(o, selection) !== 'unchecked').length;
+  const max = choice.all ? 0 : (choice.max ?? defaultMax);
+  const limited = max > 0 && candidates > max;
+  const kept = choice.extra === 'merge' ? max - 1 : max;
+  const shown = limited ? max : candidates;
+  return { candidates, shown, extra: limited ? candidates - kept : 0, crowded: shown > warnDistricts };
 }

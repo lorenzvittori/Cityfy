@@ -43,6 +43,8 @@ public sealed class CityGenerationService(
 
     public RecipeSchema GetRecipeSchema() => recipes.Schema();
 
+    public CityFormOptions GetFormOptions() => requests.FormOptions();
+
     public async Task<GeneratedCityPage> ListAsync(string userId, int page, int pageSize, CancellationToken ct)
     {
         var (items, p, size, total) = await store.ListAsync(userId, page, pageSize, ct);
@@ -117,7 +119,8 @@ public sealed class CityGenerationService(
         if (await store.HasAnyAsync(message.UserId, ct))
             return;
 
-        var created = await store.CreateAsync(message.UserId, CityRequest.Default, requests.Hash(CityRequest.Default), message.CatalogVersion, DateTime.UtcNow, ct);
+        var request = requests.Default();
+        var created = await store.CreateAsync(message.UserId, request, requests.Hash(request), message.CatalogVersion, DateTime.UtcNow, ct);
         await events.PublishRequestedAsync(created, ct);
         logger.LogInformation("First city {CityId} of {UserId} queued", created.CityId, message.UserId);
     }

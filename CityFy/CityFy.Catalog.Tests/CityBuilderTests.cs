@@ -18,14 +18,25 @@ public sealed class CityBuilderTests
 
     // Placement (catalog refresh) then build, as the pipeline does
     internal static CityModel Build(
-        IReadOnlyList<ArtistPlays> plays, Dictionary<string, ResolvedArtist> resolved, CityOptions? options = null, GenreFilter? filter = null)
+        IReadOnlyList<ArtistPlays> plays, Dictionary<string, ResolvedArtist> resolved, CityOptions? options = null, GenreFilter? filter = null,
+        DistrictLimit? limit = null)
     {
         var o = Microsoft.Extensions.Options.Options.Create(options ?? Options);
         var placements = new ArtistPlacementSubService(o)
             .Place("user1", "v1", plays, resolved, new GenreHierarchy(GenreHierarchyTests.SampleGraph()))
             .ToDictionary(p => p.ArtistName);
-        return new CityBuildSubService(o).Build("user1", null, null, Now, plays, placements, filter ?? GenreFilter.All);
+        var builder = new CityBuildSubService(o);
+        return builder.Build("user1", null, null, Now, plays, placements, filter ?? GenreFilter.All, limit ?? builder.Limit(null, null));
     }
+
+    // Three macro-genres: rock (30), electronic (20), genre 99 (10: without parents, its own district)
+    private static readonly ArtistPlays[] ThreeDistricts = [Plays("R", 30), Plays("E", 20), Plays("J", 10)];
+    private static readonly Dictionary<string, ResolvedArtist> ThreeDistrictsResolved = new()
+    {
+        ["R"] = Artist("R", "mb-r", (1, "rock", 1)),
+        ["E"] = Artist("E", "mb-e", (4, "electronic", 1)),
+        ["J"] = Artist("J", "mb-j", (99, "jazz", 1)),
+    };
 
     [Fact]
     public void Artist_IsPlacedInTheDistrictOfItsGenreRoot_AndTheBlockOfItsGenre()
@@ -160,26 +171,85 @@ public sealed class CityBuilderTests
     }
 
     [Fact]
-    public void BeyondMaxDistricts_TheLeastListenedAreMergedIntoOtherGenres()
+    public void BeyondTheLimit_Merge_TheLeastListenedBecomeOtherGenres()
     {
-        var options = new CityOptions { MaxDistricts = 2 };
-        var city = Build(
-            [Plays("R", 30), Plays("E", 20), Plays("J", 10)],
-            new Dictionary<string, ResolvedArtist>
-            {
-                ["R"] = Artist("R", "mb-r", (1, "rock", 1)),
-                ["E"] = Artist("E", "mb-e", (4, "electronic", 1)),
-                ["J"] = Artist("J", "mb-j", (99, "jazz", 1)), // genre without parents: its own district
-            },
-            options);
+        var city = Build(ThreeDistricts, ThreeDistrictsResolved, limit: new DistrictLimit(2, ExtraGenres.Merge));
 
-        // 3 districts, max 2: rock (30) stays, electronic (20) and jazz (10) are merged
+        // 3 districts, max 2: rock (30) stays, electronic (20) and genre 99 (10) are merged
         Assert.Equal(["rock", CityBuildSubService.OtherDistrictId], city.Districts.Select(d => d.DistrictId));
         var other = city.Districts[1];
         Assert.Equal("Other genres", other.Name);
         Assert.Equal(2, other.Blocks.Count);
         Assert.Equal(30, other.Score);
         Assert.Equal(100, city.Districts.Sum(d => d.ListeningIntensity), 1);
+        Assert.Equal(60, city.Summary.QualifiedPlays);
+    }
+
+    [Fact]
+    public void BeyondTheLimit_Drop_TheLeastListenedLeaveTheCityAndItsTotals()
+    {
+        var city = Build([.. ThreeDistricts, Plays("Unknown", 5)], ThreeDistrictsResolved, limit: new DistrictLimit(2, ExtraGenres.Drop));
+
+        Assert.Equal(["rock", "electronic"], city.Districts.Select(d => d.DistrictId));
+        // genre 99 is left out as the genre filter would: the unresolved artist still counts
+        Assert.Equal(55, city.Summary.QualifiedPlays);
+        Assert.Equal(3, city.Summary.TotalArtists);
+        Assert.Equal(Math.Round(100.0 * 50 / 55, 2), city.Summary.CoveragePercent);
+        Assert.Equal("Unknown", Assert.Single(city.Unresolved).Name);
+        Assert.Empty(city.Warnings);
+        Assert.Equal(100, city.Districts.Sum(d => d.ListeningIntensity), 1);
+    }
+
+    [Theory]
+    [InlineData(ExtraGenres.Merge)]
+    [InlineData(ExtraGenres.Drop)]
+    public void LimitAll_KeepsEveryMacroGenre(ExtraGenres extra)
+    {
+        var city = Build(ThreeDistricts, ThreeDistrictsResolved, limit: new DistrictLimit(DistrictLimit.All, extra));
+
+        // genre 99 is not in the sample graph: its district is named after its id
+        Assert.Equal(["rock", "electronic", "genre_99"], city.Districts.Select(d => d.DistrictId));
+    }
+
+    [Fact]
+    public void WithinTheLimit_NothingIsMergedOrDropped()
+    {
+        var merged = Build(ThreeDistricts, ThreeDistrictsResolved, limit: new DistrictLimit(3, ExtraGenres.Merge));
+        var dropped = Build(ThreeDistricts, ThreeDistrictsResolved, limit: new DistrictLimit(3, ExtraGenres.Drop));
+
+        Assert.Equal(3, merged.Districts.Count);
+        Assert.Equal(3, dropped.Districts.Count);
+    }
+
+    [Fact]
+    public void Warning_ManyDistricts_BeyondTheThreshold()
+    {
+        var city = Build(ThreeDistricts, ThreeDistrictsResolved, new CityOptions { WarnDistricts = 2 });
+
+        Assert.Equal([ServiceDefault.Errors.ErrorCodes.CityManyDistricts], city.Warnings);
+    }
+
+    [Fact]
+    public void Limit_DefaultsToTheConfiguredNumberAndMerge()
+    {
+        var builder = new CityBuildSubService(Microsoft.Extensions.Options.Options.Create(new CityOptions { DefaultDistricts = 7 }));
+
+        Assert.Equal(new DistrictLimit(7, ExtraGenres.Merge), builder.Limit(null, null));
+        Assert.Equal(new DistrictLimit(1, ExtraGenres.Drop), builder.Limit(1, " DROP "));
+        Assert.Equal(new DistrictLimit(0, ExtraGenres.Merge), builder.Limit(0, "merge"));
+    }
+
+    [Theory]
+    [InlineData(1, "merge")]  // merge needs one real genre beside "Other genres"
+    [InlineData(-1, "drop")]
+    [InlineData(5, "other")]
+    public void Limit_Invalid_IsRejected(int max, string extra)
+    {
+        var builder = new CityBuildSubService(Microsoft.Extensions.Options.Options.Create(Options));
+
+        var e = Assert.Throws<ServiceDefault.Errors.CityFyException>(() => builder.Limit(max, extra));
+        Assert.Equal(ServiceDefault.Errors.ErrorCodes.CityInvalidDistricts, e.Code);
+        Assert.Equal(400, e.StatusCode);
     }
 
     [Fact]

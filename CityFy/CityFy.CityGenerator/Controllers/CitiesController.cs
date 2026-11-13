@@ -13,7 +13,7 @@ namespace CityFy.CityGenerator.Controllers;
 [Route("api/city-generator/{userId}/cities")]
 public sealed class CitiesController(ICityGenerationService cities) : ControllerBase
 {
-    // POST api/city-generator/{userId}/cities { name?, from?, to?, layout?, genres?, subgenres? } — queue a generation
+    // POST api/city-generator/{userId}/cities { name?, from?, to?, layout?, recipe?, genres?, subgenres?, maxDistricts?, extraGenres? } — queue a generation
     [HttpPost]
     public async Task<ActionResult<GeneratedCityInfo>> Create(string userId, [FromBody] GenerateCityRequest request, CancellationToken ct)
     {

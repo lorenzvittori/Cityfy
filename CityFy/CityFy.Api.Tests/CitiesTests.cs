@@ -15,7 +15,7 @@ public sealed class CitiesTests : IDisposable
 
     private static GeneratedCityInfo Info(string status = "Pending") => new(
         "c1", null, new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc), null, "grid", null, [1], [], status, null,
-        DateTime.UtcNow, null, "v1", 0, 0, []);
+        DateTime.UtcNow, null, "v1", 0, 0, [], 8, "drop");
 
     [Fact]
     public async Task Create_ForwardsTheRequestOfTheLoggedInUser_AndAnswers202()
@@ -28,13 +28,29 @@ public sealed class CitiesTests : IDisposable
         });
         var client = await _factory.LoginAsync("u1");
 
-        var resp = await client.PostAsJsonAsync("/api/v1/cities", new { layout = "grid", from = "2024-01-01T00:00:00Z", genres = new[] { 1 } }, Ct);
+        var resp = await client.PostAsJsonAsync("/api/v1/cities",
+            new { layout = "grid", from = "2024-01-01T00:00:00Z", genres = new[] { 1 }, maxDistricts = 8, extraGenres = "drop" }, Ct);
 
         Assert.Equal(HttpStatusCode.Accepted, resp.StatusCode);
         Assert.Equal("/api/v1/cities/c1", resp.Headers.Location!.AbsolutePath);
         Assert.Equal(("grid", 1), (forwarded!.Layout, Assert.Single(forwarded.Genres!)));
+        Assert.Equal((8, "drop"), (forwarded.MaxDistricts, forwarded.ExtraGenres));
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(Ct);
         Assert.Equal("Pending", body.GetProperty("status").GetString());
+        Assert.Equal(8, body.GetProperty("maxDistricts").GetInt32());
+        Assert.Equal("drop", body.GetProperty("extraGenres").GetString());
+    }
+
+    [Fact]
+    public async Task FormOptions_ComeFromTheGenerator()
+    {
+        _factory.Fakes.OnJson(HttpMethod.Get, "/api/city-generator/options", new CityFormOptions(12, 20, 80, 500));
+        var client = await _factory.LoginAsync("u1");
+
+        var options = await client.GetFromJsonAsync<JsonElement>("/api/v1/cities/options", Ct);
+
+        Assert.Equal(12, options.GetProperty("defaultDistricts").GetInt32());
+        Assert.Equal(20, options.GetProperty("warnDistricts").GetInt32());
     }
 
     [Fact]

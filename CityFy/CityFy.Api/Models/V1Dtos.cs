@@ -123,6 +123,8 @@ public sealed record BuildingDto(
 /// <summary>
 /// A city to generate. Name optional (null = the UI composes a title). From/To: UTC, To exclusive.
 /// Layout: "organic" (default) | "grid" | "custom" (Recipe: parameter string, see GET api/v1/cities/recipe/schema). Genres = district ids, Subgenres = block ids (GenreOptionDto).
+/// MaxDistricts: districts shown, 0 = all, null = default (GET api/v1/cities/options). ExtraGenres: the macro-genres
+/// beyond it, "merge" (default: one "Other genres" district, counted in MaxDistricts) | "drop" (left out of the city and its totals).
 /// </summary>
 public sealed record CreateCityRequest(
     string? Name,
@@ -131,9 +133,14 @@ public sealed record CreateCityRequest(
     string? Layout,
     string? Recipe,
     IReadOnlyList<int>? Genres,
-    IReadOnlyList<int>? Subgenres);
+    IReadOnlyList<int>? Subgenres,
+    int? MaxDistricts = null,
+    string? ExtraGenres = null);
 
-/// <summary>Status: Pending, InProgress, Done, Failed, Cancelled (+ errorCode). TopGenres: main districts, for a default title.</summary>
+/// <summary>
+/// Status: Pending, InProgress, Done, Failed, Cancelled (+ errorCode). TopGenres: main districts, for a default title.
+/// MaxDistricts / ExtraGenres: null for the cities saved before they could be chosen (= the default, "merge").
+/// </summary>
 public sealed record GeneratedCityDto(
     string CityId,
     string? Name,
@@ -149,7 +156,15 @@ public sealed record GeneratedCityDto(
     DateTime? CompletedAt,
     int DistrictCount,
     int ArtistCount,
-    IReadOnlyList<string> TopGenres);
+    IReadOnlyList<string> TopGenres,
+    int? MaxDistricts,
+    string? ExtraGenres);
+
+/// <summary>
+/// Defaults and limits of the city form. DefaultDistricts: used when maxDistricts is omitted.
+/// WarnDistricts: beyond it the map gets crowded (a warning, not a limit: there is no maximum).
+/// </summary>
+public sealed record CityFormOptionsDto(int DefaultDistricts, int WarnDistricts, int MaxNameLength, int MaxGenres);
 
 /// <summary>
 /// City (data) and Map (geometry, scene units): null until Status is Done. Map is the shared

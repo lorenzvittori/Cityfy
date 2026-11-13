@@ -23,6 +23,9 @@ public sealed class CityGeneratorClient(HttpClient http) : DownstreamClient(http
     public Task<RecipeSchema> GetRecipeSchemaAsync(CancellationToken ct) =>
         SendAsync<RecipeSchema>(new HttpRequestMessage(HttpMethod.Get, "api/city-generator/recipe/schema"), ct);
 
+    public Task<CityFormOptions> GetFormOptionsAsync(CancellationToken ct) =>
+        SendAsync<CityFormOptions>(new HttpRequestMessage(HttpMethod.Get, "api/city-generator/options"), ct);
+
     public Task<GeneratedCityPage> ListAsync(string userId, int page, int pageSize, CancellationToken ct) =>
         SendAsync<GeneratedCityPage>(new HttpRequestMessage(HttpMethod.Get, $"{Cities(userId)}?page={page}&pageSize={pageSize}"), ct);
 

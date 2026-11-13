@@ -59,6 +59,9 @@ public sealed class CityBuildSubService(IOptions<CityOptions> cityOptions) : ICi
         }
     }
 
+    public DistrictLimit Limit(int? maxDistricts, string? extraGenres) =>
+        DistrictLimit.From(maxDistricts, extraGenres, _options.DefaultDistricts);
+
     public CityModel Build(
         string userId,
         DateTime? from,
@@ -66,10 +69,14 @@ public sealed class CityBuildSubService(IOptions<CityOptions> cityOptions) : ICi
         DateTime now,
         IReadOnlyList<ArtistPlays> plays,
         IReadOnlyDictionary<string, ArtistPlacement> placementsByArtistName,
-        GenreFilter filter)
+        GenreFilter filter,
+        DistrictLimit limit)
     {
-        // Artists left out by the filter disappear: not placed, not unresolved, not in the totals
+        // Artists left out by the filter, or by a dropping district limit, disappear: not placed,
+        // not unresolved, not in the totals
         var considered = Considered(plays, placementsByArtistName, filter);
+        if (limit.Extra == ExtraGenres.Drop)
+            considered = WithoutDroppedDistricts(considered, placementsByArtistName, limit);
 
         var placements = new List<Placement>();
         var unresolved = new List<ArtistPlays>();
@@ -95,13 +102,14 @@ public sealed class CityBuildSubService(IOptions<CityOptions> cityOptions) : ICi
             .Select(d => NewDistrict(d, maxQualified))
             .OrderByDescending(ScoreOf)
             .ToList();
-        districts = MergeSmallDistricts(districts);
+        if (limit.Extra == ExtraGenres.Merge && limit.IsExceededBy(districts.Count))
+            districts = MergeExtraDistricts(districts, limit.Max);
         SetDensityAndIntensity(districts, placedQualified);
 
         var coverage = totalQualified > 0 ? Math.Round(100.0 * placedQualified / totalQualified, 2) : 0;
         return new CityModel
         {
-            Warnings = Warnings(totalQualified, buildings.Count, coverage),
+            Warnings = Warnings(totalQualified, buildings.Count, coverage, districts.Count),
             UserId = userId,
             GeneratedAt = now,
             From = from,
@@ -123,6 +131,43 @@ public sealed class CityBuildSubService(IOptions<CityOptions> cityOptions) : ICi
                 considered.Add(p);
         return considered;
     }
+
+    /// <summary>
+    /// The plays without those of the macro-genres beyond the limit. The ranking is the district
+    /// score (qualified plays of the placed artists), ties in order of first appearance: the same
+    /// order the districts of the city get.
+    /// </summary>
+    private static IReadOnlyList<ArtistPlays> WithoutDroppedDistricts(
+        IReadOnlyList<ArtistPlays> considered, IReadOnlyDictionary<string, ArtistPlacement> placementsByArtistName, DistrictLimit limit)
+    {
+        var scores = new Dictionary<int, long>();
+        var order = new List<int>();
+        foreach (var p in considered)
+        {
+            if (PlacedDistrictOf(p, placementsByArtistName) is not { } district)
+                continue;
+            if (!scores.ContainsKey(district))
+                order.Add(district);
+            scores[district] = scores.GetValueOrDefault(district) + p.QualifiedPlays;
+        }
+        if (!limit.IsExceededBy(order.Count))
+            return considered;
+
+        long ScoreOfDistrict(int district) => scores[district];
+        var kept = order.OrderByDescending(ScoreOfDistrict).Take(limit.Max).ToHashSet();
+
+        var remaining = new List<ArtistPlays>();
+        foreach (var p in considered)
+            if (PlacedDistrictOf(p, placementsByArtistName) is not { } district || kept.Contains(district))
+                remaining.Add(p);
+        return remaining;
+    }
+
+    /// <summary>District genre of a play that becomes a building (qualified, placed artist); else null.</summary>
+    private static int? PlacedDistrictOf(ArtistPlays plays, IReadOnlyDictionary<string, ArtistPlacement> placementsByArtistName) =>
+        plays.QualifiedPlays > 0 && placementsByArtistName.TryGetValue(plays.ArtistName, out var artist) && artist.IsPlaced
+            ? artist.DistrictGenreId
+            : null;
 
     // --- factories ---------------------------------------------------------------------
 
@@ -189,18 +234,14 @@ public sealed class CityBuildSubService(IOptions<CityOptions> cityOptions) : ICi
         new() { Name = plays.ArtistName, SpotifyArtistUri = plays.ArtistUri, Plays = plays.QualifiedPlays };
 
     /// <summary>
-    /// MusicBrainz has many top-level genres: a large listening history produces 100+ districts,
-    /// which no map can show legibly. The most listened (MaxDistricts - 1) stay, the rest become
-    /// one "Other genres" district whose blocks keep their genre (and their buildings their colors).
-    /// Applied after the genre filter, so a filtered city keeps the districts that were chosen.
+    /// MusicBrainz has many top-level genres: a large listening history produces 100+ districts.
+    /// The most listened (max - 1) stay, the rest become one "Other genres" district whose blocks
+    /// keep their genre (and their buildings their colors). Applied after the genre filter.
     /// </summary>
-    private List<CityDistrict> MergeSmallDistricts(List<CityDistrict> districts)
+    private static List<CityDistrict> MergeExtraDistricts(List<CityDistrict> districts, int max)
     {
-        if (districts.Count <= _options.MaxDistricts)
-            return districts;
-
-        var keep = districts.Take(_options.MaxDistricts - 1).ToList();
-        keep.Add(NewOtherDistrict(districts.Skip(_options.MaxDistricts - 1).ToList()));
+        var keep = districts.Take(max - 1).ToList();
+        keep.Add(NewOtherDistrict(districts.Skip(max - 1).ToList()));
         return keep;
     }
 
@@ -226,15 +267,18 @@ public sealed class CityBuildSubService(IOptions<CityOptions> cityOptions) : ICi
         }
     }
 
-    private List<string> Warnings(long totalQualified, int placedArtists, double coverage)
+    private List<string> Warnings(long totalQualified, int placedArtists, double coverage, int districts)
     {
+        var warnings = new List<string>();
         if (totalQualified == 0)
-            return [ErrorCodes.CityNoPlays];              // nothing listened in the range (or in the chosen genres)
-        if (placedArtists == 0)
-            return [ErrorCodes.CityGenresUnavailable];    // plays, but no artist matched a genre
-        if (coverage < _options.LowCoveragePercent)
-            return [ErrorCodes.CityLowCoverage];          // the city shows only part of the listening
-        return [];
+            warnings.Add(ErrorCodes.CityNoPlays);              // nothing listened in the range (or in the chosen genres)
+        else if (placedArtists == 0)
+            warnings.Add(ErrorCodes.CityGenresUnavailable);    // plays, but no artist matched a genre
+        else if (coverage < _options.LowCoveragePercent)
+            warnings.Add(ErrorCodes.CityLowCoverage);          // the city shows only part of the listening
+        if (districts > _options.WarnDistricts)
+            warnings.Add(ErrorCodes.CityManyDistricts);        // crowded map: chosen by the user, only a note
+        return warnings;
     }
 
     private static int ArtistCountOf(CityDistrict district) => district.Blocks.Sum(BuildingCountOf);

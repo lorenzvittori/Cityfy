@@ -10,5 +10,6 @@ public sealed class CityModelFetchSubService(ICatalogClient catalog) : ICityMode
         (await catalog.GetVersionAsync(userId, ct)).Version;
 
     public Task<CityModelResult> FetchAsync(GeneratedCity city, CancellationToken ct) =>
-        catalog.GetCityModelAsync(city.UserId, new CityModelQuery(city.From, city.To, city.Genres, city.Subgenres), ct);
+        catalog.GetCityModelAsync(city.UserId,
+            new CityModelQuery(city.From, city.To, city.Genres, city.Subgenres, city.MaxDistricts, city.ExtraGenres), ct);
 }

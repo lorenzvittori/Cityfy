@@ -35,6 +35,12 @@ public sealed class GeneratedCity
     public List<int> Genres { get; set; } = new();
     public List<int> Subgenres { get; set; } = new();
 
+    /// <summary>Districts shown (0 = all). Null in the cities saved before it could be chosen: the Catalog default.</summary>
+    public int? MaxDistricts { get; set; }
+
+    /// <summary>"merge" | "drop" (DistrictLimit). Null in the cities saved before it could be chosen: merge.</summary>
+    public string? ExtraGenres { get; set; }
+
     /// <summary>Hash of the canonical parameters: an identical request on the same catalog reuses this city.</summary>
     public string ParamsHash { get; set; } = null!;
 

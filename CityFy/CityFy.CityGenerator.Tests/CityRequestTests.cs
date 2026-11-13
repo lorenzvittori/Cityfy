@@ -50,4 +50,36 @@ public sealed class CityRequestTests
         Assert.NotEqual(Hash(new(Layout: "grid")), Hash(new(Layout: "organic")));
         Assert.NotEqual(Hash(new(From: new DateTime(2024, 1, 1))), Hash(new()));
     }
+
+    [Fact]
+    public void Districts_DefaultToTheConfiguredNumberAndMerge()
+    {
+        var r = Requests.Validate(new GenerateCityRequest(), Now);
+
+        Assert.Equal(new DistrictLimit(12, ExtraGenres.Merge), r.Districts);
+        Assert.Equal(new DistrictLimit(DistrictLimit.All, ExtraGenres.Drop),
+            Requests.Validate(new GenerateCityRequest(MaxDistricts: 0, ExtraGenres: "drop"), Now).Districts);
+        Assert.Equal(r.Districts, Requests.Default().Districts);
+    }
+
+    [Fact]
+    public void Districts_HaveNoMaximum_ButAMinimum()
+    {
+        Assert.Equal(500, Requests.Validate(new GenerateCityRequest(MaxDistricts: 500), Now).Districts.Max);
+        Assert.Equal(ErrorCodes.CityInvalidDistricts, Assert.Throws<CityFyException>(() =>
+            Requests.Validate(new GenerateCityRequest(MaxDistricts: 1), Now)).Code);
+        Assert.Equal(ErrorCodes.CityInvalidDistricts, Assert.Throws<CityFyException>(() =>
+            Requests.Validate(new GenerateCityRequest(ExtraGenres: "hide"), Now)).Code);
+    }
+
+    [Fact]
+    public void Hash_OmittedDistrictsEqualTheDefault_OtherLimitsDiffer()
+    {
+        string Hash(GenerateCityRequest r) => Requests.Hash(Requests.Validate(r, Now));
+
+        Assert.Equal(Hash(new()), Hash(new(MaxDistricts: 12, ExtraGenres: "MERGE")));
+        Assert.NotEqual(Hash(new()), Hash(new(MaxDistricts: 8)));
+        Assert.NotEqual(Hash(new(MaxDistricts: 8)), Hash(new(MaxDistricts: 8, ExtraGenres: "drop")));
+        Assert.NotEqual(Hash(new()), Hash(new(MaxDistricts: 0)));
+    }
 }

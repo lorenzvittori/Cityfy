@@ -102,7 +102,7 @@ public sealed class ApiTests : IDisposable
     public async Task City_IsReadForTheSessionUser_AndMappedToV1()
     {
         var client = await _factory.LoginAsync("u1");
-        var info = new GeneratedCityInfo("c1", null, null, null, "organic", null, [], [], "Done", null, DateTime.UtcNow, DateTime.UtcNow, "v1", 1, 1, ["rock"]);
+        var info = new GeneratedCityInfo("c1", null, null, null, "organic", null, [], [], "Done", null, DateTime.UtcNow, DateTime.UtcNow, "v1", 1, 1, ["rock"], 12, "merge");
         _factory.Fakes.OnJson(HttpMethod.Get, "/api/city-generator/u1/cities/c1", new GeneratedCityDetail(info, SampleCity(), null));
 
         var detail = await client.GetFromJsonAsync<GeneratedCityDetailDto>("/api/v1/cities/c1", Ct);

@@ -76,6 +76,8 @@ Utente        POST api/v1/cities ──► CityGenerator (Pending) ──► Gen
 - **`GenerateCityRequest`, `GeneratedCityInfo`/`Detail`/`Page`:** contratto di CityGenerator. `Status` è una stringa, `Name` è null se scelto dalla UI.
 - **`CityLayout`:** la mappa (edifici con x/z/rotazione, quartieri, isolati con sotto-isolati e marciapiedi, piazze, strade, strisce, lampioni, semafori, cartelli, segnaletica). È un **contratto condiviso esposto così com'è dal v1**: eccezione approvata alla regola dei DTO separati.
 - **`RecipeSchema`, `RecipeProblem`:** parametri della mappa custom.
+- **`DistrictLimit`:** numero di quartieri (`MaxDistricts`, 0 = tutti, nessun massimo) e destino dei macro-generi in eccesso (`ExtraGenres`: `merge` in "Altri generi", che conta come quartiere, oppure `drop`, fuori dalla città e dai totali). Stesse regole in CityGenerator (validazione, default, hash, salvataggio) e in Catalog (costruzione). Le città salvate prima hanno i due campi a null, cioè 12 e `merge`.
+- **`CityFormOptions`:** default e soglie del form (`DefaultDistricts`, `WarnDistricts`, `MaxNameLength`, `MaxGenres`). I default dei quartieri sono configurati in due posti, da tenere uguali: `CityGenerator:DefaultDistricts`/`WarnDistricts` e `City:DefaultDistricts`/`WarnDistricts` di Catalog.
 
 ## Mappa (CityGenerator)
 
@@ -91,7 +93,7 @@ Utente        POST api/v1/cities ──► CityGenerator (Pending) ──► Gen
 
 - `session` (POST, "Inizia senza account"), `auth/lastfm/login`, `auth/lastfm/callback`, `auth/logout`, `me` (`kind` anonymous | lastfm, `expiresAt`, `lastFm`), `me/data` (cancellazione), `lastfm/imports/{id}`.
 - `live`: SSE solo per gli account, con gli eventi `now-playing` (`NowPlayingDto`) e `ping`; al massimo 5 pagine per utente (`LiveHubSubService`).
-- `cities` (lista paginata, POST 202), `cities/{id}` (GET, DELETE 204), `cities/{id}/cancel`, `cities/recipe/schema`.
+- `cities` (lista paginata, POST 202), `cities/{id}` (GET, DELETE 204), `cities/{id}/cancel`, `cities/recipe/schema`, `cities/options`.
 - `city/genres?from&to`, `city/rebuild` (aggiorna il catalogo).
 - `uploads`, `pipeline/runs`.
 - Admin: `api/admin/*`.

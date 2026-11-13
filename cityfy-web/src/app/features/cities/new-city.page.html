@@ -215,6 +215,56 @@
       }
     </section>
 
+    <section class="districts">
+      <h2>Quartieri</h2>
+      <div class="districts-row">
+        <label>
+          Al massimo
+          <input
+            type="number"
+            step="1"
+            [min]="minDistricts()"
+            [value]="districts().all ? '' : (districts().max ?? '')"
+            [placeholder]="defaultDistricts()"
+            [disabled]="districts().all"
+            (input)="setDistricts($any($event.target).value)"
+            aria-label="Numero di quartieri"
+          />
+          quartieri
+        </label>
+        <label class="check">
+          <input type="checkbox" [checked]="districts().all" (change)="setAllDistricts($any($event.target).checked)" />
+          Tutti i generi principali
+        </label>
+      </div>
+      <div class="extra" role="radiogroup" aria-label="Generi in eccesso">
+        <label>
+          <input type="radio" name="extra" [checked]="districts().extra === 'merge'" (change)="setExtraGenres('merge')" />
+          Unisci gli altri nel quartiere "Altri generi"
+        </label>
+        <label>
+          <input type="radio" name="extra" [checked]="districts().extra === 'drop'" (change)="setExtraGenres('drop')" />
+          Lascia fuori gli altri
+        </label>
+      </div>
+      @if (districtsError(); as e) {
+        <p class="field-error">{{ e }}</p>
+      } @else if (options()) {
+        @let p = districtPreview();
+        @if (p.extra > 0) {
+          <p class="notice-inline">
+            Ci sono {{ p.candidates }} generi principali: i {{ p.extra }} meno ascoltati
+            {{ districts().extra === 'merge' ? 'finiranno nel quartiere "Altri generi"' : 'resteranno fuori dalla città' }}.
+          </p>
+        } @else {
+          <p class="muted small">La città avrà {{ p.shown }} quartier{{ p.shown === 1 ? 'e' : 'i' }}, uno per genere principale.</p>
+        }
+        @if (p.crowded) {
+          <p class="notice-inline">Con {{ p.shown }} quartieri la mappa può risultare affollata e la generazione più lenta.</p>
+        }
+      }
+    </section>
+
     @if (submitError(); as e) {
       <app-error-message [code]="e.code" [traceId]="e.traceId" [compact]="true" (retry)="submit()" />
     }

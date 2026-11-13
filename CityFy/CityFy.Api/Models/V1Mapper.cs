@@ -26,11 +26,14 @@ public static class V1Mapper
         b.Height, b.Width, b.Color, b.Genres);
 
     public static GenerateCityRequest ToInternal(this CreateCityRequest r) =>
-        new(r.Name, r.From, r.To, r.Layout, r.Recipe, r.Genres, r.Subgenres);
+        new(r.Name, r.From, r.To, r.Layout, r.Recipe, r.Genres, r.Subgenres, r.MaxDistricts, r.ExtraGenres);
 
     public static GeneratedCityDto ToDto(this GeneratedCityInfo c) => new(
         c.CityId, c.Name, c.From, c.To, c.Layout, c.Recipe, c.Genres, c.Subgenres, c.Status, c.ErrorCode,
-        c.CreatedAt, c.CompletedAt, c.Districts, c.Artists, c.TopGenres);
+        c.CreatedAt, c.CompletedAt, c.Districts, c.Artists, c.TopGenres, c.MaxDistricts, c.ExtraGenres);
+
+    public static CityFormOptionsDto ToDto(this CityFormOptions o) =>
+        new(o.DefaultDistricts, o.WarnDistricts, o.MaxNameLength, o.MaxGenres);
 
     public static GeneratedCityDetailDto ToDto(this GeneratedCityDetail d) => new(d.Info.ToDto(), d.City?.ToDto(), d.Map);
 

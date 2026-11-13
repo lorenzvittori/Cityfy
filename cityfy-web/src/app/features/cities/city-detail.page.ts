@@ -10,7 +10,8 @@ import { LiveService } from '../../core/live/live.service';
 import { playingArtistId } from '../../core/live/now-playing';
 import { ErrorMessage } from '../../shared/error-message/error-message';
 import { CityScene } from './city-scene/city-scene';
-import { cityTitle, isActive, layoutLabel, periodLabel, statusLabel } from './city-labels';
+import { cityTitle, districtsLabel, isActive, layoutLabel, periodLabel, statusLabel } from './city-labels';
+import { DEFAULT_DISTRICTS } from './city-form';
 
 const POLL_MS = 3000;
 /** Artists listed under a genre before "Mostra tutti". */
@@ -52,7 +53,9 @@ export class CityDetailPage {
   });
   protected readonly subtitle = computed(() => {
     const i = this.detail()?.info;
-    return i ? `${periodLabel(i.from, i.to)} · mappa ${layoutLabel(i.layout).toLowerCase()}` : '';
+    return i
+      ? `${periodLabel(i.from, i.to)} · mappa ${layoutLabel(i.layout).toLowerCase()} · ${districtsLabel(i.maxDistricts, i.extraGenres, DEFAULT_DISTRICTS).toLowerCase()}`
+      : '';
   });
 
   /** Track playing now (accounts, from Last.fm) and its building in this city, if any. */
@@ -175,6 +178,8 @@ export class CityDetailPage {
     if (info.to) params['to'] = info.to;
     if (info.genres.length) params['genres'] = info.genres.join(',');
     if (info.subgenres.length) params['subgenres'] = info.subgenres.join(',');
+    if (info.maxDistricts !== null) params['districts'] = String(info.maxDistricts);
+    if (info.extraGenres) params['extra'] = info.extraGenres;
     return params;
   }
 

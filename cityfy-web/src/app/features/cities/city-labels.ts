@@ -75,6 +75,16 @@ export function periodLabel(from: string | null, to: string | null): string {
   return a === b ? a : `${a} – ${b}`;
 }
 
+/**
+ * "12 quartieri, altri generi uniti" / "8 quartieri, altri generi esclusi" / "Tutti i quartieri".
+ * Null max (cities saved before it could be chosen): the default.
+ */
+export function districtsLabel(max: number | null, extra: string | null, defaultMax: number): string {
+  if (max === 0) return 'Tutti i quartieri';
+  const n = max ?? defaultMax;
+  return `${n} quartier${n === 1 ? 'e' : 'i'}, altri generi ${extra === 'drop' ? 'esclusi' : 'uniti'}`;
+}
+
 /** The user's name, else "Rock e Jazz · 2024 · Griglia" from the parameters. */
 export function cityTitle(city: Pick<GeneratedCity, 'name' | 'topGenres' | 'from' | 'to' | 'layout'>): string {
   if (city.name) return city.name;

@@ -53,6 +53,26 @@ public sealed class CityGenerationTests
     }
 
     [Fact]
+    public async Task DistrictLimit_IsStored_AndPassedToTheCatalog()
+    {
+        var city = await _service.RequestAsync("u1", Rock() with { MaxDistricts = 5, ExtraGenres = "Drop" }, Ct);
+        await _service.GenerateAsync(city.CityId, Ct);
+
+        Assert.Equal((5, "drop"), (city.MaxDistricts, city.ExtraGenres));
+        var query = Assert.Single(_catalog.Queries);
+        Assert.Equal((5, "drop"), (query.MaxDistricts, query.ExtraGenres));
+    }
+
+    [Fact]
+    public async Task FirstCity_HasTheDefaultDistricts()
+    {
+        await _service.HandleCatalogUpdatedAsync(new UserCatalogUpdated(null, "u1", "v1", 1, 1, DateTime.UtcNow), Ct);
+
+        var city = Assert.Single(_repo.Cities.Values);
+        Assert.Equal((12, "merge"), (city.MaxDistricts, city.ExtraGenres));
+    }
+
+    [Fact]
     public async Task IdenticalRequest_OnTheSameCatalog_ReusesTheCity_WhateverTheNameAndGenreOrder()
     {
         var first = await _service.RequestAsync("u1", Rock() with { Genres = [2, 1] }, Ct);

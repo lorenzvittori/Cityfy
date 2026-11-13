@@ -37,16 +37,24 @@ public sealed class CityRequestSubService(IOptions<CityGeneratorOptions> options
         if (genres.Count + subgenres.Count > _options.MaxGenres)
             throw Invalid(ErrorCodes.CityInvalidGenres, $"more than {_options.MaxGenres} genres and subgenres");
 
+        var districts = DistrictLimit.From(request.MaxDistricts, request.ExtraGenres, _options.DefaultDistricts);
+
         // The parameter string only matters for a custom map (validated by the recipe parser)
         var recipe = layout == CityRequest.Custom ? request.Recipe : null;
-        return new CityRequest(name, from, to, layout, recipe, genres, subgenres);
+        return new CityRequest(name, from, to, layout, recipe, genres, subgenres, districts);
     }
+
+    public CityRequest Default() => CityRequest.Default(DistrictLimit.From(null, null, _options.DefaultDistricts));
+
+    public CityFormOptions FormOptions() =>
+        new(_options.DefaultDistricts, _options.WarnDistricts, _options.MaxNameLength, _options.MaxGenres);
 
     public string Hash(CityRequest request)
     {
         var canonical = string.Join('|',
             Date(request.From), Date(request.To), request.Layout, request.Recipe ?? "",
-            string.Join(',', request.Genres), string.Join(',', request.Subgenres));
+            string.Join(',', request.Genres), string.Join(',', request.Subgenres),
+            request.Districts.Max.ToString(CultureInfo.InvariantCulture), request.Districts.ExtraName);
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
     }
 

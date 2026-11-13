@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable, catchError, map, throwError } from 'rxjs';
 import { ApiError } from '../errors/api-error';
 import {
+  CityFormOptions,
   CreateCityRequest,
   GeneratedCity,
   GeneratedCityDetail,
@@ -73,6 +74,11 @@ export class ApiService {
   /** Keys, ranges and presets of the parameter string of a custom map. */
   recipeSchema(): Observable<RecipeSchema> {
     return this.wrap(this.http.get<RecipeSchema>(`${this.base}/cities/recipe/schema`));
+  }
+
+  /** Defaults and limits of the city form (districts, name, genres). */
+  cityOptions(): Observable<CityFormOptions> {
+    return this.wrap(this.http.get<CityFormOptions>(`${this.base}/cities/options`));
   }
 
   /** Genres and subgenres listened in [from, to) (CITY_CATALOG_MISSING while the first import runs). */

@@ -3,16 +3,24 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { ApiService } from '../../core/api/api.service';
-import { CityLayoutType, GenreOption } from '../../core/api/api.models';
+import { CityFormOptions, CityLayoutType, ExtraGenres, GenreOption } from '../../core/api/api.models';
 import { ApiError } from '../../core/errors/api-error';
 import { ErrorMessage } from '../../shared/error-message/error-message';
 import {
+  DEFAULT_DISTRICTS,
+  DistrictChoice,
   GenreSelection,
   NO_SELECTION,
   RangeShortcut,
   SHORTCUTS,
+  WARN_DISTRICTS,
   apiRange,
+  districtChoiceOf,
+  districtPreview,
   districtState,
+  districtsError,
+  districtsRequest,
+  minDistricts,
   formTo,
   isEmpty,
   isoDay,
@@ -30,14 +38,15 @@ import { FieldProblem } from '../../core/errors/api-error';
 const MAX_NAME = 80;
 
 /**
- * New city: name (optional), date range with shortcuts, map type and genres. Query parameters
- * (from, to, layout, recipe, genres, subgenres, name) prefill the form ("duplicate and edit").
+ * New city: name (optional), date range with shortcuts, map type, genres and number of districts.
+ * Query parameters (from, to, layout, recipe, genres, subgenres, districts, extra, name) prefill
+ * the form ("duplicate and edit").
  */
 @Component({
   selector: 'app-new-city-page',
   imports: [RouterLink, ErrorMessage],
   templateUrl: './new-city.page.html',
-  styleUrls: ['./new-city.page.scss', './recipe-panel.scss'],
+  styleUrls: ['./new-city.page.scss', './recipe-panel.scss', './districts-panel.scss'],
 })
 export class NewCityPage {
   private readonly api = inject(ApiService);
@@ -68,6 +77,22 @@ export class NewCityPage {
   protected readonly recipeKeys = computed(() => this.recipeSchema()?.keys.filter((k) => k.key !== BASE_KEY) ?? []);
   protected readonly bases = computed(() => Object.keys(this.recipeSchema()?.bases ?? {}));
 
+  // Districts: how many, and what happens to the macro-genres beyond them
+  protected readonly formOptions = signal<CityFormOptions | null>(null);
+  protected readonly districts = signal<DistrictChoice>(districtChoiceOf(null, null));
+  protected readonly defaultDistricts = computed(() => this.formOptions()?.defaultDistricts ?? DEFAULT_DISTRICTS);
+  protected readonly districtsError = computed(() => districtsError(this.districts()));
+  protected readonly minDistricts = computed(() => minDistricts(this.districts().extra));
+  protected readonly districtPreview = computed(() =>
+    districtPreview(
+      this.options() ?? [],
+      this.selection(),
+      this.districts(),
+      this.defaultDistricts(),
+      this.formOptions()?.warnDistricts ?? WARN_DISTRICTS,
+    ),
+  );
+
   protected readonly options = signal<GenreOption[] | null>(null);
   protected readonly optionsError = signal<ApiError | null>(null);
   protected readonly submitError = signal<ApiError | null>(null);
@@ -86,6 +111,7 @@ export class NewCityPage {
       !this.submitting() &&
       !this.rangeError() &&
       !this.catalogMissing() &&
+      !this.districtsError() &&
       this.name().length <= MAX_NAME &&
       (this.layout() !== 'custom' || (!!this.recipeSchema() && this.recipeProblems().length === 0)),
   );
@@ -105,8 +131,36 @@ export class NewCityPage {
     const recipe = q.get('recipe');
     const ids = (key: string) => (q.get(key) ?? '').split(',').filter(Boolean).map(Number);
     this.selection.set(selectionOf(ids('genres'), ids('subgenres')));
+    this.districts.set(districtChoiceOf(q.get('districts'), q.get('extra')));
     this.loadOptions();
     this.loadSchema(recipe);
+    this.loadFormOptions();
+  }
+
+  // --- Districts ------------------------------------------------------------------
+
+  /** Number typed: empty = the default. */
+  protected setDistricts(value: string): void {
+    this.districts.set({ ...this.districts(), all: false, max: value === '' ? null : Number(value) });
+  }
+
+  protected setAllDistricts(all: boolean): void {
+    this.districts.set({ ...this.districts(), all });
+  }
+
+  protected setExtraGenres(extra: ExtraGenres): void {
+    this.districts.set({ ...this.districts(), extra });
+  }
+
+  private loadFormOptions(): void {
+    this.api
+      .cityOptions()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (options) => this.formOptions.set(options),
+        // the form keeps the built-in defaults (the backend applies its own anyway)
+        error: () => this.formOptions.set(null),
+      });
   }
 
   protected setLayout(layout: CityLayoutType): void {
@@ -244,6 +298,7 @@ export class NewCityPage {
         recipe: this.layout() === 'custom' ? this.recipeText() : null,
         genres: [...s.genres],
         subgenres: [...s.subgenres],
+        ...districtsRequest(this.districts()),
       })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({

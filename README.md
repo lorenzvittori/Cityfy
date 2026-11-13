@@ -58,6 +58,7 @@ Il frontend parla solo con **Api** (`https://localhost:7300`, Swagger su `/swagg
 | `POST /api/v1/cities` | Genera una città (date, mappa, generi; 202) |
 | `GET /api/v1/cities/{id}`, `DELETE`, `POST .../cancel` | Città (dati + mappa), cancellazione, annullamento |
 | `GET /api/v1/cities/recipe/schema` | Parametri della mappa personalizzata |
+| `GET /api/v1/cities/options` | Default e soglie del form della città (quartieri predefiniti, soglia dell'avviso, lunghezza del nome, numero di generi) |
 | `GET /api/v1/city/genres?from=&to=` | Generi e sottogeneri ascoltati, per il form |
 | `POST /api/v1/city/rebuild` | Aggiorna subito il catalogo artisti |
 | `POST /api/v1/uploads`, `GET /api/v1/uploads/{id}` | Caricamento dell'export e suo stato |
@@ -134,7 +135,10 @@ Il pannello è attivo solo in Development (`appsettings.Development.json` dell'A
    - Avanzamento: `GET /api/pipeline/runs?userId=...` su **Orchestrator**.
    - Aggiornamento senza nuovi import: dal pulsante **Aggiorna i dati** nella lista delle città (`POST /api/v1/city/rebuild`, usa tutti gli ascolti importati da qualunque fonte), oppure `POST /internal/pipeline/trigger/{userId}` su **Orchestrator**; in debug `POST /debug/catalog/refresh/{userId}` su **Catalog**.
    - Quando un import di MusicBrainz finisce, **RetrieveMusicBrainz** pubblica `CatalogUpdated` e l'Orchestrator aggiorna il catalogo di tutti gli utenti che hanno ascolti. Le città già salvate restano com'erano; quelle nuove usano i generi aggiornati.
-   - Una città ha al massimo `City:MaxDistricts` quartieri (default 12); i macro-generi meno ascoltati finiscono nel quartiere "Altri generi".
+   - **Numero di quartieri:**
+     - lo sceglie chi crea la città (`maxDistricts`, 0 = tutti, nessun massimo); se non lo sceglie vale `City:DefaultDistricts` (default 12);
+     - i macro-generi meno ascoltati oltre il limite finiscono nel quartiere "Altri generi" (`extraGenres: merge`, il default) oppure escono dalla città e dai suoi totali (`drop`);
+     - oltre `City:WarnDistricts` quartieri (default 20) la città riceve l'avviso `CITY_MANY_DISTRICTS`.
    - **Catalogo artisti:** a ogni run Catalog ricalcola, su tutti gli ascolti, genere e sottogenere di ogni artista (`user_artist_placements`, versione corrente in `user_catalogs`) e pubblica `UserCatalogUpdated`. Le città di qualunque intervallo e genere si calcolano da qui senza richiamare MusicBrainz: `POST /api/catalog/city-model/{userId}`, `GET /api/catalog/genres/{userId}?from&to`.
 
 4. **Città salvate (CityGenerator):** l'utente genera una città scegliendo date, tipo di mappa (`organic`, `grid`) e generi o sottogeneri (`POST /api/v1/cities`). La generazione è un job in background (`GenerateCityRequested`) che chiede i dati a Catalog e salva il risultato in `generated_cities`.

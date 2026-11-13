@@ -120,6 +120,7 @@ Riguardano "Accedi con Last.fm". Gli errori di accesso tornano al frontend come 
 | `CITY_INVALID_RECIPE` | Parametri della mappa personalizzata non validi. La risposta ha `problems: [{ key, code }]` con `code` tra `MISSING`, `TOO_LONG`, `SYNTAX`, `UNKNOWN_KEY`, `DUPLICATE_KEY`, `INVALID_VALUE`, `OUT_OF_RANGE` (`key` vuota = tutta la stringa) | "Controlla i parametri della mappa." | Evidenzia la chiave nel testo e il campo corrispondente del form, con il motivo |
 | `CITY_INVALID_NAME` | Nome della città troppo lungo (oltre 80 caratteri) | "Il nome della città è troppo lungo." | Evidenzia il campo nome |
 | `CITY_INVALID_GENRES` | Troppi generi e sottogeneri nella richiesta | "Hai selezionato troppi generi." | Suggerisci di scegliere i generi principali |
+| `CITY_INVALID_DISTRICTS` | Numero di quartieri non valido: sotto 2 quando i generi in eccesso si uniscono in "Altri generi", sotto 1 quando si scartano (0 = tutti); oppure `extraGenres` diverso da `merge`/`drop` | "Controlla il numero di quartieri." | Evidenzia il campo quartieri |
 | `CITY_BUILD_FAILED` | La generazione della città (o l'aggiornamento del catalogo artisti) è fallita | "Non siamo riusciti a costruire la tua città. Riprova più tardi." | **Crea di nuovo** con gli stessi parametri; `traceId` |
 | `MUSICBRAINZ_UNAVAILABLE` | Il catalogo dei generi musicali non è raggiungibile | "Il catalogo dei generi musicali non è disponibile al momento. La città verrà costruita appena torna online." | Nessuna azione: i dati dell'utente sono al sicuro |
 | `PIPELINE_TIMEOUT` | L'aggiornamento del catalogo artisti non ha risposto in tempo (30 min) | "L'aggiornamento sta richiedendo troppo tempo. Riprova." | **Riprova** |
@@ -146,6 +147,7 @@ La città si mostra, con un messaggio sopra o accanto.
 | `CITY_NO_PLAYS` | Nessun ascolto nel periodo e nei generi scelti | "Nessun ascolto in questo periodo per i generi scelti." | Città vuota, con il suggerimento di allargare il periodo o i generi |
 | `CITY_GENRES_UNAVAILABLE` | Ci sono ascolti, ma nessun artista è stato associato a un genere | "Non riusciamo ancora a riconoscere i generi dei tuoi artisti." | Stato vuoto dedicato; nessuna azione per l'utente |
 | `CITY_LOW_COVERAGE` | Meno della metà degli ascolti è stata collocata nella città | "La città mostra solo una parte dei tuoi ascolti: alcuni artisti non sono nel nostro catalogo." | Avviso discreto; nel dettaglio la percentuale (`summary.coveragePercent`) |
+| `CITY_MANY_DISTRICTS` | La città ha più quartieri della soglia di avviso (20, configurabile). Può arrivare insieme a uno degli avvisi sopra | "Questa città ha molti quartieri: la mappa può risultare affollata." | Avviso discreto; nessuna azione |
 
 ### Cancellazione dei dati
 

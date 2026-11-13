@@ -8,12 +8,15 @@ namespace ServiceDefault.City;
 /// now; To is exclusive. Genres = district (top-level genre) ids, Subgenres = block (genre) ids:
 /// an artist is kept when its district is in Genres or its block is in Subgenres; both empty =
 /// every genre. Artists left out disappear from the city (they are not counted anywhere).
+/// MaxDistricts / ExtraGenres: see <see cref="DistrictLimit"/> (null = the catalog default, merge).
 /// </summary>
 public sealed record CityModelQuery(
     DateTime? From = null,
     DateTime? To = null,
     IReadOnlyList<int>? Genres = null,
-    IReadOnlyList<int>? Subgenres = null);
+    IReadOnlyList<int>? Subgenres = null,
+    int? MaxDistricts = null,
+    string? ExtraGenres = null);
 
 /// <summary>CatalogVersion: version of the artist catalog the city was computed with.</summary>
 public sealed record CityModelResult(CityModel City, string CatalogVersion);

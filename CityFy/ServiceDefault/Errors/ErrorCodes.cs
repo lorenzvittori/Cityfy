@@ -63,6 +63,8 @@ public static class ErrorCodes
     public const string CityInvalidRange = "CITY_INVALID_RANGE";
     /// <summary>The user's artist catalog was never built: the plays are still being imported.</summary>
     public const string CityCatalogMissing = "CITY_CATALOG_MISSING";
+    /// <summary>Number of districts below the minimum (2 when the extra genres are merged, 1 when dropped; 0 = all) or unknown extraGenres.</summary>
+    public const string CityInvalidDistricts = "CITY_INVALID_DISTRICTS";
 
     // --- Generated cities (CityGenerator) ---------------------------------------
     /// <summary>The generated city does not exist (or belongs to another user).</summary>
@@ -83,6 +85,8 @@ public static class ErrorCodes
     public const string CityNoPlays = "CITY_NO_PLAYS";
     public const string CityGenresUnavailable = "CITY_GENRES_UNAVAILABLE";
     public const string CityLowCoverage = "CITY_LOW_COVERAGE";
+    /// <summary>More districts than the warning threshold: crowded map, slow generation.</summary>
+    public const string CityManyDistricts = "CITY_MANY_DISTRICTS";
 
     // --- Pipeline (Orchestrator) ------------------------------------------
     public const string PipelineRunNotFound = "PIPELINE_RUN_NOT_FOUND";
